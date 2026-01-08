@@ -3,7 +3,7 @@
  */
 
 /** 転送プロトコル */
-export type Protocol = "sftp" | "scp" | "local";
+export type Protocol = "sftp" | "scp" | "rsync" | "local";
 
 /** 認証方式 */
 export type AuthType = "ssh_key" | "password";
@@ -51,6 +51,12 @@ export interface TargetConfig {
   preserve_timestamps?: boolean;
   timeout?: number;
   retry?: number;
+  /** rsync: リモート側で実行するrsyncコマンドパス（例: "sudo rsync"） */
+  rsync_path?: string;
+  /** rsync: 追加オプション（例: ["--chmod=D755,F644", "--chown=www-data:www-data"]） */
+  rsync_options?: string[];
+  /** 古いSSHサーバー向けのレガシーアルゴリズムを有効化 */
+  legacy_mode?: boolean;
 }
 
 /** 宛先設定 */

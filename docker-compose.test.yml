@@ -21,6 +21,7 @@ services:
       - TZ=Asia/Tokyo
       - USER_NAME=testuser
       - USER_PASSWORD=testpass
+      - SUDO_ACCESS=true
       - PASSWORD_ACCESS=true
       - PUBLIC_KEY_FILE=/config/ssh-keys/test_key.pub
     volumes:

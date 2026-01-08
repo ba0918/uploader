@@ -1,7 +1,8 @@
 /**
- * SCP転送
+ * rsync転送
  *
- * 外部scpコマンドを使用して転送を行う
+ * 外部rsyncコマンドを使用して転送を行う
+ * sudo対応、差分転送、permission/owner指定が可能
  */
 
 import { dirname, join } from "@std/path";
@@ -9,9 +10,9 @@ import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 
 /**
- * SCP接続オプション
+ * rsync接続オプション
  */
-export interface ScpOptions {
+export interface RsyncOptions {
   /** ホスト名 */
   host: string;
   /** ポート番号 */
@@ -32,23 +33,33 @@ export interface ScpOptions {
   preservePermissions?: boolean;
   /** タイムスタンプを保持するか */
   preserveTimestamps?: boolean;
+  /** リモート側で実行するrsyncコマンドパス（例: "sudo rsync"） */
+  rsyncPath?: string;
+  /** 追加オプション（例: ["--chmod=D755,F644", "--chown=www-data:www-data"]） */
+  rsyncOptions?: string[];
   /** 古いSSHサーバー向けのレガシーアルゴリズムを有効化 */
   legacyMode?: boolean;
 }
 
 /**
- * SCPアップローダー
+ * rsyncアップローダー
  *
- * 外部のscpコマンドを使用してファイルを転送する。
+ * 外部のrsyncコマンドを使用してファイルを転送する。
  * パスワード認証はsshpass経由でサポート。
+ *
+ * 主な特徴:
+ * - --rsync-path="sudo rsync" でリモート側でsudo実行可能
+ * - --chmod でパーミッション指定可能
+ * - --chown でオーナー指定可能（sudo必要）
+ * - 差分転送で高速
  */
-export class ScpUploader implements Uploader {
-  private options: ScpOptions;
+export class RsyncUploader implements Uploader {
+  private options: RsyncOptions;
   private connected: boolean = false;
   private tempDir: string | null = null;
   private sshpassAvailable: boolean | null = null;
 
-  constructor(options: ScpOptions) {
+  constructor(options: RsyncOptions) {
     this.options = options;
   }
 
@@ -80,7 +91,6 @@ export class ScpUploader implements Uploader {
   private async runWithSshpass(
     cmd: string,
     args: string[],
-    options?: { stdout?: "piped"; stderr?: "piped" },
   ): Promise<{ code: number; stdout: Uint8Array; stderr: Uint8Array }> {
     let finalCmd = cmd;
     let finalArgs = args;
@@ -93,15 +103,15 @@ export class ScpUploader implements Uploader {
 
     const command = new Deno.Command(finalCmd, {
       args: finalArgs,
-      stdout: options?.stdout ?? "piped",
-      stderr: options?.stderr ?? "piped",
+      stdout: "piped",
+      stderr: "piped",
     });
 
     return await command.output();
   }
 
   /**
-   * 接続（SCPなので接続確認のみ）
+   * 接続（rsyncなので接続確認のみ）
    */
   async connect(): Promise<void> {
     const maxRetries = this.options.retry ?? 3;
@@ -207,6 +217,38 @@ export class ScpUploader implements Uploader {
   }
 
   /**
+   * rsync用のSSH接続オプションを構築
+   */
+  private buildSshCommand(): string {
+    const parts: string[] = ["ssh"];
+
+    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
+    if (!this.options.password) {
+      parts.push("-o", "BatchMode=yes");
+    }
+
+    parts.push("-o", "StrictHostKeyChecking=accept-new");
+    parts.push("-o", `ConnectTimeout=${this.options.timeout ?? 30}`);
+    parts.push("-p", String(this.options.port));
+
+    if (this.options.keyFile) {
+      parts.push("-i", this.options.keyFile);
+    }
+
+    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
+    if (this.options.legacyMode) {
+      parts.push(
+        "-o",
+        "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
+      );
+      parts.push("-o", "HostKeyAlgorithms=+ssh-rsa");
+      parts.push("-o", "PubkeyAcceptedAlgorithms=+ssh-rsa");
+    }
+
+    return parts.join(" ");
+  }
+
+  /**
    * 切断
    */
   async disconnect(): Promise<void> {
@@ -231,13 +273,14 @@ export class ScpUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
+
+    // rsync_pathが指定されている場合はsudoを考慮
+    const mkdirCmd = this.options.rsyncPath?.includes("sudo")
+      ? `sudo mkdir -p "${fullPath}"`
+      : `mkdir -p "${fullPath}"`;
+
     const args = this.buildSshArgs();
-    args.push(
-      `${this.options.user}@${this.options.host}`,
-      "mkdir",
-      "-p",
-      fullPath,
-    );
+    args.push(`${this.options.user}@${this.options.host}`, mkdirCmd);
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
 
@@ -302,7 +345,7 @@ export class ScpUploader implements Uploader {
   ): Promise<void> {
     // 一時ディレクトリを作成
     if (!this.tempDir) {
-      this.tempDir = await Deno.makeTempDir({ prefix: "uploader_" });
+      this.tempDir = await Deno.makeTempDir({ prefix: "uploader_rsync_" });
     }
 
     // 一時ファイルに書き込み
@@ -332,47 +375,44 @@ export class ScpUploader implements Uploader {
   ): Promise<void> {
     const args: string[] = [];
 
-    // SCP引数を構築
-    if (this.options.keyFile) {
-      args.push("-i", this.options.keyFile);
-    }
+    // 基本オプション
+    args.push("-v"); // 詳細表示
+    args.push("--progress"); // 進捗表示
 
-    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
-    if (!this.options.password) {
-      args.push("-o", "BatchMode=yes");
-    }
+    // アーカイブモードの代わりに個別指定（-aは使わない）
+    args.push("-rlD"); // recursive, links, devices/specials
 
-    args.push(
-      "-o",
-      "StrictHostKeyChecking=accept-new",
-      "-o",
-      `ConnectTimeout=${this.options.timeout ?? 30}`,
-      "-P",
-      String(this.options.port),
-    );
-
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
-    if (this.options.legacyMode) {
-      args.push(
-        "-o",
-        "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
-        "-o",
-        "HostKeyAlgorithms=+ssh-rsa",
-        "-o",
-        "PubkeyAcceptedAlgorithms=+ssh-rsa",
-      );
-    }
-
+    // タイムスタンプ保持
     if (this.options.preserveTimestamps) {
+      args.push("-t");
+    }
+
+    // パーミッション保持
+    if (this.options.preservePermissions) {
       args.push("-p");
     }
 
-    args.push(srcPath, `${this.options.user}@${this.options.host}:${destPath}`);
+    // SSH経由で接続
+    args.push("-e", this.buildSshCommand());
+
+    // リモート側のrsyncパス（sudo対応）
+    if (this.options.rsyncPath) {
+      args.push(`--rsync-path=${this.options.rsyncPath}`);
+    }
+
+    // 追加オプション（--chmod, --chown等）
+    if (this.options.rsyncOptions) {
+      args.push(...this.options.rsyncOptions);
+    }
+
+    // ソースと宛先
+    args.push(srcPath);
+    args.push(`${this.options.user}@${this.options.host}:${destPath}`);
 
     // 進捗表示のため、開始と終了で通知
     onProgress?.(0, size);
 
-    const { code, stderr } = await this.runWithSshpass("scp", args);
+    const { code, stderr } = await this.runWithSshpass("rsync", args);
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
@@ -383,6 +423,15 @@ export class ScpUploader implements Uploader {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",
+        );
+      }
+      if (
+        errorMsg.includes("permission denied") ||
+        errorMsg.includes("Permission denied")
+      ) {
+        throw new UploadError(
+          `Permission denied: ${destPath}: ${errorMsg}`,
+          "PERMISSION_ERROR",
         );
       }
       throw new UploadError(
@@ -404,13 +453,14 @@ export class ScpUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
+
+    // rsync_pathが指定されている場合はsudoを考慮
+    const rmCmd = this.options.rsyncPath?.includes("sudo")
+      ? `sudo rm -rf "${fullPath}"`
+      : `rm -rf "${fullPath}"`;
+
     const args = this.buildSshArgs();
-    args.push(
-      `${this.options.user}@${this.options.host}`,
-      "rm",
-      "-rf",
-      fullPath,
-    );
+    args.push(`${this.options.user}@${this.options.host}`, rmCmd);
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
 
@@ -435,12 +485,14 @@ export class ScpUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
+
+    // rsync_pathが指定されている場合はsudoを考慮
+    const catCmd = this.options.rsyncPath?.includes("sudo")
+      ? `sudo cat "${fullPath}"`
+      : `cat "${fullPath}"`;
+
     const args = this.buildSshArgs();
-    args.push(
-      `${this.options.user}@${this.options.host}`,
-      "cat",
-      fullPath,
-    );
+    args.push(`${this.options.user}@${this.options.host}`, catCmd);
 
     const { code, stdout, stderr } = await this.runWithSshpass("ssh", args);
 

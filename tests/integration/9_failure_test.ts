@@ -11,6 +11,7 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { SftpUploader } from "../../src/upload/sftp.ts";
 import { ScpUploader } from "../../src/upload/scp.ts";
+import { RsyncUploader } from "../../src/upload/rsync.ts";
 import { DOCKER_CONFIG, shouldSkipIntegrationTests } from "./helpers.ts";
 import { join } from "@std/path";
 
@@ -124,6 +125,64 @@ Deno.test({
 
     await t.step("fails with non-existent key file", async () => {
       const uploader = new ScpUploader({
+        host: DOCKER_CONFIG.sftp.host,
+        port: DOCKER_CONFIG.sftp.port,
+        user: DOCKER_CONFIG.sftp.user,
+        keyFile: "/nonexistent/key",
+        dest: DOCKER_CONFIG.sftp.dest,
+        timeout: 5,
+        retry: 1,
+      });
+
+      let error: Error | null = null;
+      try {
+        await uploader.connect();
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assertExists(error);
+    });
+  },
+  sanitizeResources: false,
+  sanitizeOps: false,
+});
+
+// rsync接続失敗テスト
+Deno.test({
+  name: "rsync connection failure handling",
+  ignore: false,
+  fn: async (t) => {
+    const skipReason = await shouldSkipIntegrationTests();
+    if (skipReason) {
+      console.log(`Skipping: ${skipReason}`);
+      return;
+    }
+
+    await t.step("fails with invalid host", async () => {
+      const uploader = new RsyncUploader({
+        host: "invalid.host.local",
+        port: DOCKER_CONFIG.sftp.port,
+        user: DOCKER_CONFIG.sftp.user,
+        keyFile: SSH_KEY_PATH,
+        dest: DOCKER_CONFIG.sftp.dest,
+        timeout: 2,
+        retry: 1,
+      });
+
+      let error: Error | null = null;
+      try {
+        await uploader.connect();
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assertExists(error);
+      assertEquals(error.message.includes("Failed to connect"), true);
+    });
+
+    await t.step("fails with non-existent key file", async () => {
+      const uploader = new RsyncUploader({
         host: DOCKER_CONFIG.sftp.host,
         port: DOCKER_CONFIG.sftp.port,
         user: DOCKER_CONFIG.sftp.user,

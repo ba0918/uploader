@@ -372,7 +372,7 @@ describe("validateConfig", () => {
       );
     });
 
-    it("sftp/scpでuserがない場合は無効", () => {
+    it("sftp/scp/rsyncでuserがない場合は無効", () => {
       assertThrows(
         () =>
           validateConfig({
@@ -386,7 +386,7 @@ describe("validateConfig", () => {
             },
           }),
         ConfigValidationError,
-        "sftp/scp では user は必須です",
+        "sftp/scp/rsync では user は必須です",
       );
     });
 

@@ -35,6 +35,8 @@ export interface SftpOptions {
   preservePermissions?: boolean;
   /** タイムスタンプを保持するか */
   preserveTimestamps?: boolean;
+  /** 古いSSHサーバー向けのレガシーアルゴリズムを有効化 */
+  legacyMode?: boolean;
 }
 
 /**
@@ -156,19 +158,56 @@ export class SftpUploader implements Uploader {
    * 接続設定を構築
    */
   private async buildConnectConfig(): Promise<Record<string, unknown>> {
+    // アルゴリズム設定を構築
+    const algorithms: Record<string, string[]> = {
+      // Denoのcrypto互換性のため、AES-GCMを避けてAES-CTRを使用
+      cipher: [
+        "aes128-ctr",
+        "aes192-ctr",
+        "aes256-ctr",
+      ],
+    };
+
+    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを追加
+    if (this.options.legacyMode) {
+      // 鍵交換アルゴリズム（古いサーバー向け）
+      algorithms.kex = [
+        // モダンなアルゴリズム
+        "ecdh-sha2-nistp256",
+        "ecdh-sha2-nistp384",
+        "ecdh-sha2-nistp521",
+        "diffie-hellman-group-exchange-sha256",
+        "diffie-hellman-group14-sha256",
+        // レガシーアルゴリズム
+        "diffie-hellman-group14-sha1",
+        "diffie-hellman-group1-sha1",
+      ];
+      // ホスト鍵アルゴリズム（ssh-rsa対応）
+      algorithms.serverHostKey = [
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp521",
+        "rsa-sha2-512",
+        "rsa-sha2-256",
+        "ssh-rsa", // レガシー
+      ];
+      // 暗号アルゴリズム（CBC対応追加）
+      algorithms.cipher = [
+        "aes128-ctr",
+        "aes192-ctr",
+        "aes256-ctr",
+        "aes128-cbc", // レガシー
+        "aes256-cbc", // レガシー
+        "3des-cbc", // レガシー
+      ];
+    }
+
     const config: Record<string, unknown> = {
       host: this.options.host,
       port: this.options.port,
       username: this.options.user,
       readyTimeout: this.options.timeout ?? 30000,
-      // Denoのcrypto互換性のため、AES-GCMを避けてAES-CTRを使用
-      algorithms: {
-        cipher: [
-          "aes128-ctr",
-          "aes192-ctr",
-          "aes256-ctr",
-        ],
-      },
+      algorithms,
     };
 
     if (this.options.authType === "ssh_key") {

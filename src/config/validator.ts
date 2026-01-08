@@ -222,10 +222,10 @@ function validateTarget(value: unknown, path: string): TargetConfig {
     );
   }
 
-  const validProtocols = ["sftp", "scp", "local"];
+  const validProtocols = ["sftp", "scp", "rsync", "local"];
   if (!validProtocols.includes(target.protocol)) {
     throw new ConfigValidationError(
-      `無効な protocol です: ${target.protocol} (sftp, scp, local のいずれか)`,
+      `無効な protocol です: ${target.protocol} (sftp, scp, rsync, local のいずれか)`,
       `${path}.protocol`,
     );
   }
@@ -240,7 +240,7 @@ function validateTarget(value: unknown, path: string): TargetConfig {
   // protocol が local 以外の場合は user が必要
   if (target.protocol !== "local" && !target.user) {
     throw new ConfigValidationError(
-      "sftp/scp では user は必須です",
+      "sftp/scp/rsync では user は必須です",
       `${path}.user`,
     );
   }
@@ -269,7 +269,7 @@ function validateTarget(value: unknown, path: string): TargetConfig {
 
   return {
     host: target.host,
-    protocol: target.protocol as "sftp" | "scp" | "local",
+    protocol: target.protocol as "sftp" | "scp" | "rsync" | "local",
     port: typeof target.port === "number" ? target.port : undefined,
     user: target.user ? String(target.user) : undefined,
     auth_type: target.auth_type as "ssh_key" | "password" | undefined,
@@ -281,6 +281,11 @@ function validateTarget(value: unknown, path: string): TargetConfig {
     preserve_timestamps: target.preserve_timestamps === true,
     timeout: typeof target.timeout === "number" ? target.timeout : 30,
     retry: typeof target.retry === "number" ? target.retry : 3,
+    rsync_path: target.rsync_path ? String(target.rsync_path) : undefined,
+    rsync_options: Array.isArray(target.rsync_options)
+      ? target.rsync_options.map(String)
+      : undefined,
+    legacy_mode: target.legacy_mode === true,
   };
 }
 

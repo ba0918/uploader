@@ -7,7 +7,8 @@
     "check": "deno check main.ts",
     "lint": "deno lint",
     "fmt": "deno fmt",
-    "test": "deno test --allow-read --allow-write --allow-net --allow-env --allow-run"
+    "test": "deno test --allow-read --allow-write --allow-net --allow-env --allow-run",
+    "build": "deno compile --allow-read --allow-write --allow-net --allow-run --allow-env --output bin/uploader main.ts"
   },
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1",

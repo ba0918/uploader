@@ -1,6 +1,9 @@
 # Deno
 .deno/
 
+# Build
+bin/
+
 # Editor
 .vscode/
 .idea/

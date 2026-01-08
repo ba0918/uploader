@@ -16,12 +16,14 @@ import { UploadError } from "../types/mod.ts";
 import { LocalUploader } from "./local.ts";
 import { SftpUploader } from "./sftp.ts";
 import { ScpUploader } from "./scp.ts";
+import { RsyncUploader } from "./rsync.ts";
 import { TransferProgressManager } from "./progress.ts";
 
 // Re-exports
 export { LocalUploader } from "./local.ts";
 export { SftpUploader } from "./sftp.ts";
 export { ScpUploader } from "./scp.ts";
+export { RsyncUploader } from "./rsync.ts";
 export { calculateSpeed, TransferProgressManager } from "./progress.ts";
 
 /**
@@ -49,6 +51,7 @@ export function createUploader(target: ResolvedTargetConfig): Uploader {
         retry: target.retry ?? 3,
         preservePermissions: target.preserve_permissions,
         preserveTimestamps: target.preserve_timestamps,
+        legacyMode: target.legacy_mode,
       });
 
     case "scp":
@@ -57,11 +60,30 @@ export function createUploader(target: ResolvedTargetConfig): Uploader {
         port: target.port ?? 22,
         user: target.user,
         keyFile: target.key_file,
+        password: target.password,
         dest: target.dest,
         timeout: target.timeout ?? 30,
         retry: target.retry ?? 3,
         preservePermissions: target.preserve_permissions,
         preserveTimestamps: target.preserve_timestamps,
+        legacyMode: target.legacy_mode,
+      });
+
+    case "rsync":
+      return new RsyncUploader({
+        host: target.host,
+        port: target.port ?? 22,
+        user: target.user,
+        keyFile: target.key_file,
+        password: target.password,
+        dest: target.dest,
+        timeout: target.timeout ?? 30,
+        retry: target.retry ?? 3,
+        preservePermissions: target.preserve_permissions,
+        preserveTimestamps: target.preserve_timestamps,
+        rsyncPath: target.rsync_path,
+        rsyncOptions: target.rsync_options,
+        legacyMode: target.legacy_mode,
       });
 
     default:
