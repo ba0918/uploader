@@ -13,6 +13,7 @@ import type {
   UploadResult,
 } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
+import { logVerbose } from "../ui/logger.ts";
 import { LocalUploader } from "./local.ts";
 import { SftpUploader } from "./sftp.ts";
 import { ScpUploader } from "./scp.ts";
@@ -127,7 +128,7 @@ export async function diffFilesToUploadFiles(
         });
       } catch {
         // ファイル内容の取得に失敗した場合はスキップ
-        console.error(`Failed to get content for: ${file.path}`);
+        logVerbose(`Failed to get content for: ${file.path}`);
       }
     }
   }

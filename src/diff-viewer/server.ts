@@ -221,7 +221,7 @@ function handleWebSocketUpgrade(req: Request, state: ServerState): Response {
       const message = JSON.parse(event.data) as WsClientMessage;
       await handleWebSocketMessage(socket, message, state);
     } catch (error) {
-      console.error("WebSocket message error:", error);
+      debugError("WebSocket message error:", error);
       socket.send(JSON.stringify({
         type: "error",
         message: error instanceof Error ? error.message : "Unknown error",
@@ -239,7 +239,7 @@ function handleWebSocketUpgrade(req: Request, state: ServerState): Response {
   };
 
   socket.onerror = (error) => {
-    console.error("WebSocket error:", error);
+    debugError("WebSocket error:", error);
   };
 
   return response;
@@ -674,7 +674,7 @@ async function handleFileRequest(
       response.remoteStatus = remoteStatus;
     }
   } catch (error) {
-    console.error(`Error fetching file contents for ${path}:`, error);
+    debugError(`Error fetching file contents for ${path}:`, error);
     // エラーでも空の内容を返す
     if (requestType === "git" || requestType === "both") {
       response.base = response.base ?? { path, content: "", isBinary: false };

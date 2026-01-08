@@ -39,16 +39,22 @@
 - [x] src/ui/logger.ts: utils/format.ts からインポート・再エクスポート
 - [x] src/utils/mod.ts にエクスポート追加
 
-### Phase 10.3: logger統一（優先度: 中）
+### Phase 10.3: logger統一（優先度: 中）✅ 完了
 
 **問題**: `console.error` が直接使用されている箇所がある
 
-- src/upload/mod.ts:130
+**対応内容**:
 
-**タスク**:
+- [x] src/upload/mod.ts:130 - `console.error` を `logVerbose()` に置換
+- [x] src/diff-viewer/server.ts - 直接 `console.error` を使用していた3箇所を `debugError()` に変更
+- [x] src/cli/args.ts:79 - `console.warn` を `logWarning()` に置換
 
-- [ ] `console.error` を `logError()` または `logVerbose()` に置換
-- [ ] 他のファイルでも同様の箇所がないか確認・修正
+**除外した箇所**（意図的なconsole使用）:
+
+- src/cli/args.ts:53 - ヘルプ表示（ログレベルに関係なく表示すべき）
+- src/diff-viewer/\* - UI表示モジュール
+- src/diff-viewer/static/html.ts - ブラウザ側JavaScript（対象外）
+- src/ui/\* - logger自体のコア実装（console使用は正しい）
 
 ### Phase 10.4: 並列ターゲットアップロード（優先度: 中）
 

@@ -4,7 +4,7 @@
 
 import { parseArgs as stdParseArgs } from "@std/cli/parse-args";
 import type { CliArgs, DiffMode, DiffOption } from "../types/mod.ts";
-import { showVersion } from "../ui/mod.ts";
+import { logWarning, showVersion } from "../ui/mod.ts";
 
 const HELP_TEXT = `
 Usage: uploader [options] <profile>
@@ -76,7 +76,7 @@ function parseDiffOption(value: boolean | string | undefined): DiffOption {
     return mode as DiffMode;
   }
   // 無効な値は "auto" として扱う
-  console.warn(`Warning: Invalid --diff mode "${value}". Using default mode.`);
+  logWarning(`Invalid --diff mode "${value}". Using default mode.`);
   return "auto";
 }
 
