@@ -588,8 +588,9 @@ export class RsyncUploader implements Uploader {
         }
       }
 
+      // 0-based indexとして渡す（main.tsで+1されるため、length-1を渡す）
       onProgress?.(
-        filesToUpload.length,
+        Math.max(0, filesToUpload.length - 1),
         filesToUpload.length,
         "Transferring...",
       );
@@ -658,10 +659,11 @@ export class RsyncUploader implements Uploader {
       `${this.options.user}@${this.options.host}:${this.options.dest}/`,
     );
 
-    const { code, stderr } = await this.runWithSshpass("rsync", args);
+    const { code, stdout, stderr } = await this.runWithSshpass("rsync", args);
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
+      const stdoutMsg = new TextDecoder().decode(stdout);
       if (
         errorMsg.includes("Permission denied") ||
         errorMsg.includes("publickey")
@@ -671,7 +673,7 @@ export class RsyncUploader implements Uploader {
           "AUTH_ERROR",
         );
       }
-      return { success: false, error: errorMsg };
+      return { success: false, error: errorMsg || stdoutMsg };
     }
 
     return { success: true };

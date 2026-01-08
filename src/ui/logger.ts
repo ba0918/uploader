@@ -828,8 +828,11 @@ export function clearUploadProgress(): void {
  * プログレスバーを作成
  */
 function createProgressBar(percent: number, width: number): string {
-  const filled = Math.round((percent / 100) * width);
-  const empty = width - filled;
+  // percentを0-100に制限
+  const clampedPercent = Math.min(Math.max(percent, 0), 100);
+  const filled = Math.round((clampedPercent / 100) * width);
+  // emptyが負にならないよう保証
+  const empty = Math.max(0, width - filled);
   return success("█".repeat(filled)) + dim("░".repeat(empty));
 }
 
