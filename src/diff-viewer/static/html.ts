@@ -657,6 +657,117 @@ export function getHtmlContent(): string {
         opacity: 0;
       }
     }
+
+    /* 進捗モーダル */
+    .progress-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .progress-modal-content {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 24px;
+      min-width: 400px;
+      max-width: 600px;
+      text-align: center;
+    }
+
+    .progress-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .progress-title {
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .progress-host {
+      font-size: 14px;
+      color: var(--accent-blue);
+      margin-bottom: 12px;
+    }
+
+    .progress-bar-container {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      height: 8px;
+      margin: 12px 0;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--accent-blue);
+      transition: width 0.3s ease;
+      border-radius: 4px;
+    }
+
+    .progress-details {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .progress-file {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+
+    .progress-status {
+      margin-top: 20px;
+      font-size: 14px;
+    }
+
+    .progress-status.success {
+      color: var(--color-added);
+    }
+
+    .progress-status.error {
+      color: var(--color-deleted);
+    }
+
+    .progress-status.cancelled {
+      color: var(--color-modified);
+    }
+
+    .progress-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .progress-icon.success {
+      color: var(--color-added);
+    }
+
+    .progress-icon.error {
+      color: var(--color-deleted);
+    }
+
+    .progress-icon.cancelled {
+      color: var(--color-modified);
+    }
+
+    .progress-modal .btn {
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
@@ -812,6 +923,124 @@ export function getHtmlContent(): string {
       }
     }
 
+    // 進捗モーダルを表示
+    function showProgressModal() {
+      // 既存のモーダルを削除
+      const existing = document.getElementById('progress-modal');
+      if (existing) existing.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'progress-modal';
+      modal.className = 'progress-modal';
+      modal.innerHTML = \`
+        <div class="progress-modal-content">
+          <div class="progress-header">
+            <div class="spinner"></div>
+            <span class="progress-title">Uploading...</span>
+          </div>
+          <div class="progress-host" id="progress-host">Preparing...</div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+          </div>
+          <div class="progress-details" id="progress-details">0 / 0 files</div>
+          <div class="progress-file" id="progress-file"></div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+
+    // 進捗を更新
+    function updateProgress(data) {
+      const bar = document.getElementById('progress-bar');
+      const details = document.getElementById('progress-details');
+      const file = document.getElementById('progress-file');
+      const host = document.getElementById('progress-host');
+
+      if (bar && details && file && host) {
+        const percent = data.totalFiles > 0 ? ((data.fileIndex + 1) / data.totalFiles) * 100 : 0;
+        bar.style.width = percent + '%';
+        details.textContent = (data.fileIndex + 1) + ' / ' + data.totalFiles + ' files';
+        file.textContent = data.currentFile;
+        host.textContent = 'Target: ' + data.host + (data.totalTargets > 1 ? ' (' + (data.targetIndex + 1) + '/' + data.totalTargets + ')' : '');
+      }
+    }
+
+    // 完了表示
+    function showComplete(data) {
+      const modal = document.getElementById('progress-modal');
+      if (modal) {
+        const content = modal.querySelector('.progress-modal-content');
+        content.innerHTML = \`
+          <div class="progress-icon success">&#10004;</div>
+          <div class="progress-title" style="color: var(--color-added); font-size: 18px; margin-bottom: 12px;">Upload Complete</div>
+          <div class="progress-details">
+            \${data.totalFiles} files uploaded to \${data.successTargets} target(s)
+          </div>
+          <div class="progress-status success">
+            Duration: \${formatDuration(data.totalDuration)} | Size: \${formatSize(data.totalSize)}
+          </div>
+          <p style="margin-top: 16px; color: var(--text-secondary); font-size: 13px;">You can close this page now.</p>
+        \`;
+      }
+    }
+
+    // キャンセル表示
+    function showCancelled() {
+      // 既存のモーダルを削除
+      const existing = document.getElementById('progress-modal');
+      if (existing) existing.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'progress-modal';
+      modal.className = 'progress-modal';
+      modal.innerHTML = \`
+        <div class="progress-modal-content">
+          <div class="progress-icon cancelled">&#10006;</div>
+          <div class="progress-title" style="color: var(--color-modified); font-size: 18px; margin-bottom: 12px;">Upload Cancelled</div>
+          <div class="progress-details">
+            The upload has been cancelled.
+          </div>
+          <p style="margin-top: 16px; color: var(--text-secondary); font-size: 13px;">You can close this page now.</p>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+
+    // エラー表示
+    function showUploadError(message) {
+      const modal = document.getElementById('progress-modal');
+      if (modal) {
+        const content = modal.querySelector('.progress-modal-content');
+        content.innerHTML = \`
+          <div class="progress-icon error">&#10060;</div>
+          <div class="progress-title" style="color: var(--color-deleted); font-size: 18px; margin-bottom: 12px;">Upload Failed</div>
+          <div class="progress-details" style="color: var(--text-secondary);">
+            \${escapeHtml(message)}
+          </div>
+          <p style="margin-top: 16px; color: var(--text-secondary); font-size: 13px;">Check the CLI for more details.</p>
+        </div>
+        \`;
+      }
+    }
+
+    // 時間フォーマット
+    function formatDuration(ms) {
+      if (ms < 1000) return ms + 'ms';
+      const seconds = Math.floor(ms / 1000);
+      if (seconds < 60) return seconds + 's';
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      return minutes + 'm ' + remainingSeconds + 's';
+    }
+
+    // サイズフォーマット
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    }
+
     // メッセージハンドラ
     function handleMessage(message) {
       switch (message.type) {
@@ -821,9 +1050,24 @@ export function getHtmlContent(): string {
         case 'file_response':
           handleFileResponse(message);
           break;
+        case 'progress':
+          updateProgress(message.data);
+          break;
+        case 'complete':
+          showComplete(message.data);
+          break;
+        case 'cancelled':
+          showCancelled();
+          break;
         case 'error':
           console.error('Server error:', message.message);
-          showToast('error', 'Connection Error', message.message);
+          // 進捗モーダルが表示されている場合はエラー表示に切り替え
+          const progressModal = document.getElementById('progress-modal');
+          if (progressModal) {
+            showUploadError(message.message);
+          } else {
+            showToast('error', 'Connection Error', message.message);
+          }
           break;
       }
     }
@@ -1459,10 +1703,12 @@ export function getHtmlContent(): string {
     elements.tabRemoteDiff.addEventListener('click', () => switchDiffTab('remote'));
 
     elements.uploadBtn.addEventListener('click', () => {
+      showProgressModal();
       state.ws.send(JSON.stringify({ type: 'confirm' }));
     });
 
     elements.cancelBtn.addEventListener('click', () => {
+      showCancelled();
       state.ws.send(JSON.stringify({ type: 'cancel' }));
     });
 

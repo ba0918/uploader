@@ -6,11 +6,14 @@
 
 import type {
   DiffViewerOptions,
+  DiffViewerProgressController,
   DiffViewerResult,
   FileContent,
   FileRequestType,
   GitDiffResult,
+  TransferProgressEvent,
   Uploader,
+  UploadResult,
   WsClientMessage,
   WsFileResponseMessage,
   WsInitMessage,
@@ -45,6 +48,53 @@ function sendErrorMessage(socket: WebSocket, message: string): void {
     type: "error",
     message,
   }));
+}
+
+/**
+ * 進捗コントローラーを作成
+ */
+function createProgressController(
+  socket: WebSocket,
+  state: ServerState,
+): DiffViewerProgressController {
+  return {
+    sendProgress(event: TransferProgressEvent): void {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "progress",
+          data: event,
+        }));
+      }
+    },
+    sendComplete(result: UploadResult): void {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "complete",
+          data: {
+            successTargets: result.successTargets,
+            failedTargets: result.failedTargets,
+            totalFiles: result.totalFiles,
+            totalSize: result.totalSize,
+            totalDuration: result.totalDuration,
+          },
+        }));
+      }
+    },
+    sendError(message: string): void {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "error",
+          message,
+        }));
+      }
+    },
+    close(): void {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+      state.abortController.abort();
+    },
+  };
 }
 
 /**
@@ -278,12 +328,12 @@ async function handleWebSocketMessage(
     }
 
     case "confirm": {
-      // アップロード確認 - Uploaderを切断
+      // アップロード確認 - Uploaderを切断（リモート比較用）
       await disconnectUploader(state);
-      state.socket = null;
-      socket.close();
-      state.abortController.abort();
-      state.resolve({ confirmed: true });
+      // WebSocket接続は維持し、進捗コントローラーを作成して返却
+      // state.socketはnullにしない（oncloseでの誤検知を防ぐ）
+      const progressController = createProgressController(socket, state);
+      state.resolve({ confirmed: true, progressController });
       break;
     }
 
@@ -351,7 +401,6 @@ async function handleFileRequest(
         { path, content: "", isBinary: false };
       response.remoteStatus = { exists: false, hasChanges: true };
     }
-
   }
 
   socket.send(JSON.stringify(response));

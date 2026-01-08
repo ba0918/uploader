@@ -20,6 +20,7 @@ import {
 import type {
   DiffMode,
   DiffOption,
+  DiffViewerProgressController,
   FileCollectResult,
   GitDiffResult,
   LogLevel,
@@ -254,6 +255,8 @@ async function main(): Promise<number> {
     }
 
     // diff viewer (--diff オプション)
+    let diffViewerController: DiffViewerProgressController | undefined;
+
     if (args.diff !== false) {
       // diffオプションを解決
       const diffModeResult = resolveDiffMode(args.diff, profile.from.type);
@@ -306,6 +309,9 @@ async function main(): Promise<number> {
           console.log();
           return EXIT_CODES.SUCCESS;
         }
+
+        // 進捗コントローラーを保存
+        diffViewerController = viewerResult.progressController;
       }
     }
 
@@ -322,6 +328,7 @@ async function main(): Promise<number> {
     const onProgress = (event: TransferProgressEvent) => {
       if (event.currentFile !== lastFile) {
         lastFile = event.currentFile;
+        // CUI進捗表示
         logUploadProgress({
           targetIndex: event.targetIndex,
           totalTargets: event.totalTargets,
@@ -332,6 +339,8 @@ async function main(): Promise<number> {
           status: event.status,
         });
       }
+      // WebSocket経由でブラウザにも送信
+      diffViewerController?.sendProgress(event);
     };
 
     const result = await uploadToTargets(
@@ -348,6 +357,20 @@ async function main(): Promise<number> {
     // 進捗表示をクリア
     clearUploadProgress();
     console.log();
+
+    // ブラウザに完了/エラーを通知
+    if (diffViewerController) {
+      if (result.failedTargets === 0) {
+        diffViewerController.sendComplete(result);
+      } else {
+        diffViewerController.sendError(
+          `Upload failed: ${result.failedTargets} target(s) failed`,
+        );
+      }
+      // ブラウザがメッセージを受信する時間を確保してから接続を閉じる
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      diffViewerController.close();
+    }
 
     // 結果を表示
     const resultSummary = {

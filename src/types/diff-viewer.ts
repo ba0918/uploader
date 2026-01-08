@@ -5,7 +5,11 @@
 import type { DiffFile, FileContent } from "./git.ts";
 import type { DiffMode } from "./cli.ts";
 import type { ResolvedTargetConfig } from "./config.ts";
-import type { UploadFile } from "./upload.ts";
+import type {
+  TransferProgressEvent,
+  UploadFile,
+  UploadResult,
+} from "./upload.ts";
 
 /** diff-viewerの起動オプション */
 export interface DiffViewerOptions {
@@ -31,6 +35,20 @@ export interface DiffViewerResult {
   confirmed: boolean;
   /** キャンセル理由（キャンセル時のみ） */
   cancelReason?: "user_cancel" | "connection_closed" | "timeout";
+  /** 進捗コントローラー（confirm時のみ存在） */
+  progressController?: DiffViewerProgressController;
+}
+
+/** diff-viewer進捗コントローラー */
+export interface DiffViewerProgressController {
+  /** 進捗を送信 */
+  sendProgress(event: TransferProgressEvent): void;
+  /** アップロード完了を通知 */
+  sendComplete(result: UploadResult): void;
+  /** エラーを通知 */
+  sendError(message: string): void;
+  /** 接続を閉じる */
+  close(): void;
 }
 
 /** WebSocketメッセージの基底型 */
@@ -114,11 +132,45 @@ export interface WsErrorMessage extends WsMessageBase {
   message: string;
 }
 
+/** アップロード進捗メッセージ */
+export interface WsProgressMessage extends WsMessageBase {
+  type: "progress";
+  data: TransferProgressEvent;
+}
+
+/** アップロード完了データ */
+export interface UploadCompleteData {
+  /** 成功したターゲット数 */
+  successTargets: number;
+  /** 失敗したターゲット数 */
+  failedTargets: number;
+  /** 合計転送ファイル数 */
+  totalFiles: number;
+  /** 合計転送サイズ */
+  totalSize: number;
+  /** 合計転送時間（ミリ秒） */
+  totalDuration: number;
+}
+
+/** アップロード完了メッセージ */
+export interface WsCompleteMessage extends WsMessageBase {
+  type: "complete";
+  data: UploadCompleteData;
+}
+
+/** キャンセル済みメッセージ */
+export interface WsCancelledMessage extends WsMessageBase {
+  type: "cancelled";
+}
+
 /** サーバーからクライアントへのメッセージ */
 export type WsServerMessage =
   | WsInitMessage
   | WsFileResponseMessage
-  | WsErrorMessage;
+  | WsErrorMessage
+  | WsProgressMessage
+  | WsCompleteMessage
+  | WsCancelledMessage;
 
 /** クライアントからサーバーへのメッセージ */
 export type WsClientMessage =

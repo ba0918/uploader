@@ -250,6 +250,54 @@ uploader --diff=git staging          # エラー
 
 ---
 
+## 完了済み (Phase 7.5: diff viewerリアルタイム進捗表示)
+
+diff viewerで「Upload」「Cancel」ボタン押下時に適切なフィードバックを表示する機能。
+
+### 背景
+
+従来は「Upload」「Cancel」押下後、画面下部に「Disconnected」と表示されるだけで、
+実際の処理状況がブラウザ上で確認できなかった。
+
+### タスク
+
+- [x] 型定義の追加（src/types/diff-viewer.ts）
+  - [x] DiffViewerProgressController インターフェース
+  - [x] WsProgressMessage, WsCompleteMessage, WsCancelledMessage
+  - [x] UploadCompleteData
+- [x] サーバー側実装（src/diff-viewer/server.ts）
+  - [x] createProgressController() 関数追加
+  - [x] confirm時: WebSocket接続を維持し、progressController を返却
+  - [x] cancel時: cancelled メッセージ送信後に切断
+- [x] フロントエンドUI（src/diff-viewer/static/html.ts）
+  - [x] 進捗モーダルのCSS追加
+  - [x] showProgressModal(): アップロード開始時のモーダル表示
+  - [x] updateProgress(): プログレスバー・ファイル名・ホスト名の更新
+  - [x] showComplete(): 完了表示（統計情報付き）
+  - [x] showCancelled(): キャンセル表示
+  - [x] showUploadError(): エラー表示
+  - [x] formatDuration(), formatSize() ヘルパー関数
+  - [x] メッセージハンドラの拡張（progress, complete, cancelled）
+- [x] main.tsへの統合
+  - [x] diffViewerController の保存
+  - [x] 進捗コールバックでWebSocket経由の送信追加
+  - [x] 完了/エラー通知の送信
+  - [x] 接続クローズ処理
+
+### 動作
+
+**「Upload」ボタン押下時:**
+1. 進捗モーダルが表示される
+2. ホスト名、ファイル名、プログレスバーがリアルタイムで更新される
+3. 完了時: 「Upload Complete」と統計情報（ファイル数、時間、サイズ）が表示される
+4. エラー時: 「Upload Failed」とエラーメッセージが表示される
+
+**「Cancel」ボタン押下時:**
+- 「Upload Cancelled」モーダルが表示される
+- 「You can close this page now.」メッセージが表示される
+
+---
+
 ## Phase 8: その他
 
 - [ ] --log-file オプション実装
