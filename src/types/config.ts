@@ -1,0 +1,87 @@
+/**
+ * 設定ファイルの型定義
+ */
+
+/** 転送プロトコル */
+export type Protocol = "sftp" | "scp" | "local";
+
+/** 認証方式 */
+export type AuthType = "ssh_key" | "password";
+
+/** 同期モード */
+export type SyncMode = "update" | "mirror";
+
+/** ソースタイプ */
+export type SourceType = "git" | "file";
+
+/** グローバル設定 */
+export interface GlobalConfig {
+  ignore?: string[];
+}
+
+/** Git ソース設定 */
+export interface GitSource {
+  type: "git";
+  base: string;
+  target?: string;
+  include_untracked?: boolean;
+}
+
+/** File ソース設定 */
+export interface FileSource {
+  type: "file";
+  src: string[];
+}
+
+/** ソース設定 */
+export type SourceConfig = GitSource | FileSource;
+
+/** ターゲットサーバ設定 */
+export interface TargetConfig {
+  host: string;
+  protocol: Protocol;
+  port?: number;
+  user?: string;
+  auth_type?: AuthType;
+  key_file?: string;
+  password?: string;
+  dest: string;
+  sync_mode?: SyncMode;
+  preserve_permissions?: boolean;
+  preserve_timestamps?: boolean;
+  timeout?: number;
+  retry?: number;
+}
+
+/** 宛先設定 */
+export interface DestinationConfig {
+  targets: TargetConfig[];
+}
+
+/** プロファイル設定 */
+export interface ProfileConfig {
+  from: SourceConfig;
+  to: DestinationConfig;
+}
+
+/** 設定ファイル全体 */
+export interface Config {
+  _global?: GlobalConfig;
+  [profile: string]: ProfileConfig | GlobalConfig | undefined;
+}
+
+/** 解決済みターゲット設定（環境変数展開後） */
+export interface ResolvedTargetConfig
+  extends Omit<TargetConfig, "user" | "password"> {
+  user: string;
+  password?: string;
+}
+
+/** 解決済みプロファイル設定 */
+export interface ResolvedProfileConfig {
+  from: SourceConfig;
+  to: {
+    targets: ResolvedTargetConfig[];
+  };
+  ignore: string[];
+}
