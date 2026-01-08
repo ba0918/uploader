@@ -232,6 +232,33 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("concurrencyオプション", () => {
+    it("--concurrencyオプションをパースできる", () => {
+      const result = parseArgs(["--concurrency", "20", "profile"]);
+      assertEquals(result?.concurrency, 20);
+    });
+
+    it("デフォルトは10", () => {
+      const result = parseArgs(["profile"]);
+      assertEquals(result?.concurrency, 10);
+    });
+
+    it("無効な値はデフォルトを使用", () => {
+      const result = parseArgs(["--concurrency", "invalid", "profile"]);
+      assertEquals(result?.concurrency, 10);
+    });
+
+    it("0以下の値はデフォルトを使用", () => {
+      const result = parseArgs(["--concurrency", "0", "profile"]);
+      assertEquals(result?.concurrency, 10);
+    });
+
+    it("負の値はデフォルトを使用", () => {
+      const result = parseArgs(["--concurrency", "-5", "profile"]);
+      assertEquals(result?.concurrency, 10);
+    });
+  });
+
   describe("helpオプション", () => {
     it("--helpオプションでnullを返す", () => {
       const result = parseArgs(["--help"]);

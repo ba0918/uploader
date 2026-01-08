@@ -30,6 +30,7 @@ Options:
       --no-browser         ブラウザを自動で開かない
   -s, --strict             ファイル転送エラーで即座に終了
   -l, --log-file <path>    ログファイルのパス
+      --concurrency <num>  リモートステータスチェックの同時実行数 (default: 10)
   -V, --version            バージョン表示
   -h, --help               このヘルプを表示
 
@@ -103,6 +104,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       "no-browser": false,
       strict: false,
       port: 3000,
+      concurrency: 10,
     },
     alias: {
       c: "config",
@@ -143,6 +145,17 @@ export function parseArgs(args: string[]): CliArgs | null {
     }
   }
 
+  // concurrencyを数値に変換
+  let concurrency = 10;
+  if (parsed.concurrency !== undefined) {
+    const parsedConcurrency = typeof parsed.concurrency === "number"
+      ? parsed.concurrency
+      : parseInt(String(parsed.concurrency), 10);
+    if (!isNaN(parsedConcurrency) && parsedConcurrency > 0) {
+      concurrency = parsedConcurrency;
+    }
+  }
+
   // diffオプションをパース
   // -d フラグ（値なし）の場合、argsに "-d" が含まれているかチェック
   let diffValue: boolean | string | undefined = parsed.diff;
@@ -169,5 +182,6 @@ export function parseArgs(args: string[]): CliArgs | null {
     noBrowser: parsed["no-browser"],
     strict: parsed.strict,
     logFile: parsed["log-file"],
+    concurrency,
   };
 }

@@ -677,8 +677,7 @@ export function getHtmlContent(): string {
       border: 1px solid var(--border-color);
       border-radius: 8px;
       padding: 24px;
-      min-width: 400px;
-      max-width: 600px;
+      width: 500px;
       text-align: center;
     }
 
@@ -728,7 +727,8 @@ export function getHtmlContent(): string {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      max-width: 100%;
+      height: 18px;
+      line-height: 18px;
     }
 
     .progress-status {
@@ -916,7 +916,11 @@ export function getHtmlContent(): string {
       target: '',
       diffMode: 'git', // 'git' | 'remote' | 'both'
       currentDiffTab: 'git', // 'git' | 'remote'
-      remoteTargets: [] // [{host, dest}]
+      remoteTargets: [], // [{host, dest}]
+      // 遅延読み込み対応
+      lazyLoading: false, // 遅延読み込みモードか
+      tree: null, // サーバーから受け取ったツリー構造（lazyLoading時のみ使用）
+      loadingDirs: new Set() // 読み込み中のディレクトリパス
     };
 
     // DOM要素
@@ -1195,6 +1199,9 @@ export function getHtmlContent(): string {
         case 'file_response':
           handleFileResponse(message);
           break;
+        case 'directory_contents':
+          handleDirectoryContents(message);
+          break;
         case 'progress':
           updateProgress(message.data);
           break;
@@ -1224,6 +1231,9 @@ export function getHtmlContent(): string {
       state.files = data.files;
       state.diffMode = data.diffMode || 'git';
       state.remoteTargets = data.remoteTargets || [];
+      // 遅延読み込み設定を反映
+      state.lazyLoading = data.lazyLoading || false;
+      state.tree = data.tree || null;
 
       // 初期タブを設定
       if (state.diffMode === 'remote') {
@@ -1335,52 +1345,110 @@ export function getHtmlContent(): string {
     const expandedDirs = new Set();
 
     // ディレクトリの開閉をトグル
-    function toggleDirectory(path) {
+    function toggleDirectory(path, node = null) {
       if (expandedDirs.has(path)) {
         expandedDirs.delete(path);
+        renderFileTree();
       } else {
         expandedDirs.add(path);
+        // 遅延読み込みモードで未読み込みのディレクトリの場合
+        if (state.lazyLoading && node && node.loaded === false) {
+          requestDirectoryExpand(path);
+        } else {
+          renderFileTree();
+        }
       }
+    }
+
+    // ディレクトリ展開をサーバーにリクエスト
+    function requestDirectoryExpand(path) {
+      if (state.loadingDirs.has(path)) return; // 重複リクエスト防止
+
+      state.loadingDirs.add(path);
+      renderFileTree(); // ローディング表示のため再描画
+
+      state.ws.send(JSON.stringify({
+        type: 'expand_directory',
+        path: path
+      }));
+    }
+
+    // ディレクトリ内容レスポンスの処理
+    function handleDirectoryContents(message) {
+      const { path, children } = message;
+
+      state.loadingDirs.delete(path);
+
+      if (!state.tree) return;
+
+      // ツリー内の該当ノードを更新
+      const node = findTreeNode(state.tree, path);
+      if (node) {
+        node.children = children;
+        node.loaded = true;
+      }
+
       renderFileTree();
+    }
+
+    // ツリー内のノードをパスで検索
+    function findTreeNode(nodes, path) {
+      for (const node of nodes) {
+        if (node.path === path) {
+          return node;
+        }
+        if (node.children && path.startsWith(node.path + '/')) {
+          const found = findTreeNode(node.children, path);
+          if (found) return found;
+        }
+      }
+      return null;
     }
 
     // ファイルツリーの描画
     function renderFileTree() {
       elements.fileTree.innerHTML = '';
-      const tree = buildFileTree(state.files);
 
-      // 再帰的にツリーをレンダリング
-      function renderNode(node, depth = 0) {
-        const fragment = document.createDocumentFragment();
-        const indent = depth * 16;
+      // 遅延読み込みモードの場合はサーバーから受け取ったツリーを使用
+      if (state.lazyLoading && state.tree) {
+        elements.fileTree.appendChild(renderLazyTree(state.tree, 0));
+      } else {
+        // 通常モード：filesからツリーを構築
+        const tree = buildFileTree(state.files);
+        elements.fileTree.appendChild(renderNode(tree));
+      }
+    }
 
-        // ディレクトリを先にソートして表示
-        const sortedDirs = Array.from(node.children.entries()).sort((a, b) =>
-          a[0].localeCompare(b[0])
-        );
+    // 遅延読み込みモード用ツリーレンダリング
+    function renderLazyTree(nodes, depth) {
+      const fragment = document.createDocumentFragment();
+      const indent = depth * 16;
 
-        // ディレクトリの表示
-        sortedDirs.forEach(([name, child]) => {
-          const isExpanded = expandedDirs.has(child.path);
-          const fileCount = countFilesInDir(child);
+      nodes.forEach(node => {
+        const nodeDiv = document.createElement('div');
+        nodeDiv.className = 'tree-node';
 
-          const nodeDiv = document.createElement('div');
-          nodeDiv.className = 'tree-node';
+        if (node.type === 'directory') {
+          // ディレクトリノード
+          const isExpanded = expandedDirs.has(node.path);
+          const isLoading = state.loadingDirs.has(node.path);
 
           const itemDiv = document.createElement('div');
           itemDiv.className = 'tree-item';
           itemDiv.style.paddingLeft = (8 + indent) + 'px';
 
           itemDiv.innerHTML = \`
-            <span class="tree-toggle \${isExpanded ? '' : 'collapsed'}">&#9660;</span>
-            <span class="tree-icon folder">\${isExpanded ? '&#128194;' : '&#128193;'}</span>
-            <span class="tree-name directory">\${escapeHtml(name)}</span>
-            <span class="tree-count">\${fileCount}</span>
+            <span class="tree-toggle \${isExpanded ? '' : 'collapsed'}">\${isLoading ? '' : '&#9660;'}</span>
+            <span class="tree-icon folder">\${isLoading ? '&#8987;' : (isExpanded ? '&#128194;' : '&#128193;')}</span>
+            <span class="tree-name directory">\${escapeHtml(node.name)}</span>
+            <span class="tree-count">\${node.fileCount ?? ''}</span>
           \`;
 
           itemDiv.addEventListener('click', (e) => {
             e.stopPropagation();
-            toggleDirectory(child.path);
+            if (!isLoading) {
+              toggleDirectory(node.path, node);
+            }
           });
 
           nodeDiv.appendChild(itemDiv);
@@ -1389,70 +1457,140 @@ export function getHtmlContent(): string {
           const childrenDiv = document.createElement('div');
           childrenDiv.className = 'tree-children' + (isExpanded ? '' : ' collapsed');
 
-          if (isExpanded) {
-            const childNodes = renderNode(child, depth + 1);
-            childrenDiv.appendChild(childNodes);
+          if (isExpanded && node.children && node.children.length > 0) {
+            childrenDiv.appendChild(renderLazyTree(node.children, depth + 1));
+          } else if (isExpanded && isLoading) {
+            // ローディング中の表示
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'tree-item';
+            loadingDiv.style.paddingLeft = (8 + indent + 16) + 'px';
+            loadingDiv.innerHTML = '<span class="tree-icon">&#8987;</span><span class="tree-name" style="color: var(--text-secondary)">Loading...</span>';
+            childrenDiv.appendChild(loadingDiv);
           }
 
           nodeDiv.appendChild(childrenDiv);
-          fragment.appendChild(nodeDiv);
-        });
-
-        // ファイルをソートして表示
-        const sortedFiles = [...node.files].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        );
-
-        sortedFiles.forEach(file => {
-          const nodeDiv = document.createElement('div');
-          nodeDiv.className = 'tree-node';
-          nodeDiv.dataset.path = file.path;
+        } else {
+          // ファイルノード
+          nodeDiv.dataset.path = node.path;
 
           const itemDiv = document.createElement('div');
-          itemDiv.className = 'tree-item' + (state.selectedFile?.path === file.path ? ' selected' : '');
+          const fileInState = state.files.find(f => f.path === node.path);
+          itemDiv.className = 'tree-item' + (state.selectedFile?.path === node.path ? ' selected' : '');
           itemDiv.style.paddingLeft = (8 + indent) + 'px';
 
-          // remoteモードの場合はremoteStatusを優先、なければstatusを使用
-          const displayStatus = (state.diffMode === 'remote' || state.diffMode === 'both') && file.remoteStatus
-            ? file.remoteStatus
-            : file.status;
+          // remoteモードの場合はremoteStatusを優先
+          const displayStatus = (state.diffMode === 'remote' || state.diffMode === 'both') && fileInState?.remoteStatus
+            ? fileInState.remoteStatus
+            : (node.status || 'U');
 
           itemDiv.innerHTML = \`
             <span class="tree-toggle empty"></span>
             <span class="tree-icon file">&#128196;</span>
-            <span class="tree-name" title="\${escapeHtml(file.path)}">\${escapeHtml(file.name)}</span>
+            <span class="tree-name" title="\${escapeHtml(node.path)}">\${escapeHtml(node.name)}</span>
             <span class="tree-status status-\${displayStatus}">\${displayStatus}</span>
           \`;
 
           itemDiv.addEventListener('click', (e) => {
             e.stopPropagation();
+            // state.filesからファイル情報を取得、なければnodeから作成
+            const file = fileInState || { path: node.path, name: node.name, status: node.status };
             selectFile(file);
           });
 
           nodeDiv.appendChild(itemDiv);
-          fragment.appendChild(nodeDiv);
-        });
+        }
 
-        return fragment;
-      }
+        fragment.appendChild(nodeDiv);
+      });
 
-      // ルートノードをレンダリング
-      elements.fileTree.appendChild(renderNode(tree));
-
-      // 初回は全ディレクトリを展開
-      if (expandedDirs.size === 0 && state.files.length > 0) {
-        expandAllDirs(tree);
-        elements.fileTree.innerHTML = '';
-        elements.fileTree.appendChild(renderNode(tree));
-      }
+      return fragment;
     }
 
-    // 全ディレクトリを展開
-    function expandAllDirs(node) {
-      node.children.forEach((child, name) => {
-        expandedDirs.add(child.path);
-        expandAllDirs(child);
+    // 通常モード用ツリーレンダリング（再帰）
+    function renderNode(node, depth = 0) {
+      const fragment = document.createDocumentFragment();
+      const indent = depth * 16;
+
+      // ディレクトリを先にソートして表示
+      const sortedDirs = Array.from(node.children.entries()).sort((a, b) =>
+        a[0].localeCompare(b[0])
+      );
+
+      // ディレクトリの表示
+      sortedDirs.forEach(([name, child]) => {
+        const isExpanded = expandedDirs.has(child.path);
+        const fileCount = countFilesInDir(child);
+
+        const nodeDiv = document.createElement('div');
+        nodeDiv.className = 'tree-node';
+
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'tree-item';
+        itemDiv.style.paddingLeft = (8 + indent) + 'px';
+
+        itemDiv.innerHTML = \`
+          <span class="tree-toggle \${isExpanded ? '' : 'collapsed'}">&#9660;</span>
+          <span class="tree-icon folder">\${isExpanded ? '&#128194;' : '&#128193;'}</span>
+          <span class="tree-name directory">\${escapeHtml(name)}</span>
+          <span class="tree-count">\${fileCount}</span>
+        \`;
+
+        itemDiv.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleDirectory(child.path);
+        });
+
+        nodeDiv.appendChild(itemDiv);
+
+        // 子要素のコンテナ
+        const childrenDiv = document.createElement('div');
+        childrenDiv.className = 'tree-children' + (isExpanded ? '' : ' collapsed');
+
+        if (isExpanded) {
+          const childNodes = renderNode(child, depth + 1);
+          childrenDiv.appendChild(childNodes);
+        }
+
+        nodeDiv.appendChild(childrenDiv);
+        fragment.appendChild(nodeDiv);
       });
+
+      // ファイルをソートして表示
+      const sortedFiles = [...node.files].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+
+      sortedFiles.forEach(file => {
+        const nodeDiv = document.createElement('div');
+        nodeDiv.className = 'tree-node';
+        nodeDiv.dataset.path = file.path;
+
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'tree-item' + (state.selectedFile?.path === file.path ? ' selected' : '');
+        itemDiv.style.paddingLeft = (8 + indent) + 'px';
+
+        // remoteモードの場合はremoteStatusを優先、なければstatusを使用
+        const displayStatus = (state.diffMode === 'remote' || state.diffMode === 'both') && file.remoteStatus
+          ? file.remoteStatus
+          : file.status;
+
+        itemDiv.innerHTML = \`
+          <span class="tree-toggle empty"></span>
+          <span class="tree-icon file">&#128196;</span>
+          <span class="tree-name" title="\${escapeHtml(file.path)}">\${escapeHtml(file.name)}</span>
+          <span class="tree-status status-\${displayStatus}">\${displayStatus}</span>
+        \`;
+
+        itemDiv.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectFile(file);
+        });
+
+        nodeDiv.appendChild(itemDiv);
+        fragment.appendChild(nodeDiv);
+      });
+
+      return fragment;
     }
 
     // 現在のrequestTypeを取得（現在のタブに応じたリクエストのみ送信）

@@ -124,6 +124,48 @@ export interface RemoteFileContent {
   size: number;
 }
 
+/** 一括アップロード進捗コールバック */
+export type BulkUploadProgressCallback = (
+  completedFiles: number,
+  totalFiles: number,
+  currentFile?: string,
+) => void;
+
+/** 一括アップロード結果 */
+export interface BulkUploadResult {
+  /** 成功したファイル数 */
+  successCount: number;
+  /** 失敗したファイル数 */
+  failedCount: number;
+  /** 転送サイズ（バイト） */
+  totalSize: number;
+  /** 転送時間（ミリ秒） */
+  duration: number;
+}
+
+/** rsync差分エントリの変更種別 */
+export type RsyncDiffChangeType = "A" | "M" | "D";
+
+/** rsync差分エントリ */
+export interface RsyncDiffEntry {
+  /** ファイルパス（相対パス） */
+  path: string;
+  /** 変更種別: A=追加, M=変更, D=削除 */
+  changeType: RsyncDiffChangeType;
+}
+
+/** rsync差分結果 */
+export interface RsyncDiffResult {
+  /** 差分があるファイル一覧 */
+  entries: RsyncDiffEntry[];
+  /** 追加ファイル数 */
+  added: number;
+  /** 変更ファイル数 */
+  modified: number;
+  /** 削除ファイル数 */
+  deleted: number;
+}
+
 /** アップローダーインターフェース */
 export interface Uploader {
   /** 接続 */
@@ -146,6 +188,25 @@ export interface Uploader {
    * @returns ファイル内容、存在しない場合はnull
    */
   readFile(remotePath: string): Promise<RemoteFileContent | null>;
+  /**
+   * 一括アップロード（オプション）
+   * サポートしているプロトコルでは大幅な高速化が可能
+   * @param files アップロードするファイル一覧
+   * @param onProgress 進捗コールバック
+   * @returns 一括アップロード結果、サポートしていない場合はundefined
+   */
+  bulkUpload?(
+    files: UploadFile[],
+    onProgress?: BulkUploadProgressCallback,
+  ): Promise<BulkUploadResult>;
+  /**
+   * rsync dry-runで差分を取得（オプション）
+   * rsyncプロトコル専用。ローカルとリモートの差分を高速に検出する。
+   * @param localDir ローカルディレクトリのパス
+   * @param files 比較対象のファイルパス（相対パス）のリスト。省略時はディレクトリ全体を比較
+   * @returns 差分結果、サポートしていない場合はundefined
+   */
+  getDiff?(localDir: string, files?: string[]): Promise<RsyncDiffResult>;
 }
 
 /** アップローダーエラー */

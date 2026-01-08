@@ -219,55 +219,111 @@ export async function uploadToTarget(
       }
     }
 
-    // ファイルをアップロード
-    for (let i = 0; i < filesToUpload.length; i++) {
-      const file = filesToUpload[i];
+    // bulkUploadが利用可能な場合は一括アップロード
+    if (uploader.bulkUpload && filesToUpload.length > 0) {
       const startTime = Date.now();
 
+      // 一括アップロードの進捗通知
       progressManager.updateFileProgress(
         target.host,
-        i,
-        filesToUpload.length,
-        file.relativePath,
         0,
-        file.size,
+        filesToUpload.length,
+        "Bulk upload starting...",
+        0,
+        0,
         "uploading",
       );
 
-      try {
-        await uploader.upload(
-          file,
+      const result = await uploader.bulkUpload(
+        filesToUpload,
+        (completed, total, currentFile) => {
+          progressManager.updateFileProgress(
+            target.host,
+            completed,
+            total,
+            currentFile ?? "Transferring...",
+            0,
+            0,
+            "uploading",
+          );
+        },
+      );
+
+      // 結果を記録
+      if (result.successCount > 0) {
+        for (const file of filesToUpload) {
+          progressManager.recordFileResult(target.host, {
+            path: file.relativePath,
+            status: "completed",
+            size: file.size,
+            duration: result.duration / filesToUpload.length,
+          });
+        }
+      } else if (result.failedCount > 0) {
+        for (const file of filesToUpload) {
+          progressManager.recordFileResult(target.host, {
+            path: file.relativePath,
+            status: "failed",
+            size: file.size,
+            duration: Date.now() - startTime,
+            error: "Bulk upload failed",
+          });
+        }
+        if (options.strict) {
+          throw new Error("Bulk upload failed");
+        }
+      }
+    } else {
+      // 従来の1ファイルずつアップロード
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const startTime = Date.now();
+
+        progressManager.updateFileProgress(
+          target.host,
+          i,
+          filesToUpload.length,
           file.relativePath,
-          (transferred: number, total: number) => {
-            progressManager.updateFileProgress(
-              target.host,
-              i,
-              filesToUpload.length,
-              file.relativePath,
-              transferred,
-              total,
-              "uploading",
-            );
-          },
+          0,
+          file.size,
+          "uploading",
         );
 
-        progressManager.recordFileResult(target.host, {
-          path: file.relativePath,
-          status: "completed",
-          size: file.size,
-          duration: Date.now() - startTime,
-        });
-      } catch (error) {
-        progressManager.recordFileResult(target.host, {
-          path: file.relativePath,
-          status: "failed",
-          size: file.size,
-          duration: Date.now() - startTime,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        try {
+          await uploader.upload(
+            file,
+            file.relativePath,
+            (transferred: number, total: number) => {
+              progressManager.updateFileProgress(
+                target.host,
+                i,
+                filesToUpload.length,
+                file.relativePath,
+                transferred,
+                total,
+                "uploading",
+              );
+            },
+          );
 
-        if (options.strict) {
-          throw error;
+          progressManager.recordFileResult(target.host, {
+            path: file.relativePath,
+            status: "completed",
+            size: file.size,
+            duration: Date.now() - startTime,
+          });
+        } catch (error) {
+          progressManager.recordFileResult(target.host, {
+            path: file.relativePath,
+            status: "failed",
+            size: file.size,
+            duration: Date.now() - startTime,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          if (options.strict) {
+            throw error;
+          }
         }
       }
     }

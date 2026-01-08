@@ -2,7 +2,7 @@
  * diff-viewer 関連の型定義
  */
 
-import type { DiffFile, FileContent } from "./git.ts";
+import type { DiffFile, FileChangeType, FileContent } from "./git.ts";
 import type { DiffMode } from "./cli.ts";
 import type { ResolvedTargetConfig } from "./config.ts";
 import type {
@@ -27,6 +27,10 @@ export interface DiffViewerOptions {
   targets?: ResolvedTargetConfig[];
   /** アップロード対象ファイル（remoteモード用） */
   uploadFiles?: UploadFile[];
+  /** リモートステータスチェックの同時実行数（デフォルト: 10） */
+  concurrency?: number;
+  /** ローカルディレクトリパス（fileモード時、rsync diff用） */
+  localDir?: string;
 }
 
 /** diff-viewerの起動結果 */
@@ -79,6 +83,10 @@ export interface WsInitMessage extends WsMessageBase {
       host: string;
       dest: string;
     }>;
+    /** ツリー構造データ（遅延読み込みモード時） */
+    tree?: DiffTreeNode[];
+    /** 遅延読み込みが有効か */
+    lazyLoading?: boolean;
   };
 }
 
@@ -128,6 +136,22 @@ export interface WsCancelMessage extends WsMessageBase {
   type: "cancel";
 }
 
+/** ディレクトリ展開リクエストメッセージ */
+export interface WsExpandDirectoryMessage extends WsMessageBase {
+  type: "expand_directory";
+  /** 展開するディレクトリのパス */
+  path: string;
+}
+
+/** ディレクトリ内容レスポンスメッセージ */
+export interface WsDirectoryContentsMessage extends WsMessageBase {
+  type: "directory_contents";
+  /** ディレクトリパス */
+  path: string;
+  /** 子ノード一覧 */
+  children: DiffTreeNode[];
+}
+
 /** エラーメッセージ */
 export interface WsErrorMessage extends WsMessageBase {
   type: "error";
@@ -169,6 +193,7 @@ export interface WsCancelledMessage extends WsMessageBase {
 export type WsServerMessage =
   | WsInitMessage
   | WsFileResponseMessage
+  | WsDirectoryContentsMessage
   | WsErrorMessage
   | WsProgressMessage
   | WsCompleteMessage
@@ -177,6 +202,7 @@ export type WsServerMessage =
 /** クライアントからサーバーへのメッセージ */
 export type WsClientMessage =
   | WsFileRequestMessage
+  | WsExpandDirectoryMessage
   | WsConfirmMessage
   | WsCancelMessage;
 
@@ -208,6 +234,24 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
   /** 変更種別（ファイルの場合） */
   status?: "A" | "M" | "D" | "R";
+}
+
+/** diff viewer用ツリーノード（遅延読み込み対応） */
+export interface DiffTreeNode {
+  /** ノード名（ファイル名またはディレクトリ名） */
+  name: string;
+  /** フルパス */
+  path: string;
+  /** ノードタイプ */
+  type: "file" | "directory";
+  /** 変更ステータス（ファイルのみ、remoteモード時は遅延評価） */
+  status?: FileChangeType;
+  /** 子ノードが読み込み済みか（ディレクトリのみ） */
+  loaded?: boolean;
+  /** 子ノード（ディレクトリのみ） */
+  children?: DiffTreeNode[];
+  /** ファイル数（ディレクトリの場合、子孫のファイル総数） */
+  fileCount?: number;
 }
 
 /** diff表示モード */

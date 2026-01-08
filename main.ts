@@ -294,6 +294,30 @@ async function main(): Promise<number> {
           target: "Remote",
         };
 
+        // fileモードの場合、ローカルディレクトリのベースパスを算出
+        let localDir: string | undefined;
+        if (
+          profile.from.type === "file" && fileResult &&
+          fileResult.files.length > 0
+        ) {
+          // 最初のファイルからベースディレクトリを算出
+          const firstFile = fileResult.files.find((f) => !f.isDirectory);
+          if (firstFile) {
+            // sourcePath: /home/user/project/src/file.ts
+            // relativePath: src/file.ts
+            // → baseDir: /home/user/project/
+            const sourcePath = firstFile.sourcePath;
+            const relativePath = firstFile.relativePath;
+            if (sourcePath.endsWith(relativePath)) {
+              localDir = sourcePath.slice(0, -relativePath.length);
+              // 末尾のスラッシュを削除（rsync getDiff()で追加される）
+              if (localDir.endsWith("/")) {
+                localDir = localDir.slice(0, -1);
+              }
+            }
+          }
+        }
+
         // diff viewerを起動
         const viewerResult = await startDiffViewer(viewerDiffResult, {
           port: args.port,
@@ -305,6 +329,8 @@ async function main(): Promise<number> {
           diffMode,
           targets: profile.to.targets,
           uploadFiles,
+          concurrency: args.concurrency,
+          localDir,
         });
 
         if (!viewerResult.confirmed) {

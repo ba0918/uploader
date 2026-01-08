@@ -31,6 +31,8 @@ services:
       - ./tests/integration/fixtures/ssh-keys:/config/ssh-keys:ro
       # Custom init scripts (rate limit configuration)
       - ./tests/integration/fixtures/custom-cont-init.d:/custom-cont-init.d:ro
+      # Persist SSH host keys (prevents known_hosts conflicts on container rebuild)
+      - ./tests/integration/fixtures/ssh-host-keys:/config/ssh_host_keys
     healthcheck:
       test: ["CMD", "ssh-keyscan", "-p", "2222", "localhost"]
       interval: 5s

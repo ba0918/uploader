@@ -5,16 +5,19 @@
  */
 
 import type {
+  DiffFile,
   DiffViewerOptions,
   DiffViewerProgressController,
   DiffViewerResult,
   FileContent,
   FileRequestType,
   GitDiffResult,
+  RsyncDiffResult,
   TransferProgressEvent,
   Uploader,
   UploadResult,
   WsClientMessage,
+  WsDirectoryContentsMessage,
   WsFileResponseMessage,
   WsInitMessage,
 } from "../types/mod.ts";
@@ -22,6 +25,12 @@ import { getFileDiffContents } from "../git/file-reader.ts";
 import { getHtmlContent } from "./static/html.ts";
 import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
+import {
+  batchAsync,
+  buildRootLevelTree,
+  getDirectChildren,
+  shouldUseLazyLoading,
+} from "../utils/mod.ts";
 
 /**
  * デバッグログを出力（verboseモード時のみ）
@@ -41,6 +50,9 @@ function debugError(message: string, ...args: unknown[]): void {
   }
 }
 
+/** 遅延読み込みの閾値（この数を超えたら遅延読み込みを有効化） */
+const LAZY_LOADING_THRESHOLD = 100;
+
 /** サーバの状態 */
 interface ServerState {
   /** 解決用のPromise resolve関数 */
@@ -59,6 +71,10 @@ interface ServerState {
   connectionError: string | null;
   /** 変更があったファイルのパスリスト（remote diffモード時のみ） */
   changedFiles: string[] | null;
+  /** 遅延読み込みモードが有効か */
+  lazyLoading: boolean;
+  /** rsync getDiff()の結果（キャッシュ、rsyncプロトコル時のみ） */
+  rsyncDiffResult: RsyncDiffResult | null;
 }
 
 /**
@@ -125,6 +141,12 @@ export function startDiffViewerServer(
   return new Promise((resolve) => {
     const abortController = new AbortController();
 
+    // 遅延読み込みを使用するかどうかを判定
+    const useLazyLoading = shouldUseLazyLoading(
+      diffResult.files.length,
+      LAZY_LOADING_THRESHOLD,
+    );
+
     const state: ServerState = {
       resolve,
       abortController,
@@ -134,6 +156,8 @@ export function startDiffViewerServer(
       uploader: null,
       connectionError: null,
       changedFiles: null,
+      lazyLoading: useLazyLoading,
+      rsyncDiffResult: null,
     };
 
     const server = Deno.serve(
@@ -222,6 +246,120 @@ function handleWebSocketUpgrade(req: Request, state: ServerState): Response {
 }
 
 /**
+ * rsync getDiff()を使って変更ファイル一覧を取得
+ */
+async function tryRsyncGetDiff(
+  state: ServerState,
+): Promise<RsyncDiffResult | null> {
+  const { options } = state;
+
+  // localDirがない場合はスキップ
+  if (!options.localDir) {
+    debugLog("[RsyncDiff] No localDir specified, skipping rsync getDiff");
+    return null;
+  }
+
+  // ターゲットがない場合はスキップ
+  if (!options.targets || options.targets.length === 0) {
+    debugLog("[RsyncDiff] No targets specified, skipping rsync getDiff");
+    return null;
+  }
+
+  // uploadFilesがない場合はスキップ
+  if (!options.uploadFiles || options.uploadFiles.length === 0) {
+    debugLog("[RsyncDiff] No uploadFiles specified, skipping rsync getDiff");
+    return null;
+  }
+
+  try {
+    // Uploaderを取得または作成
+    const uploader = await getOrCreateUploader(state);
+
+    // getDiff()がサポートされているか確認
+    if (!uploader.getDiff) {
+      debugLog(
+        "[RsyncDiff] Uploader does not support getDiff(), falling back to readFile()",
+      );
+      return null;
+    }
+
+    // uploadFilesの相対パスリストを取得（ディレクトリは除外）
+    const filePaths = options.uploadFiles
+      .filter((f) => !f.isDirectory)
+      .map((f) => f.relativePath);
+
+    debugLog(
+      `[RsyncDiff] Running rsync getDiff() on ${options.localDir} for ${filePaths.length} files...`,
+    );
+
+    // rsync dry-runで差分を取得（比較対象をuploadFilesに限定）
+    const result = await uploader.getDiff(options.localDir, filePaths);
+
+    debugLog(
+      `[RsyncDiff] Found ${result.entries.length} changed files (${result.added} new, ${result.modified} modified, ${result.deleted} deleted)`,
+    );
+
+    state.rsyncDiffResult = result;
+    return result;
+  } catch (error) {
+    debugError(
+      "[RsyncDiff] Failed to get diff via rsync:",
+      error instanceof Error ? error.message : String(error),
+    );
+    // エラーの場合は従来の方式にフォールバック
+    return null;
+  }
+}
+
+/**
+ * rsync getDiff()の結果を使ってファイル一覧をフィルタリング
+ */
+function filterFilesByRsyncDiff(
+  files: DiffFile[],
+  rsyncDiff: RsyncDiffResult,
+): {
+  files: DiffFile[];
+  summary: {
+    added: number;
+    modified: number;
+    deleted: number;
+    renamed: number;
+    total: number;
+  };
+} {
+  // rsync差分結果のパスをSetに変換（高速検索用）
+  const changedPaths = new Set(rsyncDiff.entries.map((e) => e.path));
+  const changeTypeMap = new Map(
+    rsyncDiff.entries.map((e) => [e.path, e.changeType]),
+  );
+
+  // 変更があるファイルのみをフィルタリング
+  const filteredFiles: DiffFile[] = [];
+
+  for (const file of files) {
+    if (changedPaths.has(file.path)) {
+      // rsyncの差分タイプをDiffFileのstatusにマッピング
+      const rsyncChangeType = changeTypeMap.get(file.path);
+      filteredFiles.push({
+        ...file,
+        status: rsyncChangeType ?? file.status,
+      });
+    }
+  }
+
+  // サマリーを再計算
+  const summary = {
+    added: rsyncDiff.added,
+    modified: rsyncDiff.modified,
+    deleted: rsyncDiff.deleted,
+    renamed: 0,
+    total: filteredFiles.length,
+  };
+
+  return { files: filteredFiles, summary };
+}
+
+/**
  * 初期データを送信
  */
 async function sendInitMessage(
@@ -229,6 +367,7 @@ async function sendInitMessage(
   state: ServerState,
 ): Promise<void> {
   const { diffResult, options } = state;
+  let { lazyLoading } = state;
 
   // remoteTargets情報を構築
   const remoteTargets = options.targets?.map((t) => ({
@@ -236,7 +375,118 @@ async function sendInitMessage(
     dest: t.dest,
   }));
 
-  // remoteモードの場合、全ファイルのremoteStatusをチェックして差分があるファイルのみを返す
+  // remoteモードの場合、rsync getDiff()による最適化を試みる
+  if (options.diffMode === "remote" && options.localDir) {
+    const rsyncDiff = await tryRsyncGetDiff(state);
+
+    if (rsyncDiff) {
+      // rsync getDiff()が成功した場合、変更ファイルのみを送信
+      const { files, summary } = filterFilesByRsyncDiff(
+        diffResult.files,
+        rsyncDiff,
+      );
+
+      // 変更があったファイルのパスリストを保存
+      state.changedFiles = files.map((f) => f.path);
+
+      // 変更ファイル数が少ない場合は遅延読み込みを無効化
+      if (files.length <= LAZY_LOADING_THRESHOLD) {
+        lazyLoading = false;
+        state.lazyLoading = false;
+      }
+
+      const message: WsInitMessage = {
+        type: "init",
+        data: {
+          base: options.base,
+          target: options.target,
+          diffMode: options.diffMode,
+          files,
+          summary,
+          remoteTargets,
+          lazyLoading: false, // rsync getDiff()使用時は遅延読み込み不要
+        },
+      };
+
+      socket.send(JSON.stringify(message));
+
+      // 接続エラーがあればクライアントに通知
+      if (state.connectionError) {
+        sendErrorMessage(socket, state.connectionError);
+      }
+      return;
+    }
+  }
+
+  // 遅延読み込みモードの場合
+  if (lazyLoading) {
+    debugLog(
+      `[LazyLoading] Enabled for ${diffResult.files.length} files`,
+    );
+
+    // ルートレベルのツリー構造を構築
+    const tree = buildRootLevelTree(diffResult.files);
+
+    // remoteモードの場合、ルートレベルのファイルのみステータスをチェック
+    if (options.diffMode === "remote") {
+      const concurrency = options.concurrency ?? 10;
+      const rootFiles = tree.filter((node) => node.type === "file");
+
+      if (rootFiles.length > 0) {
+        debugLog(
+          `[LazyLoading] Checking status for ${rootFiles.length} root-level files`,
+        );
+
+        await batchAsync(
+          rootFiles,
+          async (node) => {
+            try {
+              const { remoteStatus } = await getLocalAndRemoteContents(
+                node.path,
+                state,
+              );
+              node.status = remoteStatus.hasChanges
+                ? (remoteStatus.exists ? "M" : "A")
+                : "U";
+            } catch {
+              node.status = "A";
+            }
+          },
+          concurrency,
+        );
+      }
+    }
+
+    const message: WsInitMessage = {
+      type: "init",
+      data: {
+        base: options.base,
+        target: options.target,
+        diffMode: options.diffMode,
+        files: diffResult.files,
+        summary: {
+          added: diffResult.added,
+          modified: diffResult.modified,
+          deleted: diffResult.deleted,
+          renamed: diffResult.renamed,
+          total: diffResult.files.length,
+        },
+        remoteTargets,
+        tree,
+        lazyLoading: true,
+      },
+    };
+
+    socket.send(JSON.stringify(message));
+
+    // 接続エラーがあればクライアントに通知
+    if (state.connectionError) {
+      sendErrorMessage(socket, state.connectionError);
+    }
+    return;
+  }
+
+  // 非遅延読み込みモード（従来の処理）
   let files = diffResult.files;
   let summary = {
     added: diffResult.added,
@@ -249,13 +499,15 @@ async function sendInitMessage(
   // remoteモードのみ（bothは除く）の場合、全ファイルのremoteStatusをチェックして差分があるファイルのみを返す
   // bothモードの場合はgitの差分をそのまま使用し、remote statusはファイル選択時に取得する
   if (options.diffMode === "remote") {
+    const concurrency = options.concurrency ?? 10;
     debugLog(
-      `[RemoteDiff] Checking remote status for ${files.length} files...`,
+      `[RemoteDiff] Checking remote status for ${files.length} files (concurrency: ${concurrency})...`,
     );
 
-    // 全ファイルのremoteStatusを取得
-    const filesWithStatus = await Promise.all(
-      files.map(async (file) => {
+    // 全ファイルのremoteStatusを取得（同時実行数を制限）
+    const filesWithStatus = await batchAsync(
+      files,
+      async (file) => {
         try {
           const { remoteStatus } = await getLocalAndRemoteContents(
             file.path,
@@ -270,7 +522,8 @@ async function sendInitMessage(
           // エラーの場合は差分ありとして扱う
           return { file, remoteStatus: { exists: false, hasChanges: true } };
         }
-      }),
+      },
+      concurrency,
     );
 
     // 差分があるファイルのみをフィルタリング
@@ -320,6 +573,7 @@ async function sendInitMessage(
       files,
       summary,
       remoteTargets,
+      lazyLoading: false,
     },
   };
 
@@ -370,6 +624,12 @@ async function handleWebSocketMessage(
       socket.close();
       state.abortController.abort();
       state.resolve({ confirmed: false, cancelReason: "user_cancel" });
+      break;
+    }
+
+    case "expand_directory": {
+      // ディレクトリ展開リクエスト
+      await handleExpandDirectory(socket, message.path, state);
       break;
     }
   }
@@ -638,6 +898,75 @@ async function disconnectUploader(state: ServerState): Promise<void> {
     }
     state.uploader = null;
   }
+}
+
+/**
+ * ディレクトリ展開リクエストを処理
+ */
+async function handleExpandDirectory(
+  socket: WebSocket,
+  dirPath: string,
+  state: ServerState,
+): Promise<void> {
+  const { diffResult, options } = state;
+
+  debugLog(`[LazyLoading] Expanding directory: ${dirPath}`);
+
+  // 指定ディレクトリの直下の子ノードを取得
+  const children = getDirectChildren(diffResult.files, dirPath);
+
+  // remoteモードの場合、ファイルのステータスをチェック
+  if (options.diffMode === "remote") {
+    const concurrency = options.concurrency ?? 10;
+    const fileNodes = children.filter((node) => node.type === "file");
+
+    if (fileNodes.length > 0) {
+      debugLog(
+        `[LazyLoading] Checking status for ${fileNodes.length} files in ${dirPath}`,
+      );
+
+      await batchAsync(
+        fileNodes,
+        async (node) => {
+          try {
+            const { remoteStatus } = await getLocalAndRemoteContents(
+              node.path,
+              state,
+            );
+            node.status = remoteStatus.hasChanges
+              ? (remoteStatus.exists ? "M" : "A")
+              : "U";
+          } catch {
+            node.status = "A";
+          }
+        },
+        concurrency,
+      );
+    }
+  } else {
+    // gitモードの場合、diffResultからステータスを取得
+    for (const node of children) {
+      if (node.type === "file") {
+        const file = diffResult.files.find((f) => f.path === node.path);
+        if (file) {
+          node.status = file.status;
+        }
+      }
+    }
+  }
+
+  // レスポンスを送信
+  const response: WsDirectoryContentsMessage = {
+    type: "directory_contents",
+    path: dirPath,
+    children,
+  };
+
+  socket.send(JSON.stringify(response));
+
+  debugLog(
+    `[LazyLoading] Sent ${children.length} children for ${dirPath}`,
+  );
 }
 
 /**

@@ -448,6 +448,7 @@ Options:
   --no-browser       Don't open browser for diff viewer
   --strict           Exit on any file transfer error
   --log-file <path>  Write logs to file
+  --concurrency <n>  Max concurrent remote status checks (default: 10)
   --version          Show version
   --help             Show this help
 
@@ -483,8 +484,9 @@ Deno標準ライブラリの `@std/fmt/colors` をベースに自前実装。
 
 ## 今後の検討事項
 
-- [ ] rsync over SSH 対応
+- [x] rsync over SSH 対応（Phase 9.2.5で実装済み）
 - [ ] FTP/FTPS 対応
 - [ ] 並列アップロード（複数ターゲット同時）
 - [ ] バックアップ機能（上書き前にリモートをバックアップ）
 - [ ] Webhook通知（Slack等）
+- [ ] 大量ファイル表示時の仮想スクロール（Phase 9.4）

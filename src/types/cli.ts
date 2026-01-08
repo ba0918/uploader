@@ -48,6 +48,9 @@ export interface CliOptions {
 
   /** ログファイルパス */
   logFile?: string;
+
+  /** リモートステータスチェックの同時実行数（デフォルト: 10） */
+  concurrency: number;
 }
 
 /** CLI 引数（プロファイル名含む） */

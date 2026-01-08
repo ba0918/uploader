@@ -44,8 +44,13 @@ export type {
 } from "./file.ts";
 
 export type {
+  BulkUploadProgressCallback,
+  BulkUploadResult,
   FileTransferResult,
   RemoteFileContent,
+  RsyncDiffChangeType,
+  RsyncDiffEntry,
+  RsyncDiffResult,
   TargetUploadResult,
   TransferProgressCallback,
   TransferProgressEvent,
@@ -73,6 +78,7 @@ export { defaultFileSystem, DenoFileSystem } from "./filesystem.ts";
 export type {
   CuiConfirmResult,
   DiffDisplayMode,
+  DiffTreeNode,
   DiffViewerOptions,
   DiffViewerProgressController,
   DiffViewerResult,
@@ -85,7 +91,9 @@ export type {
   WsClientMessage,
   WsCompleteMessage,
   WsConfirmMessage,
+  WsDirectoryContentsMessage,
   WsErrorMessage,
+  WsExpandDirectoryMessage,
   WsFileRequestMessage,
   WsFileResponseMessage,
   WsInitMessage,
