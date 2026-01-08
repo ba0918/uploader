@@ -161,6 +161,14 @@ export class SftpUploader implements Uploader {
       port: this.options.port,
       username: this.options.user,
       readyTimeout: this.options.timeout ?? 30000,
+      // Denoのcrypto互換性のため、AES-GCMを避けてAES-CTRを使用
+      algorithms: {
+        cipher: [
+          "aes128-ctr",
+          "aes192-ctr",
+          "aes256-ctr",
+        ],
+      },
     };
 
     if (this.options.authType === "ssh_key") {
@@ -214,12 +222,19 @@ export class SftpUploader implements Uploader {
       return;
     }
 
-    // 親ディレクトリから順に作成
-    const parts = fullPath.split("/").filter((p: string) => p);
-    let currentPath = "";
+    // destディレクトリは既存として扱う（接続時にチェック済みのはず）
+    const destParts = this.options.dest.split("/").filter((p: string) => p);
+    const destPath = "/" + destParts.join("/");
+    this.createdDirs.add(destPath);
 
-    for (const part of parts) {
-      currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
+    // fullPathからdest以降の部分のみ作成
+    const fullParts = fullPath.split("/").filter((p: string) => p);
+
+    // destの部分は既存なのでスキップし、その後のパスのみ作成
+    let currentPath = destPath;
+
+    for (let i = destParts.length; i < fullParts.length; i++) {
+      currentPath = `${currentPath}/${fullParts[i]}`;
 
       if (this.createdDirs.has(currentPath)) {
         continue;
@@ -242,6 +257,9 @@ export class SftpUploader implements Uploader {
 
       this.sftp.mkdir(path, (err: Error & { code?: number } | undefined) => {
         if (err) {
+          // SSH_FX_FAILURE (4): 一般的な失敗（ディレクトリ既存を含む）
+          // SSH_FX_PERMISSION_DENIED (3): 権限エラー
+          // SSH_FX_NO_SUCH_FILE (2): 親ディレクトリが存在しない
           // ディレクトリが既に存在する場合はエラーを無視
           if (err.code === 4 || err.message.includes("already exists")) {
             resolve();

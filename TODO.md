@@ -165,14 +165,59 @@
 - [x] config/loader.ts テスト
   - tests/config/loader_test.ts - 設定読込テスト（一時ファイル使用）
 
-### Phase T3: 結合テスト（Docker環境）
+### Phase T3: 結合テスト（Docker環境） ✅ 完了
 
-- [ ] docker-compose.test.yml 作成
+- [x] docker-compose.test.yml 作成
   - SFTPサーバ（atmoz/sftp）
-  - テスト用Gitリポジトリ
-- [ ] tests/integration/sftp_test.ts - SFTP転送テスト
-- [ ] tests/integration/scp_test.ts - SCP転送テスト
-- [ ] tests/integration/git_test.ts - 実Git操作テスト
+  - SSH鍵セットアップスクリプト
+- [x] tests/integration/sftp_test.ts - SFTP転送テスト
+  - 接続・切断テスト
+  - ファイルアップロード（バッファ/ファイルパス）
+  - ファイル読み取り
+  - ファイル削除
+  - エラーハンドリング（無効なホスト、認証失敗）
+- [x] tests/integration/scp_test.ts - SCP転送テスト
+  - SSH鍵認証による接続テスト
+  - ファイルアップロード
+  - ファイル読み取り/削除
+  - エラーハンドリング
+- [x] tests/integration/git_test.ts - 実Git操作テスト
+  - getDiff（ブランチ間差分）
+  - getFileContent（ファイル内容取得）
+  - getStagedDiff（ステージング差分）
+  - getUntrackedFiles（未追跡ファイル）
+  - エラーハンドリング
+  - リネーム検出
+
+#### 結合テストの実行方法
+
+```bash
+# 1. SSH鍵を生成（初回のみ）
+./tests/integration/scripts/setup-ssh-keys.sh
+
+# 2. Dockerコンテナを起動
+docker compose -f docker-compose.test.yml up -d
+
+# 3. テストを実行
+deno test tests/integration/
+
+# 4. コンテナを停止
+docker compose -f docker-compose.test.yml down
+```
+
+Note: Dockerが起動していない場合、SFTP/SCPテストは自動的にスキップされる。
+Gitテストはローカル一時リポジトリを使用するため、Dockerなしで実行可能。
+
+#### 技術的注意事項
+
+- **linuxserver/openssh-server**:
+  atmoz/sftpではなくlinuxserver/openssh-serverを使用。
+  SCPはフルSSHアクセスが必要なため。
+- **PerSourcePenalties無効化**: OpenSSH 9.7+で導入された認証失敗ペナルティ機能を
+  無効化する設定(`PerSourcePenalties no`)を`custom-cont-init.d/10-rate-limit.sh`で
+  適用。これにより、失敗テスト後も他のテストが正常に実行される。
+- **ホストキー変更時**: コンテナ再作成時にSSHホストキーが変わるため、
+  `ssh-keygen -f ~/.ssh/known_hosts -R '[localhost]:2222'`で古いキーを削除する必要がある。
 
 ### テスト規約
 

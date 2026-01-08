@@ -1,0 +1,38 @@
+# Docker Compose for integration tests
+# PhaseT3: SFTP/SCP転送テスト用環境
+#
+# 使用方法:
+#   1. SSH鍵を生成:
+#      tests/integration/scripts/setup-ssh-keys.sh
+#   2. コンテナを起動:
+#      docker compose -f docker-compose.test.yml up -d
+#   3. テストを実行:
+#      deno test tests/integration/
+
+services:
+  # SSH Server for testing (supports both SFTP and SCP)
+  sftp:
+    image: linuxserver/openssh-server:latest
+    ports:
+      - "2222:2222"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Tokyo
+      - USER_NAME=testuser
+      - USER_PASSWORD=testpass
+      - PASSWORD_ACCESS=true
+      - PUBLIC_KEY_FILE=/config/ssh-keys/test_key.pub
+    volumes:
+      # Test data directory
+      - ./tests/integration/fixtures/sftp-data:/upload
+      # SSH keys
+      - ./tests/integration/fixtures/ssh-keys:/config/ssh-keys:ro
+      # Custom init scripts (rate limit configuration)
+      - ./tests/integration/fixtures/custom-cont-init.d:/custom-cont-init.d:ro
+    healthcheck:
+      test: ["CMD", "ssh-keyscan", "-p", "2222", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s

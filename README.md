@@ -6,7 +6,8 @@ Git差分またはローカルファイルをSFTP/SCPでリモートサーバに
 
 - **Gitモード**: ブランチ間の差分ファイルのみを抽出してアップロード
 - **Fileモード**: 指定したローカルファイル/ディレクトリをアップロード
-- **Diff Viewer**: ブラウザベースの差分確認UI（アップロード前に変更内容を視覚的に確認）
+- **Diff Viewer**:
+  ブラウザベースの差分確認UI（アップロード前に変更内容を視覚的に確認）
 - **複数プロトコル対応**: SFTP / SCP / ローカルコピー
 - **複数ターゲット**: 1回の実行で複数サーバへ同時デプロイ
 - **モダンなCUI**: プログレスバー、ツリー表示、カラー出力
@@ -85,22 +86,22 @@ uploader --log-file=upload.log <profile>
 
 ## CLI Options
 
-| オプション | 説明 |
-|-----------|------|
-| `--config <path>` | 設定ファイルのパスを指定 |
-| `--diff[=mode]` | アップロード前にdiff viewerを開く (mode: git/remote/both) |
-| `--dry-run` | 実際のアップロードを行わずシミュレーション |
-| `--delete` | リモートにのみ存在するファイルを削除 |
-| `--base <branch>` | Git比較元ブランチ |
-| `--target <branch>` | Git比較先ブランチ |
-| `--verbose` | 詳細ログを出力 |
-| `--quiet` | エラーのみ出力 |
-| `--port <number>` | diff viewerのポート番号 (default: 3000) |
-| `--no-browser` | diff viewer起動時にブラウザを開かない |
-| `--strict` | ファイル転送エラー時に即座に終了 |
-| `--log-file <path>` | ログをファイルに出力 |
-| `--version` | バージョン表示 |
-| `--help` | ヘルプ表示 |
+| オプション          | 説明                                                      |
+| ------------------- | --------------------------------------------------------- |
+| `--config <path>`   | 設定ファイルのパスを指定                                  |
+| `--diff[=mode]`     | アップロード前にdiff viewerを開く (mode: git/remote/both) |
+| `--dry-run`         | 実際のアップロードを行わずシミュレーション                |
+| `--delete`          | リモートにのみ存在するファイルを削除                      |
+| `--base <branch>`   | Git比較元ブランチ                                         |
+| `--target <branch>` | Git比較先ブランチ                                         |
+| `--verbose`         | 詳細ログを出力                                            |
+| `--quiet`           | エラーのみ出力                                            |
+| `--port <number>`   | diff viewerのポート番号 (default: 3000)                   |
+| `--no-browser`      | diff viewer起動時にブラウザを開かない                     |
+| `--strict`          | ファイル転送エラー時に即座に終了                          |
+| `--log-file <path>` | ログをファイルに出力                                      |
+| `--version`         | バージョン表示                                            |
+| `--help`            | ヘルプ表示                                                |
 
 ## Configuration
 
@@ -132,7 +133,7 @@ development:
       - host: "web1.example.com"
         protocol: "sftp"
         port: 22
-        user: "${DEPLOY_USER}"        # 環境変数から取得
+        user: "${DEPLOY_USER}" # 環境変数から取得
         auth_type: "ssh_key"
         key_file: "~/.ssh/id_rsa"
         dest: "/var/www/html/"
@@ -172,7 +173,7 @@ key_file: "~/.ssh/id_rsa"
 
 ```yaml
 auth_type: "password"
-password: "${DEPLOY_PASSWORD}"  # 必ず環境変数を使用
+password: "${DEPLOY_PASSWORD}" # 必ず環境変数を使用
 ```
 
 ## Diff Viewer
@@ -200,14 +201,14 @@ uploader --diff=both development
 
 ## Exit Codes
 
-| コード | 意味 |
-|--------|------|
-| 0 | 成功 |
-| 1 | 一般エラー |
-| 2 | 設定ファイルエラー |
-| 3 | 認証エラー |
-| 4 | 接続エラー |
-| 5 | 一部ファイル転送失敗 |
+| コード | 意味                 |
+| ------ | -------------------- |
+| 0      | 成功                 |
+| 1      | 一般エラー           |
+| 2      | 設定ファイルエラー   |
+| 3      | 認証エラー           |
+| 4      | 接続エラー           |
+| 5      | 一部ファイル転送失敗 |
 
 ## Development
 
@@ -227,9 +228,33 @@ deno lint
 # 型チェック
 deno check main.ts
 
-# テスト
+# 単体テスト
 deno test --allow-read --allow-write --allow-net --allow-env
+
+# 結合テスト（Docker必須）
+deno test --allow-all tests/integration/
 ```
+
+### 結合テスト
+
+SFTP/SCP転送の結合テストにはDockerが必要です。
+
+```sh
+# 1. SSH鍵を生成（初回のみ）
+./tests/integration/scripts/setup-ssh-keys.sh
+
+# 2. Dockerコンテナを起動
+docker compose -f docker-compose.test.yml up -d
+
+# 3. テストを実行
+deno test --allow-all tests/integration/
+
+# 4. コンテナを停止
+docker compose -f docker-compose.test.yml down
+```
+
+Dockerが起動していない場合、SFTP/SCPテストは自動的にスキップされます。
+Gitテストはローカル一時リポジトリを使用するため、Dockerなしで実行可能です。
 
 ## License
 
