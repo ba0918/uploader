@@ -555,6 +555,108 @@ export function getHtmlContent(): string {
     ::-webkit-scrollbar-thumb:hover {
       background: #4c4c4c;
     }
+
+    /* トースト通知 */
+    .toast-container {
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 400px;
+    }
+
+    .toast {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 12px 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      animation: slideIn 0.3s ease;
+    }
+
+    .toast.error {
+      border-left: 4px solid var(--color-deleted);
+    }
+
+    .toast.warning {
+      border-left: 4px solid var(--color-modified);
+    }
+
+    .toast.success {
+      border-left: 4px solid var(--color-added);
+    }
+
+    .toast-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .toast.error .toast-icon {
+      color: var(--color-deleted);
+    }
+
+    .toast.warning .toast-icon {
+      color: var(--color-modified);
+    }
+
+    .toast.success .toast-icon {
+      color: var(--color-added);
+    }
+
+    .toast-content {
+      flex: 1;
+    }
+
+    .toast-title {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .toast-message {
+      font-size: 12px;
+      color: var(--text-secondary);
+      word-break: break-word;
+    }
+
+    .toast-close {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 0;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .toast-close:hover {
+      color: var(--text-primary);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -611,6 +713,9 @@ export function getHtmlContent(): string {
     <span id="status-text">Connecting...</span>
     <span id="file-count">0 files</span>
   </footer>
+
+  <!-- トースト通知コンテナ -->
+  <div class="toast-container" id="toast-container"></div>
 
   <script>
     // アプリケーション状態
@@ -675,6 +780,38 @@ export function getHtmlContent(): string {
       };
     }
 
+    // トースト通知を表示
+    function showToast(type, title, message, duration = 10000) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast ' + type;
+
+      const icons = {
+        error: '&#10060;',
+        warning: '&#9888;',
+        success: '&#10004;'
+      };
+
+      toast.innerHTML = \`
+        <span class="toast-icon">\${icons[type] || icons.error}</span>
+        <div class="toast-content">
+          <div class="toast-title">\${escapeHtml(title)}</div>
+          <div class="toast-message">\${escapeHtml(message)}</div>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">&times;</button>
+      \`;
+
+      container.appendChild(toast);
+
+      // 自動で消える
+      if (duration > 0) {
+        setTimeout(() => {
+          toast.style.animation = 'fadeOut 0.3s ease forwards';
+          setTimeout(() => toast.remove(), 300);
+        }, duration);
+      }
+    }
+
     // メッセージハンドラ
     function handleMessage(message) {
       switch (message.type) {
@@ -686,6 +823,7 @@ export function getHtmlContent(): string {
           break;
         case 'error':
           console.error('Server error:', message.message);
+          showToast('error', 'Connection Error', message.message);
           break;
       }
     }

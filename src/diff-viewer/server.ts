@@ -33,6 +33,18 @@ interface ServerState {
   options: DiffViewerOptions;
   /** リモートファイル取得用のUploader（キャッシュ） */
   uploader: Uploader | null;
+  /** 接続エラー（発生した場合） */
+  connectionError: string | null;
+}
+
+/**
+ * WebSocketでエラーメッセージを送信
+ */
+function sendErrorMessage(socket: WebSocket, message: string): void {
+  socket.send(JSON.stringify({
+    type: "error",
+    message,
+  }));
 }
 
 /**
@@ -52,6 +64,7 @@ export function startDiffViewerServer(
       diffResult,
       options,
       uploader: null,
+      connectionError: null,
     };
 
     const server = Deno.serve(
@@ -239,6 +252,11 @@ async function sendInitMessage(
   };
 
   socket.send(JSON.stringify(message));
+
+  // 接続エラーがあればクライアントに通知
+  if (state.connectionError) {
+    sendErrorMessage(socket, state.connectionError);
+  }
 }
 
 /**
@@ -333,9 +351,15 @@ async function handleFileRequest(
         { path, content: "", isBinary: false };
       response.remoteStatus = { exists: false, hasChanges: true };
     }
+
   }
 
   socket.send(JSON.stringify(response));
+
+  // 接続エラーがあればクライアントに通知（catchの外でも確認）
+  if (state.connectionError) {
+    sendErrorMessage(socket, state.connectionError);
+  }
 }
 
 /**
@@ -483,6 +507,11 @@ async function getRemoteFileContent(
  * Uploaderを取得または作成
  */
 async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
+  // 既に接続エラーが発生している場合は再試行しない
+  if (state.connectionError) {
+    throw new Error(state.connectionError);
+  }
+
   // 既にUploaderが存在する場合はそれを返す
   if (state.uploader) {
     console.log("[RemoteDiff] Using cached uploader connection");
@@ -492,7 +521,9 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
   const { targets } = state.options;
 
   if (!targets || targets.length === 0) {
-    throw new Error("No targets configured for remote file fetching");
+    const error = "No targets configured for remote file fetching";
+    state.connectionError = error;
+    throw new Error(error);
   }
 
   // 最初のターゲットを使用
@@ -504,11 +535,20 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
 
   // 接続
   console.log(`[RemoteDiff] Connecting to ${target.host}...`);
-  await uploader.connect();
-  console.log(`[RemoteDiff] Connected to ${target.host}`);
-  state.uploader = uploader;
-
-  return uploader;
+  try {
+    await uploader.connect();
+    console.log(`[RemoteDiff] Connected to ${target.host}`);
+    state.uploader = uploader;
+    return uploader;
+  } catch (error) {
+    // 接続エラーを記録
+    const errorMessage = `Failed to connect to ${target.host}: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    state.connectionError = errorMessage;
+    console.error(`[RemoteDiff] ${errorMessage}`);
+    throw new Error(errorMessage);
+  }
 }
 
 /**
