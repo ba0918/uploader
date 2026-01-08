@@ -12,12 +12,55 @@ import {
 } from "./src/config/mod.ts";
 import { collectFiles, FileCollectError } from "./src/file/mod.ts";
 import { getDiff, GitCommandError } from "./src/git/mod.ts";
+import {
+  collectedFilesToUploadFiles,
+  diffFilesToUploadFiles,
+  uploadToTargets,
+} from "./src/upload/mod.ts";
 import type {
+  DiffMode,
+  DiffOption,
   FileCollectResult,
   GitDiffResult,
   LogLevel,
+  TransferProgressEvent,
+  UploadFile,
 } from "./src/types/mod.ts";
+import { UploadError } from "./src/types/mod.ts";
+
+/**
+ * diffオプションを実際のモードに解決
+ *
+ * @param diffOption CLIから渡されたdiffオプション
+ * @param sourceType ソースの種類（git/file）
+ * @returns 解決されたDiffMode、またはfalse（diff無効時）、またはエラーメッセージ
+ */
+function resolveDiffMode(
+  diffOption: DiffOption,
+  sourceType: "git" | "file",
+): { mode: DiffMode | false } | { error: string } {
+  // diff無効
+  if (diffOption === false) {
+    return { mode: false };
+  }
+
+  // auto: モードに応じたデフォルト値
+  if (diffOption === "auto") {
+    return { mode: sourceType === "git" ? "git" : "remote" };
+  }
+
+  // fileモードで--diff=gitはエラー
+  if (sourceType === "file" && diffOption === "git") {
+    return {
+      error:
+        "Error: --diff=git is not supported for file mode. Use --diff=remote instead.",
+    };
+  }
+
+  return { mode: diffOption };
+}
 import {
+  clearUploadProgress,
   dim,
   initLogger,
   logDiffSummary,
@@ -28,9 +71,14 @@ import {
   logProfileInfo,
   logSection,
   logSectionLine,
+  logUploadFailure,
+  logUploadProgress,
+  logUploadStart,
+  logUploadSuccess,
   path,
   showBanner,
 } from "./src/ui/mod.ts";
+import { startDiffViewer } from "./src/diff-viewer/mod.ts";
 
 /** 終了コード */
 const EXIT_CODES = {
@@ -164,31 +212,177 @@ async function main(): Promise<number> {
       });
     }
 
+    // アップロード用ファイルリストを作成
+    let uploadFiles: UploadFile[] = [];
+
+    if (diffResult) {
+      // Gitモード: 差分ファイルをアップロードファイルに変換
+      const targetRef = profile.from.type === "git"
+        ? (profile.from.target || "HEAD")
+        : "HEAD";
+      uploadFiles = await diffFilesToUploadFiles(diffResult.files, targetRef);
+    } else if (fileResult) {
+      // ファイルモード: 収集ファイルをアップロードファイルに変換
+      uploadFiles = collectedFilesToUploadFiles(fileResult.files);
+    }
+
+    // アップロードするファイルがない場合
+    if (uploadFiles.length === 0) {
+      logNoChanges();
+      return EXIT_CODES.SUCCESS;
+    }
+
     // dry-run モードの場合
     if (args.dryRun) {
       logSection("DRY RUN MODE");
       logSectionLine(dim("(no files will be uploaded)"), true);
       console.log();
+
+      // アップロード予定のファイル一覧を表示
       console.log(
-        dim("  dry-run モードのため、アップロードはスキップされました。"),
+        dim(
+          `  Would upload ${uploadFiles.length} file(s) to ${profile.to.targets.length} target(s)`,
+        ),
       );
+
+      for (const target of profile.to.targets) {
+        console.log(dim(`    → ${target.host}:${target.dest}`));
+      }
+
       console.log();
       return EXIT_CODES.SUCCESS;
     }
 
-    // TODO: Phase 4以降で実装
-    // - diff viewer
-    // - SFTP/SCPアップロード
+    // diff viewer (--diff オプション)
+    if (args.diff !== false) {
+      // diffオプションを解決
+      const diffModeResult = resolveDiffMode(args.diff, profile.from.type);
 
-    console.log();
-    console.log(
-      dim(
-        "  アップロード機能はまだ実装されていません。Phase 4で実装予定です。",
-      ),
+      if ("error" in diffModeResult) {
+        // fileモードで--diff=gitはエラー
+        logError(diffModeResult.error);
+        return EXIT_CODES.GENERAL_ERROR;
+      }
+
+      const diffMode = diffModeResult.mode;
+
+      if (diffMode !== false) {
+        // diff viewerに渡すGitDiffResultを準備
+        // fileモードの場合はCollectedFileからGitDiffResult互換のデータを作成
+        const viewerDiffResult: GitDiffResult = diffResult || {
+          files: fileResult!.files
+            .filter((f) => !f.isDirectory)
+            .map((f) => ({
+              path: f.relativePath,
+              status: "A" as const,
+            })),
+          added: fileResult!.fileCount,
+          modified: 0,
+          deleted: 0,
+          renamed: 0,
+          base: "Local",
+          target: "Remote",
+        };
+
+        // diff viewerを起動
+        const viewerResult = await startDiffViewer(viewerDiffResult, {
+          port: args.port,
+          openBrowser: !args.noBrowser,
+          base: profile.from.type === "git" ? profile.from.base : "Local",
+          target: profile.from.type === "git"
+            ? (profile.from.target || "HEAD")
+            : "Remote",
+          diffMode,
+          targets: profile.to.targets,
+          uploadFiles,
+        });
+
+        if (!viewerResult.confirmed) {
+          logSection("Upload cancelled");
+          logSectionLine(
+            dim(`Reason: ${viewerResult.cancelReason || "user action"}`),
+            true,
+          );
+          console.log();
+          return EXIT_CODES.SUCCESS;
+        }
+      }
+    }
+
+    // アップロード実行
+    const totalSize = uploadFiles.reduce((sum, f) => sum + f.size, 0);
+    logUploadStart(
+      profile.to.targets.length,
+      uploadFiles.length,
+      totalSize,
     );
+
+    // 進捗コールバック
+    let lastFile = "";
+    const onProgress = (event: TransferProgressEvent) => {
+      if (event.currentFile !== lastFile) {
+        lastFile = event.currentFile;
+        logUploadProgress({
+          targetIndex: event.targetIndex,
+          totalTargets: event.totalTargets,
+          host: event.host,
+          fileIndex: event.fileIndex + 1,
+          totalFiles: event.totalFiles,
+          currentFile: event.currentFile,
+          status: event.status,
+        });
+      }
+    };
+
+    const result = await uploadToTargets(
+      profile.to.targets,
+      uploadFiles,
+      {
+        dryRun: args.dryRun,
+        deleteRemote: args.delete,
+        strict: args.strict,
+      },
+      onProgress,
+    );
+
+    // 進捗表示をクリア
+    clearUploadProgress();
     console.log();
 
-    return EXIT_CODES.SUCCESS;
+    // 結果を表示
+    const resultSummary = {
+      successTargets: result.successTargets,
+      failedTargets: result.failedTargets,
+      totalFiles: result.totalFiles,
+      totalSize: result.totalSize,
+      totalDuration: result.totalDuration,
+      targets: result.targets.map((t) => ({
+        host: t.target.host,
+        status: t.status,
+        successCount: t.successCount,
+        failedCount: t.failedCount,
+        error: t.error,
+      })),
+    };
+
+    if (result.failedTargets === 0) {
+      logUploadSuccess(resultSummary);
+      return EXIT_CODES.SUCCESS;
+    } else if (result.successTargets > 0) {
+      logUploadFailure(resultSummary);
+      return EXIT_CODES.PARTIAL_FAILURE;
+    } else {
+      logUploadFailure(resultSummary);
+      // エラーの種類に応じた終了コード
+      const firstError = result.targets.find((t) => t.error);
+      if (firstError?.error?.includes("Authentication")) {
+        return EXIT_CODES.AUTH_ERROR;
+      }
+      if (firstError?.error?.includes("Connection")) {
+        return EXIT_CODES.CONNECTION_ERROR;
+      }
+      return EXIT_CODES.GENERAL_ERROR;
+    }
   } catch (error) {
     if (error instanceof ConfigValidationError) {
       logError(`設定ファイルエラー: ${error.message}`);
@@ -214,6 +408,22 @@ async function main(): Promise<number> {
         console.error(dim(`  ${error.originalError.message}`));
       }
       return EXIT_CODES.GENERAL_ERROR;
+    }
+
+    if (error instanceof UploadError) {
+      logError(`アップロードエラー: ${error.message}`);
+      if (error.originalError) {
+        console.error(dim(`  ${error.originalError.message}`));
+      }
+      switch (error.code) {
+        case "AUTH_ERROR":
+          return EXIT_CODES.AUTH_ERROR;
+        case "CONNECTION_ERROR":
+        case "TIMEOUT_ERROR":
+          return EXIT_CODES.CONNECTION_ERROR;
+        default:
+          return EXIT_CODES.GENERAL_ERROR;
+      }
     }
 
     logError(

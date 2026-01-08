@@ -24,3 +24,7 @@ uploader.yaml
 # Temporary files
 *.tmp
 *.temp
+
+# Coverage
+coverage
+.coverage

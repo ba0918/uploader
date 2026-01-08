@@ -14,7 +14,8 @@
     "@std/path": "jsr:@std/path@^1",
     "@std/fs": "jsr:@std/fs@^1",
     "@std/fmt": "jsr:@std/fmt@^1",
-    "@std/cli": "jsr:@std/cli@^1"
+    "@std/cli": "jsr:@std/cli@^1",
+    "ssh2": "npm:ssh2@^1"
   },
   "compilerOptions": {
     "strict": true,

@@ -4,7 +4,13 @@
  * git diff --name-status を実行して差分ファイル一覧を取得する
  */
 
-import type { DiffFile, FileChangeType, GitDiffResult } from "../types/mod.ts";
+import type {
+  CommandExecutor,
+  DiffFile,
+  FileChangeType,
+  GitDiffResult,
+} from "../types/mod.ts";
+import { defaultExecutor } from "../types/mod.ts";
 
 /** Gitコマンド実行エラー */
 export class GitCommandError extends Error {
@@ -25,6 +31,8 @@ export interface GitDiffOptions {
   cwd?: string;
   /** 除外パターン */
   excludePatterns?: string[];
+  /** コマンド実行エグゼキュータ（テスト用） */
+  executor?: CommandExecutor;
 }
 
 /**
@@ -33,35 +41,33 @@ export interface GitDiffOptions {
 async function execGitCommand(
   args: string[],
   cwd?: string,
+  executor: CommandExecutor = defaultExecutor,
 ): Promise<string> {
-  const command = new Deno.Command("git", {
-    args,
-    cwd,
-    stdout: "piped",
-    stderr: "piped",
-  });
+  const result = await executor.execute("git", args, { cwd });
 
-  const { code, stdout, stderr } = await command.output();
-
-  if (code !== 0) {
-    const stderrText = new TextDecoder().decode(stderr);
+  if (result.code !== 0) {
+    const stderrText = new TextDecoder().decode(result.stderr);
     throw new GitCommandError(
       `Git command failed: git ${args.join(" ")}`,
       `git ${args.join(" ")}`,
       stderrText,
-      code,
+      result.code,
     );
   }
 
-  return new TextDecoder().decode(stdout);
+  return new TextDecoder().decode(result.stdout);
 }
 
 /**
  * 指定したrefが存在するかチェック
  */
-export async function refExists(ref: string, cwd?: string): Promise<boolean> {
+export async function refExists(
+  ref: string,
+  cwd?: string,
+  executor: CommandExecutor = defaultExecutor,
+): Promise<boolean> {
   try {
-    await execGitCommand(["rev-parse", "--verify", ref], cwd);
+    await execGitCommand(["rev-parse", "--verify", ref], cwd, executor);
     return true;
   } catch {
     return false;
@@ -71,10 +77,14 @@ export async function refExists(ref: string, cwd?: string): Promise<boolean> {
 /**
  * 現在のブランチ名を取得
  */
-export async function getCurrentBranch(cwd?: string): Promise<string> {
+export async function getCurrentBranch(
+  cwd?: string,
+  executor: CommandExecutor = defaultExecutor,
+): Promise<string> {
   const output = await execGitCommand(
     ["rev-parse", "--abbrev-ref", "HEAD"],
     cwd,
+    executor,
   );
   return output.trim();
 }
@@ -183,10 +193,10 @@ export async function getDiff(
   target: string,
   options: GitDiffOptions = {},
 ): Promise<GitDiffResult> {
-  const { cwd, excludePatterns = [] } = options;
+  const { cwd, excludePatterns = [], executor = defaultExecutor } = options;
 
   // refが存在するかチェック
-  const baseExists = await refExists(base, cwd);
+  const baseExists = await refExists(base, cwd, executor);
   if (!baseExists) {
     throw new GitCommandError(
       `Base ref does not exist: ${base}`,
@@ -196,7 +206,7 @@ export async function getDiff(
     );
   }
 
-  const targetExists = await refExists(target, cwd);
+  const targetExists = await refExists(target, cwd, executor);
   if (!targetExists) {
     throw new GitCommandError(
       `Target ref does not exist: ${target}`,
@@ -210,6 +220,7 @@ export async function getDiff(
   const output = await execGitCommand(
     ["diff", "--name-status", `${base}...${target}`],
     cwd,
+    executor,
   );
 
   // 出力をパース
@@ -242,10 +253,14 @@ export async function getDiff(
 /**
  * 未追跡ファイルの一覧を取得
  */
-export async function getUntrackedFiles(cwd?: string): Promise<string[]> {
+export async function getUntrackedFiles(
+  cwd?: string,
+  executor: CommandExecutor = defaultExecutor,
+): Promise<string[]> {
   const output = await execGitCommand(
     ["ls-files", "--others", "--exclude-standard"],
     cwd,
+    executor,
   );
 
   return output.trim().split("\n").filter((line) => line.length > 0);
@@ -257,11 +272,12 @@ export async function getUntrackedFiles(cwd?: string): Promise<string[]> {
 export async function getStagedDiff(
   options: GitDiffOptions = {},
 ): Promise<GitDiffResult> {
-  const { cwd, excludePatterns = [] } = options;
+  const { cwd, excludePatterns = [], executor = defaultExecutor } = options;
 
   const output = await execGitCommand(
     ["diff", "--name-status", "--cached"],
     cwd,
+    executor,
   );
 
   let files = parseDiffOutput(output);
@@ -287,3 +303,6 @@ export async function getStagedDiff(
     target: "staged",
   };
 }
+
+// テスト用にパース関数をエクスポート
+export { matchesExcludePattern, parseDiffOutput };

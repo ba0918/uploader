@@ -3,7 +3,7 @@
  */
 
 import { parseArgs as stdParseArgs } from "@std/cli/parse-args";
-import type { CliArgs } from "../types/mod.ts";
+import type { CliArgs, DiffMode, DiffOption } from "../types/mod.ts";
 import { showVersion } from "../ui/mod.ts";
 
 const HELP_TEXT = `
@@ -16,7 +16,10 @@ Arguments:
 
 Options:
   -c, --config <path>      設定ファイルのパス
-  -d, --diff               アップロード前にdiff viewerで確認
+  -d, --diff[=mode]        アップロード前にdiff viewerで確認
+                           mode: git (gitモードのデフォルト)
+                                 remote (fileモードのデフォルト)
+                                 both (両方表示)
   -n, --dry-run            dry-run（実際のアップロードは行わない）
       --delete             リモートの余分なファイルを削除（mirror同期）
   -b, --base <branch>      比較元ブランチ（gitモード用）
@@ -33,9 +36,14 @@ Options:
 Examples:
   uploader development                    基本的な使い方
   uploader --diff staging                 diff確認してからアップロード
+  uploader --diff=remote staging          リモートとの差分を確認
+  uploader --diff=both development        git差分とリモート差分の両方を確認
   uploader --dry-run production           dry-run モード
   uploader --base=main --target=feature/xxx development  ブランチを指定
 `.trim();
+
+/** 有効なdiffモード */
+const VALID_DIFF_MODES: readonly DiffMode[] = ["git", "remote", "both"];
 
 /**
  * ヘルプを表示
@@ -45,13 +53,39 @@ export function showHelp(): void {
 }
 
 /**
+ * diffオプションの値をパース
+ *
+ * - `--diff` (値なし) → "auto" (後でモードに応じて決定)
+ * - `--diff=git` → "git"
+ * - `--diff=remote` → "remote"
+ * - `--diff=both` → "both"
+ * - なし → false
+ */
+function parseDiffOption(value: boolean | string | undefined): DiffOption {
+  if (value === undefined || value === false) {
+    return false;
+  }
+  if (value === true) {
+    // --diff（値なし）の場合は "auto"
+    return "auto";
+  }
+  // 文字列の場合、有効なモードかチェック
+  const mode = value.toLowerCase();
+  if (VALID_DIFF_MODES.includes(mode as DiffMode)) {
+    return mode as DiffMode;
+  }
+  // 無効な値は "auto" として扱う
+  console.warn(`Warning: Invalid --diff mode "${value}". Using default mode.`);
+  return "auto";
+}
+
+/**
  * CLI引数をパース
  */
 export function parseArgs(args: string[]): CliArgs | null {
   const parsed = stdParseArgs(args, {
-    string: ["config", "base", "target", "log-file"],
+    string: ["config", "base", "target", "log-file", "diff"],
     boolean: [
-      "diff",
       "dry-run",
       "delete",
       "verbose",
@@ -62,7 +96,6 @@ export function parseArgs(args: string[]): CliArgs | null {
       "help",
     ],
     default: {
-      diff: false,
       "dry-run": false,
       delete: false,
       verbose: false,
@@ -110,10 +143,22 @@ export function parseArgs(args: string[]): CliArgs | null {
     }
   }
 
+  // diffオプションをパース
+  // -d フラグ（値なし）の場合、argsに "-d" が含まれているかチェック
+  let diffValue: boolean | string | undefined = parsed.diff;
+  if (
+    diffValue === undefined &&
+    (args.includes("-d") || args.includes("--diff"))
+  ) {
+    // 値なしのフラグとして使われた場合
+    diffValue = true;
+  }
+  const diffOption = parseDiffOption(diffValue);
+
   return {
     profile: parsed._[0] as string | undefined,
     config: parsed.config,
-    diff: parsed.diff,
+    diff: diffOption,
     dryRun: parsed["dry-run"],
     delete: parsed.delete,
     base: parsed.base,

@@ -35,6 +35,15 @@ uploader --port=8080 --diff <profile>       # diff viewerのポート指定
 
 uploader --version                          # バージョン表示
 uploader --help                             # ヘルプ表示
+
+# --diffモード指定（Phase 7）
+uploader --diff development                 # git diff（gitモードのデフォルト）
+uploader --diff=git development             # 明示的にgit diff
+uploader --diff=remote development          # ローカル vs リモート比較
+uploader --diff=both development            # 両方（タブ切り替え）
+
+uploader --diff staging                     # remote diff（fileモードのデフォルト）
+uploader --diff=git staging                 # エラー（fileモードでは非対応）
 ```
 
 ## 設定ファイル
@@ -457,14 +466,18 @@ Examples:
 ツリー:  ├─ └─
 ```
 
-### 実装ライブラリの候補（Deno）
+### UI実装（自前実装）
 
-- **cliffy** - コマンドライン引数パーサー、プロンプト
-- **chalk** (npm互換) - 色付け
-- **ora** (npm互換) - スピナー
-- **cli-progress** (npm互換) - プログレスバー
+Deno標準ライブラリの `@std/fmt/colors` をベースに自前実装。
 
-または Deno標準の `fmt/colors` + 自前実装
+| モジュール           | 機能                                  |
+| -------------------- | ------------------------------------- |
+| `src/ui/colors.ts`   | カラー定義、ボックス文字、アイコン    |
+| `src/ui/banner.ts`   | 起動バナー表示                        |
+| `src/ui/logger.ts`   | ログ出力、ボックス表示、サマリー表示  |
+| `src/ui/spinner.ts`  | スピナーアニメーション                |
+| `src/ui/progress.ts` | プログレスバー（単一/複数ターゲット） |
+| `src/ui/prompt.ts`   | インタラクティブ確認（y/n、入力）     |
 
 ---
 

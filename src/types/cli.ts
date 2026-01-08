@@ -5,13 +5,19 @@
 /** ログレベル */
 export type LogLevel = "verbose" | "normal" | "quiet";
 
+/** diff表示モードの種類 */
+export type DiffMode = "git" | "remote" | "both";
+
+/** diff指定の種類（auto = モードに応じてデフォルト値を使用） */
+export type DiffOption = false | DiffMode | "auto";
+
 /** CLI オプション */
 export interface CliOptions {
   /** 設定ファイルパス */
   config?: string;
 
-  /** diff viewerを開く */
-  diff: boolean;
+  /** diff viewerモード（false = 無効、auto = モードに応じたデフォルト、DiffMode = 指定値） */
+  diff: DiffOption;
 
   /** dry-run モード */
   dryRun: boolean;

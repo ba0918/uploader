@@ -2,6 +2,8 @@
  * ファイルモード関連の型定義
  */
 
+import type { FileSystem } from "./filesystem.ts";
+
 /** 収集されたファイル情報 */
 export interface CollectedFile {
   /** ソースファイルの絶対パス */
@@ -38,4 +40,6 @@ export interface FileCollectOptions {
   ignorePatterns?: string[];
   /** シンボリックリンクを追跡するか */
   followSymlinks?: boolean;
+  /** ファイルシステム（テスト用） */
+  fs?: FileSystem;
 }

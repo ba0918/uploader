@@ -12,7 +12,9 @@ import type {
   CollectedFile,
   FileCollectOptions,
   FileCollectResult,
+  FileSystem,
 } from "../types/mod.ts";
+import { defaultFileSystem } from "../types/mod.ts";
 import { IgnoreMatcher } from "./ignore.ts";
 
 /** ファイル収集エラー */
@@ -39,12 +41,14 @@ export class FileCollectError extends Error {
  * @param baseDir 基準ディレクトリ
  * @param ignoreMatcher ignoreパターンマッチャー
  * @param followSymlinks シンボリックリンクを追跡するか
+ * @param fs ファイルシステム（テスト用）
  */
 async function collectFromSource(
   source: string,
   baseDir: string,
   ignoreMatcher: IgnoreMatcher,
   followSymlinks: boolean,
+  fs: FileSystem = defaultFileSystem,
 ): Promise<CollectedFile[]> {
   const files: CollectedFile[] = [];
 
@@ -82,7 +86,7 @@ async function collectFromSource(
       }
 
       if (entry.isFile) {
-        const stat = await Deno.stat(entry.path);
+        const stat = await fs.stat(entry.path);
         files.push({
           sourcePath: entry.path,
           relativePath,
@@ -97,6 +101,7 @@ async function collectFromSource(
           relativePath,
           ignoreMatcher,
           followSymlinks,
+          fs,
         );
         files.push(...subFiles);
       }
@@ -104,7 +109,7 @@ async function collectFromSource(
   } else {
     // 通常のパスの場合
     try {
-      const stat = await Deno.stat(sourcePath);
+      const stat = await fs.stat(sourcePath);
 
       if (stat.isFile) {
         // ファイルの場合
@@ -136,6 +141,7 @@ async function collectFromSource(
           relativeBase,
           ignoreMatcher,
           followSymlinks,
+          fs,
         );
         files.push(...subFiles);
       }
@@ -165,16 +171,18 @@ async function collectFromSource(
  * @param relativeBase 相対パスのベース
  * @param ignoreMatcher ignoreパターンマッチャー
  * @param followSymlinks シンボリックリンクを追跡するか
+ * @param fs ファイルシステム（テスト用）
  */
 async function collectDirectory(
   dirPath: string,
   relativeBase: string,
   ignoreMatcher: IgnoreMatcher,
   followSymlinks: boolean,
+  fs: FileSystem = defaultFileSystem,
 ): Promise<CollectedFile[]> {
   const files: CollectedFile[] = [];
 
-  for await (const entry of Deno.readDir(dirPath)) {
+  for await (const entry of fs.readDir(dirPath)) {
     const entryPath = join(dirPath, entry.name);
     const relativePath = relativeBase
       ? join(relativeBase, entry.name)
@@ -189,7 +197,7 @@ async function collectDirectory(
     }
 
     if (entry.isFile) {
-      const stat = await Deno.stat(entryPath);
+      const stat = await fs.stat(entryPath);
       files.push({
         sourcePath: entryPath,
         relativePath: normalizedRelativePath,
@@ -213,12 +221,13 @@ async function collectDirectory(
         normalizedRelativePath,
         ignoreMatcher,
         followSymlinks,
+        fs,
       );
       files.push(...subFiles);
     } else if (entry.isSymlink && followSymlinks) {
       // シンボリックリンクを追跡する場合
-      const realPath = await Deno.realPath(entryPath);
-      const stat = await Deno.stat(realPath);
+      const realPath = await fs.realPath(entryPath);
+      const stat = await fs.stat(realPath);
 
       if (stat.isFile) {
         files.push({
@@ -234,6 +243,7 @@ async function collectDirectory(
           normalizedRelativePath,
           ignoreMatcher,
           followSymlinks,
+          fs,
         );
         files.push(...subFiles);
       }
@@ -273,6 +283,7 @@ export async function collectFiles(
     baseDir = Deno.cwd(),
     ignorePatterns = [],
     followSymlinks = false,
+    fs = defaultFileSystem,
   } = options;
 
   const ignoreMatcher = new IgnoreMatcher(ignorePatterns);
@@ -284,6 +295,7 @@ export async function collectFiles(
       baseDir,
       ignoreMatcher,
       followSymlinks,
+      fs,
     );
     allFiles.push(...files);
   }

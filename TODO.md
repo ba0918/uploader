@@ -50,41 +50,207 @@
   - logFileSummary, logNoFiles
 - [x] main.ts にファイルモード処理を統合
 
-## Phase 4: アップロード機能
+## 完了済み (Phase 4: アップロード機能)
 
-- [ ] src/upload/mod.ts - アップロードモジュール
-- [ ] src/upload/sftp.ts - SFTP転送（ssh2使用）
+- [x] src/types/upload.ts - アップロード関連の型定義
+  - UploadFile, TransferStatus, UploadResult等
+  - UploadError (エラーコード付き)
+- [x] src/upload/mod.ts - アップロードモジュール
+  - createUploader: プロトコルに応じたアップローダー作成
+  - diffFilesToUploadFiles: Git差分からUploadFileへ変換
+  - collectedFilesToUploadFiles: ファイル収集結果からUploadFileへ変換
+  - uploadToTargets: 複数ターゲットへの順次アップロード
+- [x] src/upload/sftp.ts - SFTP転送（ssh2使用）
   - npm:ssh2 パッケージの導入
   - SSH鍵認証、パスワード認証
+  - リトライ処理（指数バックオフ）
+  - ディレクトリ自動作成
+- [x] src/upload/scp.ts - SCP転送（外部コマンド）
+  - ssh/scpコマンドを使用
+  - SSH鍵認証対応
   - リトライ処理
-- [ ] src/upload/scp.ts - SCP転送（外部コマンド or ssh2）
-- [ ] src/upload/local.ts - ローカルコピー（Deno.copyFile）
-- [ ] src/upload/progress.ts - 転送進捗管理
-- [ ] 複数ターゲットへの順次/並列アップロード
+- [x] src/upload/local.ts - ローカルコピー（Deno API使用）
+  - ディレクトリ自動作成（ensureDir）
+  - タイムスタンプ保持オプション
+- [x] src/upload/progress.ts - 転送進捗管理
+  - TransferProgressManager クラス
+  - ファイル単位・ターゲット単位の進捗追跡
+- [x] src/ui/logger.ts - アップロード進捗表示
+  - logUploadStart, logUploadProgress, logUploadSuccess, logUploadFailure
+  - プログレスバー表示
+- [x] main.ts にアップロード処理を統合
 
-## Phase 5: diff viewer
+## 完了済み (Phase 5: diff viewer)
 
-- [ ] src/diff-viewer/mod.ts - diff viewerモジュール
-- [ ] src/diff-viewer/server.ts - HTTPサーバ（Deno.serve）
-- [ ] src/diff-viewer/websocket.ts - WebSocket接続管理
-- [ ] src/diff-viewer/static/ - フロントエンドファイル
-  - HTML/CSS/JS
-  - ディレクトリツリー表示
+- [x] src/diff-viewer/mod.ts - diff viewerモジュール
+  - startDiffViewer: diff viewer起動の統合関数
+  - ブラウザ自動起動 + CUIフォールバック
+- [x] src/diff-viewer/server.ts - HTTPサーバ（Deno.serve）
+  - 静的ファイル配信
+  - WebSocketハンドラ統合
+- [x] src/diff-viewer/browser.ts - ブラウザ起動
+  - プラットフォーム対応（darwin/windows/linux）
+  - WSL対応（wslview）
+  - cuiConfirm: CUIモードでの差分確認
+- [x] src/diff-viewer/static/html.ts - フロントエンドファイル
+  - HTML/CSS/JS（TypeScript文字列として埋め込み）
+  - ファイルツリー表示
   - side-by-side / unified 切替
-  - シンタックスハイライト
-- [ ] ブラウザ自動起動
-- [ ] フォールバック（CUIでの差分確認）
+  - LCSベースの簡易diffアルゴリズム
+- [x] src/types/diff-viewer.ts - diff viewer用型定義
+  - WebSocketメッセージ型
+  - DiffViewerOptions, DiffViewerResult
+- [x] main.ts に diff viewer 処理を統合
+  - --diff オプション対応
+  - ファイルモードでの警告表示
 
-## Phase 6: UI強化
+## 完了済み (Phase 6: UI強化)
 
-- [ ] src/ui/spinner.ts - スピナーアニメーション
-- [ ] src/ui/progress.ts - プログレスバー
-  - 単一ターゲット用
-  - 複数ターゲット用（並列表示）
-- [ ] src/ui/prompt.ts - インタラクティブ確認（y/n）
-- [ ] 成功/エラー時のボックス表示改善
+- [x] src/ui/spinner.ts - スピナーアニメーション
+  - createSpinner(): スピナーインスタンス作成
+  - withSpinner(): 非同期処理をスピナー付きで実行
+  - start/stop/update/succeed/fail/warn メソッド
+- [x] src/ui/progress.ts - プログレスバー
+  - createProgressBarString(): プログレスバー文字列生成
+  - renderSingleTargetProgress(): 単一ターゲット用表示
+  - renderMultiTargetProgress(): 複数ターゲット用並列表示
+  - createProgressDisplay(): 上書き更新対応コントローラ
+  - printInlineProgress(): 1行インライン表示
+- [x] src/ui/prompt.ts - インタラクティブ確認
+  - confirm(): Yes/No確認プロンプト
+  - confirmUpload(): アップロード確認ダイアログ
+  - input(): 文字列入力（パスワードマスク対応）
+  - select(): 選択肢プロンプト
+- [x] 成功/エラー時のボックス表示改善
+  - 動的幅計算（コンテンツに応じた幅調整）
+  - ANSIエスケープコード対応の文字幅計算
+  - logWarningBox(): 警告ボックス追加
 
-## Phase 7: その他
+## 【常時タスク】単体テスト & リファクタリング
+
+目標: コードカバレッジ90%以上
+
+### Phase T1: リファクタリング不要のテスト ✅ 完了
+
+| ファイル            | Branch % | Line % |
+| ------------------- | -------- | ------ |
+| cli/args.ts         | 100.0    | 100.0  |
+| config/env.ts       | 100.0    | 100.0  |
+| config/validator.ts | 90.9     | 89.7   |
+| file/ignore.ts      | 92.0     | 95.8   |
+| upload/progress.ts  | 87.5     | 94.9   |
+
+- [x] tests/config/validator_test.ts - 設定検証テスト
+- [x] tests/config/env_test.ts - 環境変数展開テスト
+- [x] tests/file/ignore_test.ts - パターンマッチングテスト
+- [x] tests/upload/progress_test.ts - 進捗管理テスト
+- [x] tests/cli/args_test.ts - CLI引数パーステスト
+
+### Phase T2: リファクタリング + テスト ✅ 完了
+
+| ファイル          | Branch % | Line % |
+| ----------------- | -------- | ------ |
+| git/diff.ts       | 90.9     | 96.9   |
+| file/collector.ts | 88.6     | 74.0   |
+| config/loader.ts  | 89.5     | 72.8   |
+
+- [x] CommandExecutor インターフェース導入
+  - src/types/executor.ts - コマンド実行インターフェース
+  - git/diff.ts の Deno.Command 呼び出しを抽象化
+  - tests/git/diff_test.ts - Git差分抽出テスト（モック使用）
+- [x] FileSystem インターフェース導入
+  - src/types/filesystem.ts - ファイルシステムインターフェース
+  - file/collector.ts の Deno.readDir/stat を抽象化
+  - tests/file/collector_test.ts - ファイル収集テスト（モック使用）
+- [x] config/loader.ts テスト
+  - tests/config/loader_test.ts - 設定読込テスト（一時ファイル使用）
+
+### Phase T3: 結合テスト（Docker環境）
+
+- [ ] docker-compose.test.yml 作成
+  - SFTPサーバ（atmoz/sftp）
+  - テスト用Gitリポジトリ
+- [ ] tests/integration/sftp_test.ts - SFTP転送テスト
+- [ ] tests/integration/scp_test.ts - SCP転送テスト
+- [ ] tests/integration/git_test.ts - 実Git操作テスト
+
+### テスト規約
+
+- Denoの標準テスト（@std/testing）を使用
+- ファイル命名: `*_test.ts`
+- テスト構造: `Deno.test()` + `describe/it` パターン
+- モック: 依存性注入でテスト用実装を渡す
+
+---
+
+## 完了済み (Phase 7: リモート比較機能)
+
+リモートサーバーとローカルファイルの差分を表示する機能。
+
+### 概要
+
+| モード | --diff=git     | --diff=remote        | デフォルト |
+| ------ | -------------- | -------------------- | ---------- |
+| git    | ブランチ間比較 | ローカル vs リモート | git        |
+| file   | ❌ エラー      | ローカル vs リモート | remote     |
+
+### タスク
+
+- [x] CLIオプション拡張
+  - [x] `--diff` を複数値対応に変更（git, remote, both）
+  - [x] fileモードのデフォルトを `remote` に
+  - [x] fileモードで `--diff=git` 指定時はエラー
+  - [x] src/types/cli.ts: DiffMode, DiffOption 型追加
+  - [x] src/cli/args.ts: parseDiffOption() 追加
+- [x] リモートファイル取得機能（基盤実装）
+  - [x] src/types/upload.ts: RemoteFileContent, Uploader.readFile() 追加
+  - [x] src/upload/sftp.ts: readFile() 実装
+  - [x] src/upload/scp.ts: readFile() 実装
+  - [x] src/upload/local.ts: readFile() 実装
+- [x] diff viewer 型定義拡張
+  - [x] src/types/diff-viewer.ts: DiffViewerOptions.diffMode 追加
+  - [x] src/types/diff-viewer.ts: DiffViewerOptions.targets, uploadFiles 追加
+  - [x] src/types/diff-viewer.ts: FileRequestType 型追加
+  - [x] src/types/diff-viewer.ts: WsFileResponseMessage 拡張（local/remote
+        フィールド）
+  - [x] src/types/diff-viewer.ts: WsInitMessage.data.diffMode, remoteTargets
+        追加
+- [x] diff viewer UI更新
+  - [x] タブ切り替え: [Git Diff] [Remote Diff]
+  - [x] diffModeに応じたタブ表示制御
+  - [x] remote diff表示対応（Local vs Remote ヘッダー表示）
+- [x] リモートファイル取得ロジック実装（server.ts）
+  - [x] requestType: "remote" 対応
+  - [x] requestType: "both" 対応
+  - [x] Uploaderへの接続・取得処理（キャッシュ付き）
+- [x] fileモードでのdiff viewer有効化
+  - [x] main.ts: remote diffモードの完全実装
+  - [x] 警告を削除
+- [x] ファイルステータス動的更新（remoteStatusに基づく）
+  - [x] src/types/diff-viewer.ts: WsFileResponseMessage.remoteStatus 追加
+  - [x] src/diff-viewer/server.ts: getLocalAndRemoteContentsでremoteStatus計算
+  - [x] src/diff-viewer/static/html.ts: updateFileStatus関数追加
+  - [x] src/diff-viewer/static/html.ts: "U"（Unchanged）ステータスCSS追加
+  - [x] 変更なしファイル選択時のメッセージ表示対応
+
+### 期待される動作
+
+```bash
+# gitモード
+uploader --diff development          # git diff（従来通り）
+uploader --diff=git development      # 明示的にgit diff
+uploader --diff=remote development   # ローカル vs リモート
+uploader --diff=both development     # 両方（タブ切り替え）
+
+# fileモード
+uploader --diff staging              # remote diff（デフォルト）
+uploader --diff=remote staging       # 明示的（同じ動作）
+uploader --diff=git staging          # エラー
+```
+
+---
+
+## Phase 8: その他
 
 - [ ] --log-file オプション実装
 - [ ] --strict モード実装
@@ -92,10 +258,6 @@
   - 接続失敗時のリトライ
   - 認証失敗時の即時終了
   - 部分失敗時のサマリー
-- [ ] テストコード作成
-  - 設定読込のテスト
-  - Git差分抽出のテスト
-  - モック使用のアップロードテスト
 
 ## 技術メモ
 
@@ -109,23 +271,26 @@
     "@std/fs": "jsr:@std/fs@^1",
     "@std/fmt": "jsr:@std/fmt@^1",
     "@std/cli": "jsr:@std/cli@^1",
-    "ssh2": "npm:ssh2@^1" // Phase 4で追加
+    "ssh2": "npm:ssh2@^1"
   }
 }
 ```
 
-### SSH接続（ssh2使用予定）
+### SSH接続（ssh2使用）
 
 ```typescript
-import { Client } from "npm:ssh2";
+import { Client, type SFTPWrapper } from "ssh2";
+import { Buffer } from "node:buffer";
 
-const conn = new Client();
-conn.on("ready", () => {
-  conn.sftp((err, sftp) => {
+const client = new Client();
+client.on("ready", () => {
+  client.sftp((err: Error | undefined, sftp: SFTPWrapper) => {
     // SFTP操作
+    const writeStream = sftp.createWriteStream("/remote/path");
+    writeStream.end(Buffer.from(data));
   });
 });
-conn.connect({
+client.connect({
   host: "example.com",
   username: "user",
   privateKey: await Deno.readTextFile("~/.ssh/id_rsa"),

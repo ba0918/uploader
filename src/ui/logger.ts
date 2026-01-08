@@ -15,6 +15,21 @@ import {
   warning,
 } from "./colors.ts";
 
+/**
+ * ANSIエスケープコードを除去
+ */
+function stripAnsi(str: string): string {
+  // deno-lint-ignore no-control-regex
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+/**
+ * 表示幅を計算（ANSIコード除去後）
+ */
+function getDisplayWidth(str: string): number {
+  return stripAnsi(str).length;
+}
+
 /** ロガー設定 */
 interface LoggerConfig {
   level: LogLevel;
@@ -117,6 +132,15 @@ export function logSectionLine(message: string, last = false): void {
 }
 
 /**
+ * セクションを閉じる（空の終端行）
+ */
+export function logSectionClose(): void {
+  if (config.level !== "quiet") {
+    console.log(box.bottomLeftSquare + box.horizontal);
+  }
+}
+
+/**
  * ツリー表示用の行を出力
  */
 export function logTreeItem(message: string, last = false, indent = 0): void {
@@ -170,10 +194,28 @@ export function logProfileInfo(
 }
 
 /**
+ * ボックスの内部幅を計算（動的幅対応）
+ */
+function calculateBoxWidth(
+  title: string,
+  lines: string[],
+  minWidth = 44,
+): number {
+  // タイトルの幅（アイコン + スペース + タイトル + 余白）
+  const titleWidth = 6 + getDisplayWidth(title) + 2;
+
+  // 各行の幅（インデント + テキスト + 余白）
+  const lineWidths = lines.map((l) => 6 + getDisplayWidth(l) + 2);
+
+  // 最大幅を計算（最小幅以上）
+  return Math.max(minWidth, titleWidth, ...lineWidths);
+}
+
+/**
  * 成功ボックスを表示
  */
 export function logSuccessBox(title: string, lines: string[]): void {
-  const width = 44;
+  const width = calculateBoxWidth(title, lines);
   const line = box.horizontal.repeat(width);
 
   console.log();
@@ -181,21 +223,25 @@ export function logSuccessBox(title: string, lines: string[]): void {
   console.log(
     success(box.vertical) + " ".repeat(width) + success(box.vertical),
   );
+
+  // タイトル行
+  const titlePadding = Math.max(0, width - 6 - getDisplayWidth(title));
   console.log(
     success(box.vertical) +
       "   " +
       success(icons.check) +
       "  " +
       bold(title) +
-      " ".repeat(Math.max(0, width - 6 - title.length)) +
+      " ".repeat(titlePadding) +
       success(box.vertical),
   );
   console.log(
     success(box.vertical) + " ".repeat(width) + success(box.vertical),
   );
 
+  // コンテンツ行
   for (const l of lines) {
-    const padding = Math.max(0, width - 6 - l.length);
+    const padding = Math.max(0, width - 6 - getDisplayWidth(l));
     console.log(
       success(box.vertical) + "      " + l + " ".repeat(padding) +
         success(box.vertical),
@@ -213,25 +259,29 @@ export function logSuccessBox(title: string, lines: string[]): void {
  * エラーボックスを表示
  */
 export function logErrorBox(title: string, lines: string[]): void {
-  const width = 44;
+  const width = calculateBoxWidth(title, lines);
   const line = box.horizontal.repeat(width);
 
   console.log();
   console.log(error(box.topLeft + line + box.topRight));
   console.log(error(box.vertical) + " ".repeat(width) + error(box.vertical));
+
+  // タイトル行
+  const titlePadding = Math.max(0, width - 6 - getDisplayWidth(title));
   console.log(
     error(box.vertical) +
       "   " +
       error(icons.cross) +
       "  " +
       bold(title) +
-      " ".repeat(Math.max(0, width - 6 - title.length)) +
+      " ".repeat(titlePadding) +
       error(box.vertical),
   );
   console.log(error(box.vertical) + " ".repeat(width) + error(box.vertical));
 
+  // コンテンツ行
   for (const l of lines) {
-    const padding = Math.max(0, width - 6 - l.length);
+    const padding = Math.max(0, width - 6 - getDisplayWidth(l));
     console.log(
       error(box.vertical) + "      " + l + " ".repeat(padding) +
         error(box.vertical),
@@ -240,6 +290,50 @@ export function logErrorBox(title: string, lines: string[]): void {
 
   console.log(error(box.vertical) + " ".repeat(width) + error(box.vertical));
   console.log(error(box.bottomLeft + line + box.bottomRight));
+  console.log();
+}
+
+/**
+ * 警告ボックスを表示
+ */
+export function logWarningBox(title: string, lines: string[]): void {
+  const width = calculateBoxWidth(title, lines);
+  const line = box.horizontal.repeat(width);
+
+  console.log();
+  console.log(warning(box.topLeft + line + box.topRight));
+  console.log(
+    warning(box.vertical) + " ".repeat(width) + warning(box.vertical),
+  );
+
+  // タイトル行
+  const titlePadding = Math.max(0, width - 6 - getDisplayWidth(title));
+  console.log(
+    warning(box.vertical) +
+      "   " +
+      warning(icons.warning) +
+      "  " +
+      bold(title) +
+      " ".repeat(titlePadding) +
+      warning(box.vertical),
+  );
+  console.log(
+    warning(box.vertical) + " ".repeat(width) + warning(box.vertical),
+  );
+
+  // コンテンツ行
+  for (const l of lines) {
+    const padding = Math.max(0, width - 6 - getDisplayWidth(l));
+    console.log(
+      warning(box.vertical) + "      " + l + " ".repeat(padding) +
+        warning(box.vertical),
+    );
+  }
+
+  console.log(
+    warning(box.vertical) + " ".repeat(width) + warning(box.vertical),
+  );
+  console.log(warning(box.bottomLeft + line + box.bottomRight));
   console.log();
 }
 
@@ -482,4 +576,241 @@ export function logNoFiles(): void {
   console.log();
   console.log(warning(icons.warning) + " " + warning("No files found"));
   console.log();
+}
+
+/** アップロード進捗 */
+export interface UploadProgress {
+  targetIndex: number;
+  totalTargets: number;
+  host: string;
+  fileIndex: number;
+  totalFiles: number;
+  currentFile: string;
+  status: string;
+}
+
+/**
+ * アップロード進捗を表示
+ */
+export function logUploadProgress(progress: UploadProgress): void {
+  if (config.level === "quiet") return;
+
+  const {
+    targetIndex,
+    totalTargets,
+    host,
+    fileIndex,
+    totalFiles,
+    currentFile,
+    status,
+  } = progress;
+
+  // カーソルを行頭に戻して上書き
+  const targetInfo = totalTargets > 1
+    ? ` [${targetIndex + 1}/${totalTargets}]`
+    : "";
+  const progressPercent = totalFiles > 0
+    ? Math.round((fileIndex / totalFiles) * 100)
+    : 0;
+  const progressBar = createProgressBar(progressPercent, 20);
+
+  // クリアして表示
+  Deno.stdout.writeSync(new TextEncoder().encode("\r\x1b[K"));
+
+  const statusIcon = status === "uploading" ? icons.arrowUp : icons.check;
+  const line = `${info(statusIcon)} ${
+    path(host)
+  }${targetInfo} ${progressBar} ${progressPercent}% (${fileIndex}/${totalFiles}) ${
+    dim(currentFile)
+  }`;
+
+  Deno.stdout.writeSync(new TextEncoder().encode(line));
+}
+
+/**
+ * アップロード進捗行をクリア
+ */
+export function clearUploadProgress(): void {
+  if (config.level === "quiet") return;
+  Deno.stdout.writeSync(new TextEncoder().encode("\r\x1b[K"));
+}
+
+/**
+ * プログレスバーを作成
+ */
+function createProgressBar(percent: number, width: number): string {
+  const filled = Math.round((percent / 100) * width);
+  const empty = width - filled;
+  return success("█".repeat(filled)) + dim("░".repeat(empty));
+}
+
+/**
+ * ファイルサイズを人間が読みやすい形式にフォーマット（エクスポート版）
+ */
+export function formatFileSizeExport(bytes: number): string {
+  return formatFileSize(bytes);
+}
+
+/**
+ * 時間を mm:ss 形式にフォーマット
+ */
+export function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes.toString().padStart(2, "0")}:${
+    remainingSeconds.toString().padStart(2, "0")
+  }`;
+}
+
+/** アップロード結果サマリー */
+export interface UploadResultSummary {
+  successTargets: number;
+  failedTargets: number;
+  totalFiles: number;
+  totalSize: number;
+  totalDuration: number;
+  targets: Array<{
+    host: string;
+    status: string;
+    successCount: number;
+    failedCount: number;
+    error?: string;
+  }>;
+}
+
+/**
+ * アップロード成功を表示
+ */
+export function logUploadSuccess(summary: UploadResultSummary): void {
+  const { successTargets, totalFiles, totalSize, totalDuration, targets } =
+    summary;
+
+  const lines = [
+    `${totalFiles} files uploaded to ${successTargets} target(s)`,
+    `Total size: ${formatFileSize(totalSize)}`,
+    `Total time: ${formatDuration(totalDuration)}`,
+  ];
+
+  logSuccessBox("Upload completed successfully!", lines);
+
+  // ターゲット別の詳細（verboseモード時）
+  if (config.level === "verbose") {
+    console.log(box.topLeftSquare + " " + bold("Target Details"));
+    console.log(box.vertical);
+    targets.forEach((target, i) => {
+      const isLast = i === targets.length - 1;
+      const prefix = isLast ? box.corner : box.branch;
+      const statusIcon = target.status === "completed"
+        ? success(icons.check)
+        : error(icons.cross);
+      console.log(
+        box.vertical + " " + prefix + " " + statusIcon + " " +
+          path(target.host) +
+          dim(` (${target.successCount} files)`),
+      );
+    });
+    console.log(box.bottomLeftSquare + box.horizontal);
+    console.log();
+  }
+}
+
+/**
+ * アップロード失敗を表示
+ */
+export function logUploadFailure(summary: UploadResultSummary): void {
+  const { successTargets, targets } = summary;
+
+  const lines: string[] = [];
+
+  // 失敗したターゲットの情報
+  const failedTargetsList = targets.filter((t) => t.status === "failed");
+  for (const target of failedTargetsList) {
+    lines.push(`${target.host}: ${target.error || "Unknown error"}`);
+  }
+
+  // 部分的な成功があれば表示
+  if (successTargets > 0) {
+    lines.push("");
+    lines.push("Partial results:");
+    for (const target of targets) {
+      const statusIcon = target.status === "completed"
+        ? icons.check
+        : icons.cross;
+      const statusColor = target.status === "completed" ? success : error;
+      lines.push(
+        `  ${statusColor(statusIcon)} ${target.host}: ${target.successCount}/${
+          target.successCount + target.failedCount
+        } files`,
+      );
+    }
+  }
+
+  logErrorBox("Upload failed", lines);
+}
+
+/**
+ * アップロード開始を表示
+ */
+export function logUploadStart(
+  targetCount: number,
+  fileCount: number,
+  totalSize: number,
+): void {
+  if (config.level === "quiet") return;
+
+  console.log();
+  console.log(box.topLeftSquare + " " + bold("Starting upload"));
+  console.log(box.vertical);
+  console.log(
+    box.teeRight + box.horizontal + " Targets: " + info(`${targetCount}`),
+  );
+  console.log(
+    box.teeRight + box.horizontal + " Files: " + info(`${fileCount}`),
+  );
+  console.log(
+    box.bottomLeftSquare + box.horizontal + " Size: " +
+      info(formatFileSize(totalSize)),
+  );
+  console.log();
+}
+
+/**
+ * ターゲット接続中を表示
+ */
+export function logConnecting(host: string): void {
+  if (config.level === "quiet") return;
+  console.log(info(icons.info) + " Connecting to " + path(host) + "...");
+}
+
+/**
+ * ターゲット接続完了を表示
+ */
+export function logConnected(host: string): void {
+  if (config.level === "quiet") return;
+  console.log(success(icons.check) + " Connected to " + path(host));
+}
+
+/**
+ * ターゲット完了を表示
+ */
+export function logTargetComplete(
+  host: string,
+  successCount: number,
+  failedCount: number,
+  duration: number,
+): void {
+  if (config.level === "quiet") return;
+
+  const statusIcon = failedCount === 0
+    ? success(icons.check)
+    : warning(icons.warning);
+  const statusText = failedCount === 0
+    ? success(`${successCount} files`)
+    : warning(`${successCount} succeeded, ${failedCount} failed`);
+
+  console.log(
+    statusIcon + " " + path(host) + " " + statusText +
+      dim(` (${formatDuration(duration)})`),
+  );
 }

@@ -5,15 +5,22 @@
 import {
   blue,
   bold as boldFn,
-  cyan,
+  cyan as cyanFn,
   dim as dimFn,
   gray as grayFn,
-  green,
+  green as greenFn,
   italic as italicFn,
-  red,
+  red as redFn,
   underline as underlineFn,
-  yellow,
+  yellow as yellowFn,
 } from "@std/fmt/colors";
+
+/** 基本色 (直接エクスポート) */
+export const green = greenFn;
+export const red = redFn;
+export const yellow = yellowFn;
+export const cyan = cyanFn;
+export const blue2 = blue;
 
 /** 成功、追加されたファイル */
 export const success = green;
