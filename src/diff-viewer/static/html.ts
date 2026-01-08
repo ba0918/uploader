@@ -768,6 +768,82 @@ export function getHtmlContent(): string {
     .progress-modal .btn {
       margin-top: 20px;
     }
+
+    /* 確認モーダル */
+    .confirm-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .confirm-modal-content {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 24px;
+      min-width: 400px;
+      max-width: 500px;
+    }
+
+    .confirm-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .confirm-icon {
+      font-size: 24px;
+      color: var(--accent-blue);
+    }
+
+    .confirm-title {
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .confirm-message {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .confirm-details {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .confirm-details-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .confirm-details-label {
+      color: var(--text-secondary);
+    }
+
+    .confirm-details-value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
   </style>
 </head>
 <body>
@@ -1021,6 +1097,75 @@ export function getHtmlContent(): string {
         </div>
         \`;
       }
+    }
+
+    // 確認モーダルを表示
+    function showConfirmModal() {
+      // 既存のモーダルを削除
+      const existing = document.getElementById('confirm-modal');
+      if (existing) existing.remove();
+
+      // ファイル数とターゲット情報を取得
+      const fileCount = state.files.length;
+      const targetCount = state.remoteTargets.length;
+      const targetHost = state.remoteTargets.length > 0 ? state.remoteTargets[0].host : 'unknown';
+
+      const modal = document.createElement('div');
+      modal.id = 'confirm-modal';
+      modal.className = 'confirm-modal';
+      modal.innerHTML = \`
+        <div class="confirm-modal-content">
+          <div class="confirm-header">
+            <span class="confirm-icon">&#8593;</span>
+            <span class="confirm-title">Confirm Upload</span>
+          </div>
+          <div class="confirm-message">
+            Are you sure you want to upload these files to the remote server?
+          </div>
+          <div class="confirm-details">
+            <div class="confirm-details-row">
+              <span class="confirm-details-label">Files</span>
+              <span class="confirm-details-value">\${fileCount} file(s)</span>
+            </div>
+            <div class="confirm-details-row">
+              <span class="confirm-details-label">Target</span>
+              <span class="confirm-details-value">\${escapeHtml(targetHost)}\${targetCount > 1 ? ' (+' + (targetCount - 1) + ' more)' : ''}</span>
+            </div>
+          </div>
+          <div class="confirm-actions">
+            <button class="btn btn-secondary" id="confirm-cancel-btn">Cancel</button>
+            <button class="btn btn-primary" id="confirm-upload-btn">Upload</button>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+
+      // イベントリスナー
+      document.getElementById('confirm-cancel-btn').addEventListener('click', () => {
+        modal.remove();
+      });
+
+      document.getElementById('confirm-upload-btn').addEventListener('click', () => {
+        modal.remove();
+        showProgressModal();
+        state.ws.send(JSON.stringify({ type: 'confirm' }));
+      });
+
+      // 背景クリックでキャンセル
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+
+      // Escキーでキャンセル
+      const escHandler = (e) => {
+        if (e.key === 'Escape') {
+          modal.remove();
+          document.removeEventListener('keydown', escHandler);
+        }
+      };
+      document.addEventListener('keydown', escHandler);
     }
 
     // 時間フォーマット
@@ -1703,8 +1848,7 @@ export function getHtmlContent(): string {
     elements.tabRemoteDiff.addEventListener('click', () => switchDiffTab('remote'));
 
     elements.uploadBtn.addEventListener('click', () => {
-      showProgressModal();
-      state.ws.send(JSON.stringify({ type: 'confirm' }));
+      showConfirmModal();
     });
 
     elements.cancelBtn.addEventListener('click', () => {

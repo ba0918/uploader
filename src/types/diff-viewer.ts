@@ -37,6 +37,8 @@ export interface DiffViewerResult {
   cancelReason?: "user_cancel" | "connection_closed" | "timeout";
   /** 進捗コントローラー（confirm時のみ存在） */
   progressController?: DiffViewerProgressController;
+  /** 変更があったファイルのパスリスト（remote diffモード時のみ） */
+  changedFiles?: string[];
 }
 
 /** diff-viewer進捗コントローラー */

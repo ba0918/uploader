@@ -6,6 +6,7 @@ export * from "./colors.ts";
 export { getVersion, showBanner, showVersion } from "./banner.ts";
 export {
   clearUploadProgress,
+  closeLogger,
   formatDuration,
   formatFileSizeExport,
   getLogLevel,

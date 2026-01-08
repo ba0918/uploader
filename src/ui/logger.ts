@@ -41,11 +41,117 @@ let config: LoggerConfig = {
   level: "normal",
 };
 
+/** ログファイルハンドル */
+let logFileHandle: Deno.FsFile | null = null;
+
+/** ログバッファ（バッチ書き込み用） */
+let logBuffer: string[] = [];
+
+/** ログバッファのフラッシュタイマー */
+let flushTimer: number | null = null;
+
 /**
  * ロガーを初期化
  */
-export function initLogger(options: Partial<LoggerConfig>): void {
+export async function initLogger(
+  options: Partial<LoggerConfig>,
+): Promise<void> {
+  // 既存のログファイルを閉じる
+  await closeLogger();
+
   config = { ...config, ...options };
+
+  // ログファイルを開く
+  if (config.logFile) {
+    try {
+      logFileHandle = await Deno.open(config.logFile, {
+        write: true,
+        create: true,
+        truncate: true,
+      });
+
+      // ヘッダーを書き込み
+      const timestamp = new Date().toISOString();
+      await writeToLogFile(`=== uploader log started at ${timestamp} ===\n\n`);
+    } catch (error) {
+      console.error(
+        `Warning: Failed to open log file: ${config.logFile}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      logFileHandle = null;
+    }
+  }
+}
+
+/**
+ * ログファイルに書き込み
+ */
+async function writeToLogFile(message: string): Promise<void> {
+  if (!logFileHandle) return;
+
+  try {
+    const encoder = new TextEncoder();
+    await logFileHandle.write(encoder.encode(message));
+  } catch {
+    // 書き込み失敗は無視
+  }
+}
+
+/**
+ * ログバッファをフラッシュ
+ */
+async function flushLogBuffer(): Promise<void> {
+  if (logBuffer.length === 0 || !logFileHandle) return;
+
+  const messages = logBuffer.join("");
+  logBuffer = [];
+  await writeToLogFile(messages);
+}
+
+/**
+ * ログをバッファに追加（遅延書き込み）
+ */
+function bufferLogMessage(message: string): void {
+  if (!logFileHandle) return;
+
+  logBuffer.push(message);
+
+  // フラッシュタイマーをリセット
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+  }
+
+  // 100ms後にフラッシュ
+  flushTimer = setTimeout(() => {
+    flushLogBuffer();
+    flushTimer = null;
+  }, 100);
+}
+
+/**
+ * ロガーを閉じる（リソース解放）
+ */
+export async function closeLogger(): Promise<void> {
+  // バッファをフラッシュ
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  await flushLogBuffer();
+
+  // ファイルを閉じる
+  if (logFileHandle) {
+    try {
+      // フッターを書き込み
+      const timestamp = new Date().toISOString();
+      await writeToLogFile(`\n=== uploader log ended at ${timestamp} ===\n`);
+      logFileHandle.close();
+    } catch {
+      // クローズ失敗は無視
+    }
+    logFileHandle = null;
+  }
 }
 
 /**
@@ -73,18 +179,22 @@ export function isQuiet(): boolean {
  * 情報ログを出力
  */
 export function logInfo(message: string): void {
+  const output = info(icons.info) + " " + message;
   if (config.level !== "quiet") {
-    console.log(info(icons.info) + " " + message);
+    console.log(output);
   }
+  bufferLogMessage("[INFO] " + message + "\n");
 }
 
 /**
  * 成功ログを出力
  */
 export function logSuccess(message: string): void {
+  const output = success(icons.check) + " " + message;
   if (config.level !== "quiet") {
-    console.log(success(icons.check) + " " + message);
+    console.log(output);
   }
+  bufferLogMessage("[SUCCESS] " + message + "\n");
 }
 
 /**
@@ -92,6 +202,7 @@ export function logSuccess(message: string): void {
  */
 export function logWarning(message: string): void {
   console.log(warning(icons.warning) + " " + warning(message));
+  bufferLogMessage("[WARNING] " + message + "\n");
 }
 
 /**
@@ -99,6 +210,7 @@ export function logWarning(message: string): void {
  */
 export function logError(message: string): void {
   console.error(error(icons.cross) + " " + error(message));
+  bufferLogMessage("[ERROR] " + message + "\n");
 }
 
 /**
@@ -108,6 +220,8 @@ export function logVerbose(message: string): void {
   if (config.level === "verbose") {
     console.log(dim("  " + message));
   }
+  // ファイルには常に出力
+  bufferLogMessage("[VERBOSE] " + message + "\n");
 }
 
 /**
@@ -119,6 +233,7 @@ export function logSection(title: string): void {
     console.log(box.topLeftSquare + " " + bold(title));
     console.log(box.vertical);
   }
+  bufferLogMessage("\n--- " + title + " ---\n");
 }
 
 /**
@@ -129,6 +244,7 @@ export function logSectionLine(message: string, last = false): void {
     const prefix = last ? box.bottomLeftSquare : box.teeRight;
     console.log(prefix + box.horizontal + " " + message);
   }
+  bufferLogMessage("  " + stripAnsi(message) + "\n");
 }
 
 /**
@@ -138,6 +254,7 @@ export function logSectionClose(): void {
   if (config.level !== "quiet") {
     console.log(box.bottomLeftSquare + box.horizontal);
   }
+  bufferLogMessage("\n");
 }
 
 /**
@@ -149,6 +266,7 @@ export function logTreeItem(message: string, last = false, indent = 0): void {
     const indentStr = "   ".repeat(indent);
     console.log(box.vertical + indentStr + "   " + prefix + " " + message);
   }
+  bufferLogMessage("    " + "  ".repeat(indent) + stripAnsi(message) + "\n");
 }
 
 /**
@@ -162,6 +280,16 @@ export function logProfileInfo(
   targets: Array<{ host: string; protocol: string }>,
   ignoreCount: number,
 ): void {
+  // ファイル出力用のメッセージを構築
+  const fileLines = [
+    `\n--- Loading profile: ${profileName} ---`,
+    `  From: ${fromType} (${fromDetail})`,
+    `  To: ${targetCount} target(s)`,
+    ...targets.map((t) => `    - ${t.host} (${t.protocol})`),
+    `  Ignore: ${ignoreCount} pattern(s)\n`,
+  ];
+  bufferLogMessage(fileLines.join("\n") + "\n");
+
   if (config.level === "quiet") return;
 
   console.log();
@@ -215,6 +343,14 @@ function calculateBoxWidth(
  * 成功ボックスを表示
  */
 export function logSuccessBox(title: string, lines: string[]): void {
+  // ファイル出力
+  const fileLines = [
+    `\n[SUCCESS] ${title}`,
+    ...lines.map((l) => `  ${stripAnsi(l)}`),
+    "",
+  ];
+  bufferLogMessage(fileLines.join("\n") + "\n");
+
   const width = calculateBoxWidth(title, lines);
   const line = box.horizontal.repeat(width);
 
@@ -259,6 +395,14 @@ export function logSuccessBox(title: string, lines: string[]): void {
  * エラーボックスを表示
  */
 export function logErrorBox(title: string, lines: string[]): void {
+  // ファイル出力
+  const fileLines = [
+    `\n[ERROR] ${title}`,
+    ...lines.map((l) => `  ${stripAnsi(l)}`),
+    "",
+  ];
+  bufferLogMessage(fileLines.join("\n") + "\n");
+
   const width = calculateBoxWidth(title, lines);
   const line = box.horizontal.repeat(width);
 
@@ -297,6 +441,14 @@ export function logErrorBox(title: string, lines: string[]): void {
  * 警告ボックスを表示
  */
 export function logWarningBox(title: string, lines: string[]): void {
+  // ファイル出力
+  const fileLines = [
+    `\n[WARNING] ${title}`,
+    ...lines.map((l) => `  ${stripAnsi(l)}`),
+    "",
+  ];
+  bufferLogMessage(fileLines.join("\n") + "\n");
+
   const width = calculateBoxWidth(title, lines);
   const line = box.horizontal.repeat(width);
 
@@ -354,10 +506,26 @@ export interface DiffSummary {
  * 差分サマリーを表示
  */
 export function logDiffSummary(summary: DiffSummary, maxFiles = 5): void {
-  if (config.level === "quiet") return;
-
   const { added, modified, deleted, renamed, files } = summary;
   const total = files.length;
+
+  // ファイル出力
+  const fileLines = [
+    "\n--- Changes detected ---",
+    `  Added: ${added} file(s)`,
+    `  Modified: ${modified} file(s)`,
+    `  Deleted: ${deleted} file(s)`,
+    `  Renamed: ${renamed} file(s)`,
+    `  Total: ${total} file(s)`,
+    "",
+    "  Files:",
+    ...files.slice(0, 20).map((f) => `    [${f.status}] ${f.path}`),
+    files.length > 20 ? `    ... and ${files.length - 20} more` : "",
+    "",
+  ];
+  bufferLogMessage(fileLines.filter((l) => l).join("\n") + "\n");
+
+  if (config.level === "quiet") return;
 
   console.log();
   console.log(box.topLeftSquare + " " + bold("Changes detected"));
@@ -465,6 +633,8 @@ function logFileList(
  * 変更なしメッセージを表示
  */
 export function logNoChanges(): void {
+  bufferLogMessage("[INFO] No changes detected\n");
+
   if (config.level === "quiet") return;
 
   console.log();
@@ -509,9 +679,27 @@ function formatFileSize(bytes: number): string {
  * ファイル収集サマリーを表示
  */
 export function logFileSummary(summary: FileSummary, maxFiles = 10): void {
-  if (config.level === "quiet") return;
-
   const { fileCount, directoryCount, totalSize, files, sources } = summary;
+
+  // ファイル出力
+  const fileList = files.filter((f) => !f.isDirectory);
+  const fileLogLines = [
+    "\n--- Files collected ---",
+    `  Source: ${sources.join(", ")}`,
+    `  Files: ${fileCount}`,
+    `  Directories: ${directoryCount}`,
+    `  Total size: ${formatFileSize(totalSize)}`,
+    "",
+    "  File list:",
+    ...fileList.slice(0, 20).map((f) =>
+      `    ${f.relativePath} (${formatFileSize(f.size)})`
+    ),
+    fileList.length > 20 ? `    ... and ${fileList.length - 20} more` : "",
+    "",
+  ];
+  bufferLogMessage(fileLogLines.filter((l) => l).join("\n") + "\n");
+
+  if (config.level === "quiet") return;
 
   console.log();
   console.log(box.topLeftSquare + " " + bold("Files collected"));
@@ -541,8 +729,7 @@ export function logFileSummary(summary: FileSummary, maxFiles = 10): void {
   );
   console.log(box.vertical);
 
-  // ファイル一覧表示（ディレクトリ以外）
-  const fileList = files.filter((f) => !f.isDirectory);
+  // ファイル一覧表示（ディレクトリ以外）- fileListは既に上で定義済み
   const displayCount = Math.min(fileList.length, maxFiles);
 
   console.log(box.teeRight + box.horizontal + " " + info("Files"));
@@ -571,6 +758,8 @@ export function logFileSummary(summary: FileSummary, maxFiles = 10): void {
  * ファイルなしメッセージを表示
  */
 export function logNoFiles(): void {
+  bufferLogMessage("[WARNING] No files found\n");
+
   if (config.level === "quiet") return;
 
   console.log();
@@ -757,6 +946,16 @@ export function logUploadStart(
   fileCount: number,
   totalSize: number,
 ): void {
+  // ファイル出力
+  const fileLines = [
+    "\n--- Starting upload ---",
+    `  Targets: ${targetCount}`,
+    `  Files: ${fileCount}`,
+    `  Size: ${formatFileSize(totalSize)}`,
+    "",
+  ];
+  bufferLogMessage(fileLines.join("\n") + "\n");
+
   if (config.level === "quiet") return;
 
   console.log();

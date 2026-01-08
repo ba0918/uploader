@@ -58,15 +58,22 @@ function resolveDiffMode(
     };
   }
 
+  // fileモードで--diff=bothはremoteにフォールバック（git diffは存在しないため）
+  if (sourceType === "file" && diffOption === "both") {
+    return { mode: "remote" };
+  }
+
   return { mode: diffOption };
 }
 import {
   clearUploadProgress,
+  closeLogger,
   dim,
   initLogger,
   logDiffSummary,
   logError,
   logFileSummary,
+  logInfo,
   logNoChanges,
   logNoFiles,
   logProfileInfo,
@@ -110,7 +117,7 @@ async function main(): Promise<number> {
     } else if (args.quiet) {
       logLevel = "quiet";
     }
-    initLogger({ level: logLevel });
+    await initLogger({ level: logLevel, logFile: args.logFile });
 
     // バナー表示（quiet モード以外）
     if (logLevel !== "quiet") {
@@ -312,6 +319,17 @@ async function main(): Promise<number> {
 
         // 進捗コントローラーを保存
         diffViewerController = viewerResult.progressController;
+
+        // remote diffモードの場合、変更があったファイルのみにフィルタリング
+        if (viewerResult.changedFiles) {
+          const changedSet = new Set(viewerResult.changedFiles);
+          uploadFiles = uploadFiles.filter(
+            (f) => changedSet.has(f.relativePath),
+          );
+          logInfo(
+            `Filtered to ${uploadFiles.length} changed files (remote diff)`,
+          );
+        }
       }
     }
 
@@ -461,5 +479,6 @@ async function main(): Promise<number> {
 // エントリーポイント
 if (import.meta.main) {
   const exitCode = await main();
+  await closeLogger();
   Deno.exit(exitCode);
 }

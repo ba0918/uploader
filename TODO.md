@@ -252,7 +252,8 @@ uploader --diff=git staging          # エラー
 
 ## 完了済み (Phase 7.5: diff viewerリアルタイム進捗表示)
 
-diff viewerで「Upload」「Cancel」ボタン押下時に適切なフィードバックを表示する機能。
+diff
+viewerで「Upload」「Cancel」ボタン押下時に適切なフィードバックを表示する機能。
 
 ### 背景
 
@@ -287,25 +288,33 @@ diff viewerで「Upload」「Cancel」ボタン押下時に適切なフィード
 ### 動作
 
 **「Upload」ボタン押下時:**
+
 1. 進捗モーダルが表示される
 2. ホスト名、ファイル名、プログレスバーがリアルタイムで更新される
 3. 完了時: 「Upload Complete」と統計情報（ファイル数、時間、サイズ）が表示される
 4. エラー時: 「Upload Failed」とエラーメッセージが表示される
 
 **「Cancel」ボタン押下時:**
+
 - 「Upload Cancelled」モーダルが表示される
 - 「You can close this page now.」メッセージが表示される
 
 ---
 
-## Phase 8: その他
+## 完了済み (Phase 8: その他)
 
-- [ ] --log-file オプション実装
-- [ ] --strict モード実装
-- [ ] エラーハンドリング強化
-  - 接続失敗時のリトライ
-  - 認証失敗時の即時終了
-  - 部分失敗時のサマリー
+- [x] --log-file オプション実装
+  - ログファイルへの書き込み機能
+  - ANSIカラーコード除去によるプレーンテキスト出力
+  - バッファリングによる効率的なファイルI/O
+  - 開始/終了タイムスタンプの記録
+- [x] --strict モード実装（Phase 4で実装済み）
+  - ファイル転送エラー時の即座終了
+  - uploadToTarget関数でoptions.strictをチェック
+- [x] エラーハンドリング強化（Phase 4で実装済み）
+  - 接続失敗時のリトライ（SFTP/SCPで指数バックオフ）
+  - 認証失敗時の即時終了（AUTH_ERRORコードで検出）
+  - 部分失敗時のサマリー（logUploadFailureで表示）
 
 ## 技術メモ
 

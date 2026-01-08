@@ -21,6 +21,25 @@ import type {
 import { getFileDiffContents } from "../git/file-reader.ts";
 import { getHtmlContent } from "./static/html.ts";
 import { createUploader } from "../upload/mod.ts";
+import { isVerbose } from "../ui/mod.ts";
+
+/**
+ * デバッグログを出力（verboseモード時のみ）
+ */
+function debugLog(message: string, ...args: unknown[]): void {
+  if (isVerbose()) {
+    console.log(message, ...args);
+  }
+}
+
+/**
+ * デバッグエラーを出力（verboseモード時のみ）
+ */
+function debugError(message: string, ...args: unknown[]): void {
+  if (isVerbose()) {
+    console.error(message, ...args);
+  }
+}
 
 /** サーバの状態 */
 interface ServerState {
@@ -38,6 +57,8 @@ interface ServerState {
   uploader: Uploader | null;
   /** 接続エラー（発生した場合） */
   connectionError: string | null;
+  /** 変更があったファイルのパスリスト（remote diffモード時のみ） */
+  changedFiles: string[] | null;
 }
 
 /**
@@ -112,6 +133,7 @@ export function startDiffViewerServer(
       options,
       uploader: null,
       connectionError: null,
+      changedFiles: null,
     };
 
     const server = Deno.serve(
@@ -227,7 +249,7 @@ async function sendInitMessage(
   // remoteモードのみ（bothは除く）の場合、全ファイルのremoteStatusをチェックして差分があるファイルのみを返す
   // bothモードの場合はgitの差分をそのまま使用し、remote statusはファイル選択時に取得する
   if (options.diffMode === "remote") {
-    console.log(
+    debugLog(
       `[RemoteDiff] Checking remote status for ${files.length} files...`,
     );
 
@@ -241,7 +263,7 @@ async function sendInitMessage(
           );
           return { file, remoteStatus };
         } catch (error) {
-          console.error(
+          debugError(
             `[RemoteDiff] Error checking status for ${file.path}:`,
             error,
           );
@@ -281,9 +303,12 @@ async function sendInitMessage(
       total: files.length,
     };
 
-    console.log(
+    debugLog(
       `[RemoteDiff] Found ${files.length} files with changes (${added} new, ${modified} modified)`,
     );
+
+    // 変更があったファイルのパスリストを保存
+    state.changedFiles = files.map((f) => f.path);
   }
 
   const message: WsInitMessage = {
@@ -330,7 +355,11 @@ async function handleWebSocketMessage(
       // WebSocket接続は維持し、進捗コントローラーを作成して返却
       // state.socketはnullにしない（oncloseでの誤検知を防ぐ）
       const progressController = createProgressController(socket, state);
-      state.resolve({ confirmed: true, progressController });
+      state.resolve({
+        confirmed: true,
+        progressController,
+        changedFiles: state.changedFiles ?? undefined,
+      });
       break;
     }
 
@@ -457,7 +486,7 @@ async function getLocalAndRemoteContents(
     local.content !== remote.content ||
     local.isBinary !== remote.isBinary;
 
-  console.log(
+  debugLog(
     `[RemoteDiff] Status for ${path}: exists=${remoteExists}, hasChanges=${hasChanges}`,
   );
 
@@ -482,13 +511,13 @@ async function getLocalFileContent(
 
   if (!file) {
     // ファイルが見つからない場合は空のバイト配列を返す
-    console.log(`[RemoteDiff] Local file not found in uploadFiles: ${path}`);
+    debugLog(`[RemoteDiff] Local file not found in uploadFiles: ${path}`);
     return new Uint8Array(0);
   }
 
   if (file.content) {
     // Gitモードの場合: contentプロパティから取得
-    console.log(
+    debugLog(
       `[RemoteDiff] Local file from git content: ${path} (${file.content.length} bytes)`,
     );
     return file.content;
@@ -496,17 +525,17 @@ async function getLocalFileContent(
     // ファイルモードの場合: ファイルを読み込み
     try {
       const content = await Deno.readFile(file.sourcePath);
-      console.log(
+      debugLog(
         `[RemoteDiff] Local file from disk: ${path} (${content.length} bytes)`,
       );
       return content;
     } catch (error) {
-      console.error(`[RemoteDiff] Error reading local file ${path}:`, error);
+      debugError(`[RemoteDiff] Error reading local file ${path}:`, error);
       return new Uint8Array(0);
     }
   }
 
-  console.log(`[RemoteDiff] Local file has no content or sourcePath: ${path}`);
+  debugLog(`[RemoteDiff] Local file has no content or sourcePath: ${path}`);
   return new Uint8Array(0);
 }
 
@@ -521,13 +550,13 @@ async function getRemoteFileContent(
 
   // ターゲットが設定されていない場合はnullを返す
   if (!targets || targets.length === 0) {
-    console.log(`[RemoteDiff] No targets configured for path: ${path}`);
+    debugLog(`[RemoteDiff] No targets configured for path: ${path}`);
     return null;
   }
 
   try {
     // Uploaderを取得または作成
-    console.log(`[RemoteDiff] Fetching remote file: ${path}`);
+    debugLog(`[RemoteDiff] Fetching remote file: ${path}`);
     const uploader = await getOrCreateUploader(state);
 
     // リモートファイルを読み取り
@@ -535,16 +564,16 @@ async function getRemoteFileContent(
 
     if (!remoteFile) {
       // ファイルが存在しない場合
-      console.log(`[RemoteDiff] Remote file not found: ${path}`);
+      debugLog(`[RemoteDiff] Remote file not found: ${path}`);
       return null;
     }
 
-    console.log(
+    debugLog(
       `[RemoteDiff] Remote file fetched: ${path} (${remoteFile.size} bytes)`,
     );
     return remoteFile.content;
   } catch (error) {
-    console.error(`[RemoteDiff] Error fetching remote file ${path}:`, error);
+    debugError(`[RemoteDiff] Error fetching remote file ${path}:`, error);
     return null;
   }
 }
@@ -560,7 +589,7 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
 
   // 既にUploaderが存在する場合はそれを返す
   if (state.uploader) {
-    console.log("[RemoteDiff] Using cached uploader connection");
+    debugLog("[RemoteDiff] Using cached uploader connection");
     return state.uploader;
   }
 
@@ -574,16 +603,16 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
 
   // 最初のターゲットを使用
   const target = targets[0];
-  console.log(
+  debugLog(
     `[RemoteDiff] Creating new uploader for ${target.host}:${target.dest}`,
   );
   const uploader = createUploader(target);
 
   // 接続
-  console.log(`[RemoteDiff] Connecting to ${target.host}...`);
+  debugLog(`[RemoteDiff] Connecting to ${target.host}...`);
   try {
     await uploader.connect();
-    console.log(`[RemoteDiff] Connected to ${target.host}`);
+    debugLog(`[RemoteDiff] Connected to ${target.host}`);
     state.uploader = uploader;
     return uploader;
   } catch (error) {
@@ -592,7 +621,7 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
       error instanceof Error ? error.message : String(error)
     }`;
     state.connectionError = errorMessage;
-    console.error(`[RemoteDiff] ${errorMessage}`);
+    debugError(`[RemoteDiff] ${errorMessage}`);
     throw new Error(errorMessage);
   }
 }
