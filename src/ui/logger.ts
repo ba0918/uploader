@@ -377,3 +377,109 @@ export function logNoChanges(): void {
   console.log(info(icons.info) + " " + dim("No changes detected"));
   console.log();
 }
+
+/** ファイル収集サマリー */
+export interface FileSummary {
+  fileCount: number;
+  directoryCount: number;
+  totalSize: number;
+  files: Array<{
+    relativePath: string;
+    size: number;
+    isDirectory: boolean;
+  }>;
+  sources: string[];
+}
+
+/**
+ * ファイルサイズを人間が読みやすい形式にフォーマット
+ */
+function formatFileSize(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let unitIndex = 0;
+  let size = bytes;
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+
+  if (unitIndex === 0) {
+    return `${size} ${units[unitIndex]}`;
+  }
+
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/**
+ * ファイル収集サマリーを表示
+ */
+export function logFileSummary(summary: FileSummary, maxFiles = 10): void {
+  if (config.level === "quiet") return;
+
+  const { fileCount, directoryCount, totalSize, files, sources } = summary;
+
+  console.log();
+  console.log(box.topLeftSquare + " " + bold("Files collected"));
+  console.log(box.vertical);
+
+  // ソース表示
+  console.log(
+    box.vertical + "   " + info(icons.folder) + "  " +
+      info(`Source: ${sources.join(", ")}`),
+  );
+  console.log(box.vertical);
+
+  // 統計表示
+  console.log(
+    box.vertical + "   " + success(icons.file) + "  " +
+      success(`${fileCount} file(s)`),
+  );
+  if (directoryCount > 0) {
+    console.log(
+      box.vertical + "   " + info(icons.folder) + "  " +
+        info(`${directoryCount} director(ies)`),
+    );
+  }
+  console.log(box.vertical + "   " + dim(box.horizontal.repeat(20)));
+  console.log(
+    box.vertical + "      " + bold(`Total: ${formatFileSize(totalSize)}`),
+  );
+  console.log(box.vertical);
+
+  // ファイル一覧表示（ディレクトリ以外）
+  const fileList = files.filter((f) => !f.isDirectory);
+  const displayCount = Math.min(fileList.length, maxFiles);
+
+  console.log(box.teeRight + box.horizontal + " " + info("Files"));
+  for (let i = 0; i < displayCount; i++) {
+    const file = fileList[i];
+    const isLast = i === displayCount - 1 && fileList.length <= maxFiles;
+    const prefix = isLast ? box.corner : box.branch;
+    console.log(
+      box.vertical + "   " + prefix + " " + path(file.relativePath) +
+        " " + dim(`(${formatFileSize(file.size)})`),
+    );
+  }
+
+  if (fileList.length > maxFiles) {
+    console.log(
+      box.vertical + "   " + box.corner + " " +
+        dim(`... and ${fileList.length - maxFiles} more`),
+    );
+  }
+
+  console.log(box.bottomLeftSquare + box.horizontal);
+  console.log();
+}
+
+/**
+ * ファイルなしメッセージを表示
+ */
+export function logNoFiles(): void {
+  if (config.level === "quiet") return;
+
+  console.log();
+  console.log(warning(icons.warning) + " " + warning("No files found"));
+  console.log();
+}

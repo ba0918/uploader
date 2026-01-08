@@ -29,3 +29,9 @@ export type {
 } from "./git.ts";
 
 export { FILE_CHANGE_TYPE_LABELS } from "./git.ts";
+
+export type {
+  CollectedFile,
+  FileCollectOptions,
+  FileCollectResult,
+} from "./file.ts";

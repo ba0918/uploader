@@ -10,14 +10,21 @@ import {
   ConfigValidationError,
   loadAndResolveProfile,
 } from "./src/config/mod.ts";
+import { collectFiles, FileCollectError } from "./src/file/mod.ts";
 import { getDiff, GitCommandError } from "./src/git/mod.ts";
-import type { GitDiffResult, LogLevel } from "./src/types/mod.ts";
+import type {
+  FileCollectResult,
+  GitDiffResult,
+  LogLevel,
+} from "./src/types/mod.ts";
 import {
   dim,
   initLogger,
   logDiffSummary,
   logError,
+  logFileSummary,
   logNoChanges,
+  logNoFiles,
   logProfileInfo,
   logSection,
   logSectionLine,
@@ -110,9 +117,12 @@ async function main(): Promise<number> {
     logSection("Configuration");
     logSectionLine(`Config: ${path(configPath)}`, true);
 
-    // Git差分を取得
+    // Git差分を取得 / ファイル収集
     let diffResult: GitDiffResult | null = null;
+    let fileResult: FileCollectResult | null = null;
+
     if (profile.from.type === "git") {
+      // Gitモード: 差分を取得
       const base = profile.from.base;
       const target = profile.from.target || "HEAD";
 
@@ -133,6 +143,25 @@ async function main(): Promise<number> {
         renamed: diffResult.renamed,
         files: diffResult.files,
       });
+    } else {
+      // ファイルモード: ファイルを収集
+      fileResult = await collectFiles(profile.from.src, {
+        ignorePatterns: profile.ignore,
+      });
+
+      // ファイルサマリーを表示
+      if (fileResult.fileCount === 0) {
+        logNoFiles();
+        return EXIT_CODES.SUCCESS;
+      }
+
+      logFileSummary({
+        fileCount: fileResult.fileCount,
+        directoryCount: fileResult.directoryCount,
+        totalSize: fileResult.totalSize,
+        files: fileResult.files,
+        sources: fileResult.sources,
+      });
     }
 
     // dry-run モードの場合
@@ -147,8 +176,7 @@ async function main(): Promise<number> {
       return EXIT_CODES.SUCCESS;
     }
 
-    // TODO: Phase 3以降で実装
-    // - ファイルモード処理
+    // TODO: Phase 4以降で実装
     // - diff viewer
     // - SFTP/SCPアップロード
 
@@ -176,6 +204,14 @@ async function main(): Promise<number> {
       logError(`Gitエラー: ${error.message}`);
       if (error.stderr) {
         console.error(dim(`  ${error.stderr.trim()}`));
+      }
+      return EXIT_CODES.GENERAL_ERROR;
+    }
+
+    if (error instanceof FileCollectError) {
+      logError(`ファイル収集エラー: ${error.message}`);
+      if (error.originalError) {
+        console.error(dim(`  ${error.originalError.message}`));
       }
       return EXIT_CODES.GENERAL_ERROR;
     }

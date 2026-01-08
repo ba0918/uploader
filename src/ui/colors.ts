@@ -90,6 +90,8 @@ export const icons = {
   plus: "+",
   minus: "-",
   tilde: "~",
+  folder: "📁",
+  file: "📄",
 } as const;
 
 /** スピナーフレーム */

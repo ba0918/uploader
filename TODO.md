@@ -33,14 +33,22 @@
 - [x] 差分サマリー表示機能（logDiffSummary）
 - [x] GitCommandErrorのエラーハンドリング
 
-## Phase 3: ファイルモード
+## 完了済み (Phase 3: ファイルモード)
 
-- [ ] src/file/mod.ts - ファイルモジュール
-- [ ] src/file/collector.ts - ファイル収集
+- [x] src/file/mod.ts - ファイルモジュール
+- [x] src/file/collector.ts - ファイル収集
   - glob パターン対応
   - 末尾 `/` の処理（中身のみ vs ディレクトリごと）
-- [ ] src/file/ignore.ts - ignoreパターンマッチング
+  - ファイルサイズ・更新日時の取得
+  - 重複除去
+- [x] src/file/ignore.ts - ignoreパターンマッチング
   - _global.ignore との統合
+  - IgnoreMatcherクラス（globパターンをRegExpにコンパイル）
+- [x] src/types/file.ts - ファイルモード用型定義
+  - CollectedFile, FileCollectResult, FileCollectOptions
+- [x] src/ui/logger.ts - ファイルサマリー表示機能
+  - logFileSummary, logNoFiles
+- [x] main.ts にファイルモード処理を統合
 
 ## Phase 4: アップロード機能
 

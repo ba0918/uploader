@@ -12,8 +12,10 @@ export {
   logDiffSummary,
   logError,
   logErrorBox,
+  logFileSummary,
   logInfo,
   logNoChanges,
+  logNoFiles,
   logProfileInfo,
   logSection,
   logSectionLine,
@@ -24,4 +26,4 @@ export {
   logWarning,
 } from "./logger.ts";
 
-export type { DiffSummary } from "./logger.ts";
+export type { DiffSummary, FileSummary } from "./logger.ts";
