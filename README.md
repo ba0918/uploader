@@ -8,7 +8,7 @@ Git差分またはローカルファイルをSFTP/SCPでリモートサーバに
 - **Fileモード**: 指定したローカルファイル/ディレクトリをアップロード
 - **Diff Viewer**:
   ブラウザベースの差分確認UI（アップロード前に変更内容を視覚的に確認）
-- **複数プロトコル対応**: SFTP / SCP / ローカルコピー
+- **複数プロトコル対応**: SFTP / SCP / rsync / ローカルコピー
 - **複数ターゲット**: 1回の実行で複数サーバへ同時デプロイ
 - **モダンなCUI**: プログレスバー、ツリー表示、カラー出力
 
@@ -174,6 +174,120 @@ key_file: "~/.ssh/id_rsa"
 ```yaml
 auth_type: "password"
 password: "${DEPLOY_PASSWORD}" # 必ず環境変数を使用
+```
+
+> **Note**: SCP/rsyncでパスワード認証を使用する場合は `sshpass`
+> のインストールが必要です。
+>
+> ```sh
+> # Debian/Ubuntu
+> apt install sshpass
+> # macOS
+> brew install hudochenkov/sshpass/sshpass
+> ```
+
+### プロトコル
+
+#### SFTP（推奨）
+
+SSH File Transfer Protocol。最も安定しており、多くの環境で利用可能。
+
+```yaml
+protocol: "sftp"
+auth_type: "ssh_key" # または "password"
+```
+
+#### SCP
+
+Secure Copy Protocol。シンプルで高速。
+
+```yaml
+protocol: "scp"
+auth_type: "ssh_key" # または "password"（sshpass必要）
+```
+
+#### rsync
+
+差分転送に優れ、sudo対応やpermission/owner指定が可能。
+
+```yaml
+protocol: "rsync"
+auth_type: "ssh_key" # または "password"（sshpass必要）
+rsync_path: "sudo rsync" # リモート側でsudo実行（権限問題の解決に有効）
+rsync_options:
+  - "--chmod=D755,F644" # ディレクトリ755、ファイル644
+  - "--chown=www-data:www-data" # owner/group指定
+  - "--compress" # 圧縮転送
+```
+
+#### local
+
+ローカルファイルシステムへのコピー（テスト用）。
+
+```yaml
+protocol: "local"
+dest: "/path/to/local/dest"
+```
+
+### ターゲット設定リファレンス
+
+```yaml
+targets:
+  - host: "example.com" # ホスト名（必須）
+    protocol: "sftp" # sftp / scp / rsync / local（必須）
+    port: 22 # ポート番号（デフォルト: 22）
+    user: "deploy" # ユーザー名
+    dest: "/var/www/html" # アップロード先パス（必須）
+
+    # 認証設定
+    auth_type: "ssh_key" # ssh_key / password（デフォルト: ssh_key）
+    key_file: "~/.ssh/id_rsa" # SSH秘密鍵のパス
+    password: "${PASSWORD}" # パスワード（auth_type: password時）
+
+    # 同期設定
+    sync_mode: "update" # update / mirror（デフォルト: update）
+    preserve_permissions: false # パーミッション保持
+    preserve_timestamps: false # タイムスタンプ保持
+
+    # 接続設定
+    timeout: 30 # タイムアウト秒数（デフォルト: 30）
+    retry: 3 # リトライ回数（デフォルト: 3）
+
+    # rsync専用オプション
+    rsync_path: "sudo rsync" # リモート側のrsyncパス
+    rsync_options: # 追加のrsyncオプション
+      - "--compress"
+
+    # レガシーサーバー対応
+    legacy_mode: false # 古いSSHアルゴリズムを有効化
+```
+
+### レガシーサーバー対応
+
+古いSSHサーバー（CentOS 6、Ubuntu 14.04など）に接続する場合は `legacy_mode`
+を有効化します。
+
+```yaml
+targets:
+  - host: "old-server.example.com"
+    protocol: "sftp"
+    legacy_mode: true # 古いアルゴリズムを有効化
+```
+
+有効になるアルゴリズム:
+
+- 鍵交換: `diffie-hellman-group14-sha1`, `diffie-hellman-group1-sha1`
+- ホスト鍵: `ssh-rsa`
+- 暗号（SFTPのみ）: `aes128-cbc`, `aes256-cbc`, `3des-cbc`
+
+### 環境変数の展開
+
+設定ファイル内で `${VAR_NAME}` 形式で環境変数を参照できます。
+
+```yaml
+user: "${DEPLOY_USER}"
+password: "${DEPLOY_PASSWORD}"
+key_file: "${SSH_KEY_PATH}"
 ```
 
 ## Diff Viewer

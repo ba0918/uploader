@@ -361,6 +361,109 @@ viewerで「Upload」「Cancel」ボタン押下時に適切なフィードバ�
   - 認証失敗時の即時終了（AUTH_ERRORコードで検出）
   - 部分失敗時のサマリー（logUploadFailureで表示）
 
+---
+
+## 未着手 (Phase 9: diff viewer 大規模ファイル対応)
+
+大量ファイル（数万件）時のdiff viewerパフォーマンス改善。
+
+### 背景・問題
+
+50,000ファイル規模のプロジェクトで `--diff=remote` を実行すると:
+
+1. **SSH接続過負荷**: `Promise.all`で全ファイルのremote statusを同時チェック
+   → SSHサーバーが `Connection reset by peer` で接続拒否
+2. **ブラウザフリーズ**: 5万要素のDOM生成でブラウザがハング
+3. **WebSocket過負荷**: 大量データの一括送信でメモリ不足
+
+### Phase 9.1: 接続数制限（必須・優先度高）
+
+**目的**: SSH接続の同時実行数を制限してサーバー負荷を軽減
+
+- [ ] src/utils/batch.ts 作成
+  ```typescript
+  export async function batchAsync<T, R>(
+    items: T[],
+    fn: (item: T) => Promise<R>,
+    concurrency: number = 10
+  ): Promise<R[]>
+  ```
+- [ ] src/diff-viewer/server.ts: `Promise.all` を `batchAsync` に置換
+- [ ] 設定可能なconcurrency値（環境変数 or CLIオプション）
+
+### Phase 9.2: ツリー構造 + 遅延読み込み（推奨・優先度中）
+
+**目的**: 初期ロード時間短縮、メモリ使用量削減
+
+**コンセプト**:
+```
+初期表示:
+  dir1/          ← ディレクトリのみ（子は未読み込み）
+  root1.txt      ← ルート直下のファイルのみremote statusチェック
+  root2.txt
+
+dir1/を展開時:
+  dir1/
+    subdir1/     ← この時点で subdir1, subdir2 のstatusをチェック
+    subdir2/
+    1.txt
+    2.txt
+  root1.txt
+  root2.txt
+```
+
+- [ ] 型定義追加（src/types/diff-viewer.ts）
+  ```typescript
+  interface DiffTreeNode {
+    name: string;
+    path: string;
+    type: "file" | "directory";
+    status?: "A" | "M" | "D" | "U";  // ファイルのみ
+    loaded?: boolean;                 // ディレクトリのみ
+    children?: DiffTreeNode[];        // ディレクトリのみ
+  }
+  ```
+- [ ] WebSocketメッセージ追加
+  - `expand_directory`: クライアント→サーバー（ディレクトリ展開リクエスト）
+  - `directory_contents`: サーバー→クライアント（子要素レスポンス）
+- [ ] サーバー側実装（src/diff-viewer/server.ts）
+  - [ ] ファイル一覧をツリー構造に変換
+  - [ ] 初期化時はルートレベルのみremote statusチェック
+  - [ ] `expand_directory` ハンドラ実装
+- [ ] フロントエンド実装（src/diff-viewer/static/html.ts）
+  - [ ] ツリーUIの折りたたみ/展開対応
+  - [ ] 展開時に `expand_directory` メッセージ送信
+  - [ ] `directory_contents` 受信時にツリー更新
+
+### Phase 9.3: rsync dry-run 最適化（オプション・優先度低）
+
+**目的**: 差分検出を1回のSSHコマンドで完了
+
+```bash
+rsync -n --itemize-changes -r local/ user@host:/remote/
+```
+
+- [ ] rsync dry-runで変更ファイル一覧を取得する関数
+- [ ] 出力パース（`>f+++++++++` = 新規, `>f.st......` = 変更 等）
+- [ ] readFile()を使った個別チェックの代替として使用
+
+### Phase 9.4: 仮想スクロール（オプション・優先度低）
+
+**目的**: 大量ファイル表示時のブラウザパフォーマンス改善
+
+- [ ] 表示範囲のDOMのみ生成
+- [ ] スクロール位置に応じて動的にDOM更新
+- [ ] または: ページネーション（100件ずつ表示）
+
+### 実装順序
+
+1. **Phase 9.1** - 即効性あり、実装コスト低
+2. **Phase 9.2** - UX改善大、実装コスト中
+3. **Phase 9.3** - 高速化効果大、rsyncプロトコル限定
+4. **Phase 9.4** - 必要に応じて
+
+---
+
 ## 技術メモ
 
 ### 依存関係
