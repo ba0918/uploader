@@ -51,6 +51,15 @@ function sendErrorMessage(socket: WebSocket, message: string): void {
 }
 
 /**
+ * WebSocketにJSONメッセージを送信（接続中のみ）
+ */
+function sendJsonMessage(socket: WebSocket, message: unknown): void {
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(message));
+  }
+}
+
+/**
  * 進捗コントローラーを作成
  */
 function createProgressController(
@@ -59,34 +68,22 @@ function createProgressController(
 ): DiffViewerProgressController {
   return {
     sendProgress(event: TransferProgressEvent): void {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-          type: "progress",
-          data: event,
-        }));
-      }
+      sendJsonMessage(socket, { type: "progress", data: event });
     },
     sendComplete(result: UploadResult): void {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-          type: "complete",
-          data: {
-            successTargets: result.successTargets,
-            failedTargets: result.failedTargets,
-            totalFiles: result.totalFiles,
-            totalSize: result.totalSize,
-            totalDuration: result.totalDuration,
-          },
-        }));
-      }
+      sendJsonMessage(socket, {
+        type: "complete",
+        data: {
+          successTargets: result.successTargets,
+          failedTargets: result.failedTargets,
+          totalFiles: result.totalFiles,
+          totalSize: result.totalSize,
+          totalDuration: result.totalDuration,
+        },
+      });
     },
     sendError(message: string): void {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-          type: "error",
-          message,
-        }));
-      }
+      sendJsonMessage(socket, { type: "error", message });
     },
     close(): void {
       if (socket.readyState === WebSocket.OPEN) {

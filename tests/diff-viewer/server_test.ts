@@ -87,6 +87,10 @@ describe("startDiffViewerServer", () => {
     const result = await serverPromise;
     assertEquals(result.confirmed, false);
     assertEquals(result.cancelReason, "user_cancel");
+
+    // WebSocketを明示的にクローズ
+    ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
   it("404を返す（存在しないパス）", async () => {
@@ -114,6 +118,10 @@ describe("startDiffViewerServer", () => {
     });
 
     await serverPromise;
+
+    // WebSocketを明示的にクローズ
+    ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
   it("WebSocket接続で初期データを受信する", async () => {
@@ -157,6 +165,10 @@ describe("startDiffViewerServer", () => {
     // サーバを終了
     ws.send(JSON.stringify({ type: "cancel" }));
     await serverPromise;
+
+    // WebSocketを明示的にクローズ
+    ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
   it("confirmメッセージでサーバが終了しconfirmed=trueを返す", async () => {
@@ -185,5 +197,177 @@ describe("startDiffViewerServer", () => {
     const result = await serverPromise;
     assertEquals(result.confirmed, true);
     assertEquals(result.cancelReason, undefined);
+    // progressControllerが存在することを確認
+    assertExists(result.progressController);
+
+    // progressControllerを使ってサーバを終了
+    result.progressController!.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+
+  it("progressControllerがprogressメッセージを送信する", async () => {
+    const serverPromise = startDiffViewerServer(mockDiffResult, {
+      port: testPort,
+      openBrowser: false,
+      base: "main",
+      target: "feature",
+      diffMode: "git",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const ws = new WebSocket(`ws://localhost:${testPort}/`);
+    const messages: unknown[] = [];
+
+    ws.onmessage = (event) => {
+      messages.push(JSON.parse(event.data));
+    };
+
+    // initメッセージを待ってからconfirmを送信
+    await new Promise<void>((resolve) => {
+      ws.onopen = () => {
+        setTimeout(() => {
+          ws.send(JSON.stringify({ type: "confirm" }));
+          resolve();
+        }, 50);
+      };
+    });
+
+    const result = await serverPromise;
+    assertExists(result.progressController);
+
+    // 進捗を送信
+    result.progressController!.sendProgress({
+      targetIndex: 0,
+      totalTargets: 1,
+      host: "test.example.com",
+      fileIndex: 0,
+      totalFiles: 2,
+      currentFile: "test.ts",
+      bytesTransferred: 100,
+      fileSize: 200,
+      status: "uploading",
+    });
+
+    // メッセージが届くまで待つ
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // progressメッセージを受信したことを確認
+    const progressMsg = messages.find(
+      (m) => (m as { type: string }).type === "progress",
+    ) as {
+      type: string;
+      data: { host: string; currentFile: string; totalFiles: number };
+    };
+    assertExists(progressMsg);
+    assertEquals(progressMsg.data.host, "test.example.com");
+    assertEquals(progressMsg.data.currentFile, "test.ts");
+    assertEquals(progressMsg.data.totalFiles, 2);
+
+    result.progressController!.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+
+  it("progressControllerがcompleteメッセージを送信する", async () => {
+    const serverPromise = startDiffViewerServer(mockDiffResult, {
+      port: testPort,
+      openBrowser: false,
+      base: "main",
+      target: "feature",
+      diffMode: "git",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const ws = new WebSocket(`ws://localhost:${testPort}/`);
+    const messages: unknown[] = [];
+
+    ws.onmessage = (event) => {
+      messages.push(JSON.parse(event.data));
+    };
+
+    await new Promise<void>((resolve) => {
+      ws.onopen = () => {
+        setTimeout(() => {
+          ws.send(JSON.stringify({ type: "confirm" }));
+          resolve();
+        }, 50);
+      };
+    });
+
+    const result = await serverPromise;
+    assertExists(result.progressController);
+
+    // 完了を送信
+    result.progressController!.sendComplete({
+      successTargets: 1,
+      failedTargets: 0,
+      targets: [],
+      totalFiles: 5,
+      totalSize: 1024,
+      totalDuration: 500,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // completeメッセージを受信したことを確認
+    const completeMsg = messages.find(
+      (m) => (m as { type: string }).type === "complete",
+    ) as {
+      type: string;
+      data: { successTargets: number; totalFiles: number };
+    };
+    assertExists(completeMsg);
+    assertEquals(completeMsg.data.successTargets, 1);
+    assertEquals(completeMsg.data.totalFiles, 5);
+
+    result.progressController!.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+
+  it("progressControllerがerrorメッセージを送信する", async () => {
+    const serverPromise = startDiffViewerServer(mockDiffResult, {
+      port: testPort,
+      openBrowser: false,
+      base: "main",
+      target: "feature",
+      diffMode: "git",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const ws = new WebSocket(`ws://localhost:${testPort}/`);
+    const messages: unknown[] = [];
+
+    ws.onmessage = (event) => {
+      messages.push(JSON.parse(event.data));
+    };
+
+    await new Promise<void>((resolve) => {
+      ws.onopen = () => {
+        setTimeout(() => {
+          ws.send(JSON.stringify({ type: "confirm" }));
+          resolve();
+        }, 50);
+      };
+    });
+
+    const result = await serverPromise;
+    assertExists(result.progressController);
+
+    // エラーを送信
+    result.progressController!.sendError("Upload failed: connection timeout");
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // errorメッセージを受信したことを確認
+    const errorMsg = messages.find(
+      (m) => (m as { type: string }).type === "error",
+    ) as { type: string; message: string };
+    assertExists(errorMsg);
+    assertEquals(errorMsg.message, "Upload failed: connection timeout");
+
+    result.progressController!.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
   });
 });
