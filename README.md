@@ -188,7 +188,10 @@ password: "${DEPLOY_PASSWORD}" # 必ず環境変数を使用
 
 ### プロトコル
 
-#### SFTP（推奨）
+> **推奨**: 大規模プロジェクト（数千ファイル以上）では **rsync** を強く推奨します。
+> 差分検出・一括転送が最適化されており、SFTP/SCPと比べて大幅に高速です。
+
+#### SFTP
 
 SSH File Transfer Protocol。最も安定しており、多くの環境で利用可能。
 
@@ -206,9 +209,10 @@ protocol: "scp"
 auth_type: "ssh_key" # または "password"（sshpass必要）
 ```
 
-#### rsync
+#### rsync（大規模プロジェクト推奨）
 
 差分転送に優れ、sudo対応やpermission/owner指定が可能。
+大規模ファイル（数千件以上）でも高速な差分検出・一括転送が可能。
 
 ```yaml
 protocol: "rsync"
