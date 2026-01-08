@@ -43,7 +43,9 @@ export function createUploader(target: ResolvedTargetConfig): Uploader {
         host: target.host,
         port: target.port ?? 22,
         user: target.user,
-        authType: target.auth_type ?? "ssh_key",
+        // password指定かつkey_file未指定なら自動的にpassword認証
+        authType: target.auth_type ??
+          (target.password && !target.key_file ? "password" : "ssh_key"),
         keyFile: target.key_file,
         password: target.password,
         dest: target.dest,
