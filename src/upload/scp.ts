@@ -7,7 +7,6 @@
 import { join } from "@std/path";
 import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { logVerbose } from "../ui/mod.ts";
 import { buildSshArgs, ensureParentDir } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
@@ -53,10 +52,21 @@ export class ScpUploader extends SshBaseUploader {
 
     if (file.content) {
       // Gitモードの場合: 一時ファイルに書き込んでからアップロード
-      await this.uploadBuffer(file.content, destPath, file.size, onProgress);
+      await this.uploadBuffer(
+        file.content,
+        destPath,
+        file.size,
+        "uploader_scp_",
+        onProgress,
+      );
     } else if (file.sourcePath) {
       // ファイルモードの場合: 直接アップロード
-      await this.uploadFile(file.sourcePath, destPath, file.size, onProgress);
+      await this.uploadFileFromPath(
+        file.sourcePath,
+        destPath,
+        file.size,
+        onProgress,
+      );
     } else {
       throw new UploadError(
         "No source for file upload",
@@ -66,40 +76,9 @@ export class ScpUploader extends SshBaseUploader {
   }
 
   /**
-   * バッファをファイルとしてアップロード
-   */
-  private async uploadBuffer(
-    buffer: Uint8Array,
-    destPath: string,
-    size: number,
-    onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void> {
-    const tempDir = await this.getOrCreateTempDir("uploader_");
-
-    // 一時ファイルに書き込み
-    const tempFile = join(tempDir, crypto.randomUUID());
-    await Deno.writeFile(tempFile, buffer);
-
-    try {
-      await this.uploadFile(tempFile, destPath, size, onProgress);
-    } finally {
-      // 一時ファイルを削除
-      try {
-        await Deno.remove(tempFile);
-      } catch (err) {
-        logVerbose(
-          `Failed to remove temp file ${tempFile}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-  }
-
-  /**
    * ファイルをアップロード
    */
-  private async uploadFile(
+  protected async uploadFileFromPath(
     srcPath: string,
     destPath: string,
     size: number,

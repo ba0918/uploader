@@ -331,6 +331,54 @@ export abstract class SshBaseUploader implements Uploader {
   }
 
   /**
+   * ローカルファイルパスからリモートへアップロード（サブクラスで実装）
+   */
+  protected abstract uploadFileFromPath(
+    srcPath: string,
+    destPath: string,
+    size: number,
+    onProgress?: (transferred: number, total: number) => void,
+  ): Promise<void>;
+
+  /**
+   * バッファから一時ファイルを作成してアップロード
+   *
+   * @param buffer アップロードするデータ
+   * @param destPath リモートの宛先パス
+   * @param size ファイルサイズ
+   * @param tempDirPrefix 一時ディレクトリのプレフィックス
+   * @param onProgress 進捗コールバック
+   */
+  protected async uploadBuffer(
+    buffer: Uint8Array,
+    destPath: string,
+    size: number,
+    tempDirPrefix: string,
+    onProgress?: (transferred: number, total: number) => void,
+  ): Promise<void> {
+    const tempDir = await this.getOrCreateTempDir(tempDirPrefix);
+
+    // 一時ファイルに書き込み
+    const tempFile = join(tempDir, crypto.randomUUID());
+    await Deno.writeFile(tempFile, buffer);
+
+    try {
+      await this.uploadFileFromPath(tempFile, destPath, size, onProgress);
+    } finally {
+      // 一時ファイルを削除
+      try {
+        await Deno.remove(tempFile);
+      } catch (err) {
+        logVerbose(
+          `Failed to remove temp file ${tempFile}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
+
+  /**
    * ファイルアップロード（サブクラスで実装）
    */
   abstract upload(
