@@ -25,3 +25,4 @@ export {
   withRetry,
   type RetryOptions,
 } from "./retry.ts";
+export { ensureParentDir, getParentDir } from "./directory.ts";

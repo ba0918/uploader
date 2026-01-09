@@ -3,12 +3,16 @@
  */
 
 import { Client, type SFTPWrapper } from "ssh2";
-import { dirname } from "@std/path";
 import { join as posixJoin } from "@std/path/posix";
 import { Buffer } from "node:buffer";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { LEGACY_ALGORITHMS_SSH2, toError, withRetry } from "../utils/mod.ts";
+import {
+  ensureParentDir,
+  LEGACY_ALGORITHMS_SSH2,
+  toError,
+  withRetry,
+} from "../utils/mod.ts";
 
 /**
  * SFTP接続オプション
@@ -311,10 +315,7 @@ export class SftpUploader implements Uploader {
     }
 
     // 親ディレクトリを確保
-    const parentDir = dirname(remotePath);
-    if (parentDir && parentDir !== ".") {
-      await this.mkdir(parentDir);
-    }
+    await ensureParentDir(remotePath, (path) => this.mkdir(path));
 
     if (file.content) {
       // Gitモードの場合: バイト配列から書き込み

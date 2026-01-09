@@ -14,7 +14,11 @@ import type {
 } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose, logWarning } from "../ui/mod.ts";
-import { buildSshCommand, parseItemizeChanges } from "../utils/mod.ts";
+import {
+  buildSshCommand,
+  ensureParentDir,
+  parseItemizeChanges,
+} from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -108,10 +112,7 @@ export class RsyncUploader extends SshBaseUploader {
     }
 
     // 親ディレクトリを確保
-    const parentDir = dirname(remotePath);
-    if (parentDir && parentDir !== ".") {
-      await this.mkdir(parentDir);
-    }
+    await ensureParentDir(remotePath, (path) => this.mkdir(path));
 
     const destPath = join(this.options.dest, remotePath);
 

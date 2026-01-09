@@ -4,11 +4,11 @@
  * 外部scpコマンドを使用して転送を行う
  */
 
-import { dirname, join } from "@std/path";
+import { join } from "@std/path";
 import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
-import { buildSshArgs } from "../utils/mod.ts";
+import { buildSshArgs, ensureParentDir } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -47,10 +47,7 @@ export class ScpUploader extends SshBaseUploader {
     }
 
     // 親ディレクトリを確保
-    const parentDir = dirname(remotePath);
-    if (parentDir && parentDir !== ".") {
-      await this.mkdir(parentDir);
-    }
+    await ensureParentDir(remotePath, (path) => this.mkdir(path));
 
     const destPath = join(this.options.dest, remotePath);
 

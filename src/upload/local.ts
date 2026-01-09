@@ -2,10 +2,11 @@
  * ローカルコピー
  */
 
-import { dirname, join } from "@std/path";
+import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
+import { ensureParentDir } from "../utils/mod.ts";
 
 /**
  * ローカルコピーオプション
@@ -110,7 +111,7 @@ export class LocalUploader implements Uploader {
     }
 
     // 親ディレクトリを確保
-    await ensureDir(dirname(destPath));
+    await ensureParentDir(remotePath, (path) => this.mkdir(path));
 
     try {
       if (file.content) {

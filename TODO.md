@@ -22,8 +22,9 @@
   - ssh-base.ts と sftp.ts で同じ指数バックオフ実装
 - [x] エラーハンドリングの共通化 (`utils/retry.ts` に含む)
   - `getErrorMessage()`, `toError()` を追加
-- [ ] ディレクトリ操作の共通化
-  - sftp.ts, scp.ts, rsync.ts, local.ts で親ディレクトリ作成処理が重複
+- [x] ディレクトリ操作の共通化 (`utils/directory.ts`)
+  - `getParentDir()`, `ensureParentDir()` を追加
+  - sftp.ts, scp.ts, rsync.ts, local.ts で利用
 
 ### 低優先度
 
