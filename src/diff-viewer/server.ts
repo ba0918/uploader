@@ -14,12 +14,14 @@ import type {
   GitDiffResult,
   RsyncDiffResult,
   TransferProgressEvent,
+  UploadButtonState,
   Uploader,
   UploadResult,
   WsClientMessage,
   WsDirectoryContentsMessage,
   WsFileResponseMessage,
   WsInitMessage,
+  WsUploadStateMessage,
 } from "../types/mod.ts";
 import { getHtmlContent } from "./static/html.ts";
 import { createUploader } from "../upload/mod.ts";
@@ -83,6 +85,10 @@ interface ServerState {
   uploaderLastUsed: number;
   /** アイドルチェックタイマー */
   idleCheckTimer: number | null;
+  /** 全ファイルの差分チェックが完了したか */
+  diffCheckCompleted: boolean;
+  /** 差分があるファイルが存在するか */
+  hasChangesToUpload: boolean;
 }
 
 /**
@@ -101,6 +107,86 @@ function sendErrorMessage(socket: WebSocket, message: string): void {
 function sendJsonMessage(socket: WebSocket, message: unknown): void {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
+  }
+}
+
+/**
+ * アップロードボタン状態更新メッセージを送信
+ */
+function sendUploadStateMessage(
+  socket: WebSocket,
+  uploadButtonState: UploadButtonState,
+): void {
+  const message: WsUploadStateMessage = {
+    type: "upload_state",
+    data: uploadButtonState,
+  };
+  sendJsonMessage(socket, message);
+}
+
+/**
+ * バックグラウンドで全ファイルの差分チェックを実行（遅延読み込みモード用）
+ */
+async function startBackgroundDiffCheck(
+  socket: WebSocket,
+  state: ServerState,
+): Promise<void> {
+  const { diffResult, options } = state;
+  const concurrency = options.concurrency ?? 10;
+  const files = diffResult.files; // DiffFileはファイルのみ（ディレクトリは含まない）
+
+  debugLog(
+    `[BackgroundCheck] Starting diff check for ${files.length} files (concurrency: ${concurrency})...`,
+  );
+
+  let hasChanges = false;
+
+  try {
+    await batchAsync(
+      files,
+      async (file) => {
+        try {
+          const { remoteStatus } = await getLocalAndRemoteContents(
+            file.path,
+            state,
+          );
+          if (remoteStatus.hasChanges) {
+            hasChanges = true;
+          }
+        } catch (_err) {
+          // エラーの場合は差分ありとして扱う
+          hasChanges = true;
+        }
+      },
+      concurrency,
+    );
+
+    state.diffCheckCompleted = true;
+    state.hasChangesToUpload = hasChanges;
+
+    // 接続エラーが発生していないか再確認
+    if (state.connectionError) {
+      sendUploadStateMessage(socket, {
+        disabled: true,
+        reason: "connection_error",
+        message: state.connectionError,
+      });
+    } else if (!hasChanges) {
+      sendUploadStateMessage(socket, {
+        disabled: true,
+        reason: "no_changes",
+        message: "No changes to upload",
+      });
+    } else {
+      sendUploadStateMessage(socket, { disabled: false });
+    }
+
+    debugLog(`[BackgroundCheck] Completed. hasChanges=${hasChanges}`);
+  } catch (error) {
+    debugError(`[BackgroundCheck] Error:`, error);
+    state.diffCheckCompleted = true;
+    state.hasChangesToUpload = true; // エラー時は差分ありとして扱う
+    sendUploadStateMessage(socket, { disabled: false });
   }
 }
 
@@ -169,6 +255,8 @@ export function startDiffViewerServer(
       currentTargetIndex: 0,
       uploaderLastUsed: 0,
       idleCheckTimer: null,
+      diffCheckCompleted: false,
+      hasChangesToUpload: false,
     };
 
     // アイドルチェックタイマーを開始
@@ -411,6 +499,28 @@ async function sendInitMessage(
         state.lazyLoading = false;
       }
 
+      // uploadButtonStateを決定
+      const hasChanges = files.length > 0;
+      state.diffCheckCompleted = true;
+      state.hasChangesToUpload = hasChanges;
+
+      let uploadButtonState: UploadButtonState;
+      if (state.connectionError) {
+        uploadButtonState = {
+          disabled: true,
+          reason: "connection_error",
+          message: state.connectionError,
+        };
+      } else if (!hasChanges) {
+        uploadButtonState = {
+          disabled: true,
+          reason: "no_changes",
+          message: "No changes to upload",
+        };
+      } else {
+        uploadButtonState = { disabled: false };
+      }
+
       const message: WsInitMessage = {
         type: "init",
         data: {
@@ -421,6 +531,7 @@ async function sendInitMessage(
           summary,
           remoteTargets,
           lazyLoading: false, // rsync getDiff()使用時は遅延読み込み不要
+          uploadButtonState,
         },
       };
 
@@ -478,6 +589,22 @@ async function sendInitMessage(
       }
     }
 
+    // 遅延読み込み時は初期状態でchecking
+    let uploadButtonState: UploadButtonState;
+    if (state.connectionError) {
+      uploadButtonState = {
+        disabled: true,
+        reason: "connection_error",
+        message: state.connectionError,
+      };
+    } else {
+      uploadButtonState = {
+        disabled: true,
+        reason: "checking",
+        message: "Checking for changes...",
+      };
+    }
+
     const message: WsInitMessage = {
       type: "init",
       data: {
@@ -495,6 +622,7 @@ async function sendInitMessage(
         remoteTargets,
         tree,
         lazyLoading: true,
+        uploadButtonState,
       },
     };
 
@@ -503,6 +631,11 @@ async function sendInitMessage(
     // 接続エラーがあればクライアントに通知
     if (state.connectionError) {
       sendErrorMessage(socket, state.connectionError);
+    }
+
+    // バックグラウンドで全ファイルの差分チェックを開始（接続エラーがなければ）
+    if (!state.connectionError) {
+      startBackgroundDiffCheck(socket, state);
     }
     return;
   }
@@ -585,6 +718,28 @@ async function sendInitMessage(
     state.changedFiles = files.map((f) => f.path);
   }
 
+  // uploadButtonStateを決定
+  const hasChanges = files.length > 0;
+  state.diffCheckCompleted = true;
+  state.hasChangesToUpload = hasChanges;
+
+  let uploadButtonState: UploadButtonState;
+  if (state.connectionError) {
+    uploadButtonState = {
+      disabled: true,
+      reason: "connection_error",
+      message: state.connectionError,
+    };
+  } else if (!hasChanges) {
+    uploadButtonState = {
+      disabled: true,
+      reason: "no_changes",
+      message: "No changes to upload",
+    };
+  } else {
+    uploadButtonState = { disabled: false };
+  }
+
   const message: WsInitMessage = {
     type: "init",
     data: {
@@ -595,6 +750,7 @@ async function sendInitMessage(
       summary,
       remoteTargets,
       lazyLoading: false,
+      uploadButtonState,
     },
   };
 
@@ -695,6 +851,10 @@ async function handleSwitchTarget(
 
   // rsync diffキャッシュをクリア
   state.rsyncDiffResult = null;
+
+  // 差分チェック状態をリセット
+  state.diffCheckCompleted = false;
+  state.hasChangesToUpload = false;
 
   // ターゲットインデックスを更新
   state.currentTargetIndex = targetIndex;

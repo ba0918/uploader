@@ -89,7 +89,25 @@ export interface WsInitMessage extends WsMessageBase {
     tree?: DiffTreeNode[];
     /** 遅延読み込みが有効か */
     lazyLoading?: boolean;
+    /** アップロードボタンの状態 */
+    uploadButtonState?: UploadButtonState;
   };
+}
+
+/** アップロードボタン無効化理由 */
+export type UploadButtonDisabledReason =
+  | "no_changes"
+  | "connection_error"
+  | "checking";
+
+/** アップロードボタンの状態 */
+export interface UploadButtonState {
+  /** 無効化されているか */
+  disabled: boolean;
+  /** 無効化理由（disabled=trueの場合） */
+  reason?: UploadButtonDisabledReason;
+  /** 無効化メッセージ（ツールチップ用） */
+  message?: string;
 }
 
 /** ファイルリクエストの種類（リモート差分のみサポート） */
@@ -198,6 +216,12 @@ export interface WsCancelledMessage extends WsMessageBase {
   type: "cancelled";
 }
 
+/** アップロードボタン状態更新メッセージ */
+export interface WsUploadStateMessage extends WsMessageBase {
+  type: "upload_state";
+  data: UploadButtonState;
+}
+
 /** サーバーからクライアントへのメッセージ */
 export type WsServerMessage =
   | WsInitMessage
@@ -206,7 +230,8 @@ export type WsServerMessage =
   | WsErrorMessage
   | WsProgressMessage
   | WsCompleteMessage
-  | WsCancelledMessage;
+  | WsCancelledMessage
+  | WsUploadStateMessage;
 
 /** クライアントからサーバーへのメッセージ */
 export type WsClientMessage =

@@ -57,7 +57,9 @@ function createMockFileSystem(
     stat(path: string): Promise<FileInfo> {
       const entry = findEntry(path);
       if (!entry) {
-        return Promise.reject(new Deno.errors.NotFound(`Path not found: ${path}`));
+        return Promise.reject(
+          new Deno.errors.NotFound(`Path not found: ${path}`),
+        );
       }
 
       if (entry.type === "file") {
