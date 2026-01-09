@@ -24,6 +24,13 @@ export class ConfigValidationError extends Error {
   }
 }
 
+/** 有効なプロトコル */
+const VALID_PROTOCOLS = ["sftp", "scp", "rsync", "local"] as const;
+/** 有効な認証タイプ */
+const VALID_AUTH_TYPES = ["ssh_key", "password"] as const;
+/** 有効な同期モード */
+const VALID_SYNC_MODES = ["update", "mirror"] as const;
+
 /**
  * 設定ファイル全体を検証
  */
@@ -343,36 +350,36 @@ function validateTargetDefaults(
   const defaults = value as Record<string, unknown>;
 
   // protocol の検証（指定されていれば）
-  if (defaults.protocol) {
-    const validProtocols = ["sftp", "scp", "rsync", "local"];
-    if (!validProtocols.includes(defaults.protocol as string)) {
-      throw new ConfigValidationError(
-        `無効な protocol です: ${defaults.protocol} (sftp, scp, rsync, local のいずれか)`,
-        `${path}.protocol`,
-      );
-    }
+  if (
+    defaults.protocol &&
+    !VALID_PROTOCOLS.includes(defaults.protocol as typeof VALID_PROTOCOLS[number])
+  ) {
+    throw new ConfigValidationError(
+      `無効な protocol です: ${defaults.protocol} (${VALID_PROTOCOLS.join(", ")} のいずれか)`,
+      `${path}.protocol`,
+    );
   }
 
   // auth_type の検証（指定されていれば）
-  if (defaults.auth_type) {
-    const validAuthTypes = ["ssh_key", "password"];
-    if (!validAuthTypes.includes(defaults.auth_type as string)) {
-      throw new ConfigValidationError(
-        `無効な auth_type です: ${defaults.auth_type} (ssh_key, password のいずれか)`,
-        `${path}.auth_type`,
-      );
-    }
+  if (
+    defaults.auth_type &&
+    !VALID_AUTH_TYPES.includes(defaults.auth_type as typeof VALID_AUTH_TYPES[number])
+  ) {
+    throw new ConfigValidationError(
+      `無効な auth_type です: ${defaults.auth_type} (${VALID_AUTH_TYPES.join(", ")} のいずれか)`,
+      `${path}.auth_type`,
+    );
   }
 
   // sync_mode の検証（指定されていれば）
-  if (defaults.sync_mode) {
-    const validSyncModes = ["update", "mirror"];
-    if (!validSyncModes.includes(defaults.sync_mode as string)) {
-      throw new ConfigValidationError(
-        `無効な sync_mode です: ${defaults.sync_mode} (update, mirror のいずれか)`,
-        `${path}.sync_mode`,
-      );
-    }
+  if (
+    defaults.sync_mode &&
+    !VALID_SYNC_MODES.includes(defaults.sync_mode as typeof VALID_SYNC_MODES[number])
+  ) {
+    throw new ConfigValidationError(
+      `無効な sync_mode です: ${defaults.sync_mode} (${VALID_SYNC_MODES.join(", ")} のいずれか)`,
+      `${path}.sync_mode`,
+    );
   }
 
   // ignore の検証（指定されていれば）
@@ -461,14 +468,14 @@ function validateTarget(
   }
 
   // 個別に protocol が指定されている場合の検証
-  if (target.protocol) {
-    const validProtocols = ["sftp", "scp", "rsync", "local"];
-    if (!validProtocols.includes(target.protocol as string)) {
-      throw new ConfigValidationError(
-        `無効な protocol です: ${target.protocol} (sftp, scp, rsync, local のいずれか)`,
-        `${path}.protocol`,
-      );
-    }
+  if (
+    target.protocol &&
+    !VALID_PROTOCOLS.includes(target.protocol as typeof VALID_PROTOCOLS[number])
+  ) {
+    throw new ConfigValidationError(
+      `無効な protocol です: ${target.protocol} (${VALID_PROTOCOLS.join(", ")} のいずれか)`,
+      `${path}.protocol`,
+    );
   }
 
   // protocol が local 以外の場合は user が必要（マージ後の値でチェック）
@@ -480,25 +487,25 @@ function validateTarget(
   }
 
   // auth_type の検証（個別に指定されている場合）
-  if (target.auth_type) {
-    const validAuthTypes = ["ssh_key", "password"];
-    if (!validAuthTypes.includes(target.auth_type as string)) {
-      throw new ConfigValidationError(
-        `無効な auth_type です: ${target.auth_type} (ssh_key, password のいずれか)`,
-        `${path}.auth_type`,
-      );
-    }
+  if (
+    target.auth_type &&
+    !VALID_AUTH_TYPES.includes(target.auth_type as typeof VALID_AUTH_TYPES[number])
+  ) {
+    throw new ConfigValidationError(
+      `無効な auth_type です: ${target.auth_type} (${VALID_AUTH_TYPES.join(", ")} のいずれか)`,
+      `${path}.auth_type`,
+    );
   }
 
   // sync_mode の検証（個別に指定されている場合）
-  if (target.sync_mode) {
-    const validSyncModes = ["update", "mirror"];
-    if (!validSyncModes.includes(target.sync_mode as string)) {
-      throw new ConfigValidationError(
-        `無効な sync_mode です: ${target.sync_mode} (update, mirror のいずれか)`,
-        `${path}.sync_mode`,
-      );
-    }
+  if (
+    target.sync_mode &&
+    !VALID_SYNC_MODES.includes(target.sync_mode as typeof VALID_SYNC_MODES[number])
+  ) {
+    throw new ConfigValidationError(
+      `無効な sync_mode です: ${target.sync_mode} (${VALID_SYNC_MODES.join(", ")} のいずれか)`,
+      `${path}.sync_mode`,
+    );
   }
 
   // ignore の検証（個別に指定されている場合）
