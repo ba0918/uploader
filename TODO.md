@@ -33,7 +33,6 @@
   - scp.ts, rsync.ts の重複コードを削除
 - [x] 設定検証パターンの共通化 (`config/validator.ts`)
   - `VALID_PROTOCOLS`, `VALID_AUTH_TYPES`, `VALID_SYNC_MODES` を定数化
-- [ ] TextDecoderのユーティリティ化
 
 ---
 
