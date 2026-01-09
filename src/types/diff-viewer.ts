@@ -38,7 +38,7 @@ export interface DiffViewerResult {
   /** ユーザーがアップロードを確認したか */
   confirmed: boolean;
   /** キャンセル理由（キャンセル時のみ） */
-  cancelReason?: "user_cancel" | "connection_closed" | "timeout";
+  cancelReason?: "user_cancel" | "connection_closed" | "timeout" | "no_changes";
   /** 進捗コントローラー（confirm時のみ存在） */
   progressController?: DiffViewerProgressController;
   /** 変更があったファイルのパスリスト（remote diffモード時のみ） */
@@ -228,6 +228,8 @@ export interface DiffViewerState {
 export interface CuiConfirmResult {
   /** ユーザーがアップロードを確認したか */
   confirmed: boolean;
+  /** 変更がなかった場合true（確認をスキップ） */
+  noChanges?: boolean;
 }
 
 /** ファイルツリーノード */

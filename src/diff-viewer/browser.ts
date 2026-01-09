@@ -7,8 +7,13 @@
 import type {
   CuiConfirmResult,
   DiffFile,
+  DiffMode,
   GitDiffResult,
+  ResolvedTargetConfig,
+  RsyncDiffResult,
+  UploadFile,
 } from "../types/mod.ts";
+import { createUploader } from "../upload/mod.ts";
 import {
   cyan,
   dim,
@@ -103,48 +108,229 @@ export async function openBrowser(
   return result.code === 0;
 }
 
+/** CUIでの差分確認オプション */
+export interface CuiConfirmOptions {
+  promptReader?: PromptReader;
+  targets?: ResolvedTargetConfig[];
+  diffMode?: DiffMode;
+  uploadFiles?: UploadFile[];
+  localDir?: string;
+}
+
+/** ターゲットごとの差分結果 */
+interface TargetDiffInfo {
+  target: ResolvedTargetConfig;
+  diff: RsyncDiffResult | null;
+  error?: string;
+  unsupported?: boolean;
+}
+
+/**
+ * 各ターゲットのremote差分を取得
+ */
+async function getTargetDiffs(
+  targets: ResolvedTargetConfig[],
+  uploadFiles: UploadFile[],
+  localDir: string,
+): Promise<TargetDiffInfo[]> {
+  const results: TargetDiffInfo[] = [];
+  const filePaths = uploadFiles.map((f) => f.relativePath);
+
+  for (const target of targets) {
+    // rsync以外のプロトコルはgetDiff未サポート
+    if (target.protocol !== "rsync") {
+      results.push({
+        target,
+        diff: null,
+        unsupported: true,
+      });
+      continue;
+    }
+
+    try {
+      const uploader = createUploader(target);
+      await uploader.connect();
+      try {
+        if (uploader.getDiff) {
+          const diff = await uploader.getDiff(localDir, filePaths);
+          results.push({ target, diff });
+        } else {
+          results.push({ target, diff: null, unsupported: true });
+        }
+      } finally {
+        await uploader.disconnect();
+      }
+    } catch (error) {
+      results.push({
+        target,
+        diff: null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * ターゲットごとの差分サマリーを表示
+ */
+function displayTargetDiffSummary(info: TargetDiffInfo, index: number): void {
+  const { target, diff, error, unsupported } = info;
+  const label = `${target.host}:${target.dest}`;
+
+  if (unsupported) {
+    console.log(
+      `   ${dim(`[${index + 1}]`)} ${label} ${dim(`(${target.protocol} - diff not supported)`)}`,
+    );
+    return;
+  }
+
+  if (error) {
+    console.log(
+      `   ${dim(`[${index + 1}]`)} ${label} ${red(`(error: ${error})`)}`,
+    );
+    return;
+  }
+
+  if (diff) {
+    const total = diff.added + diff.modified + diff.deleted;
+    console.log(
+      `   ${dim(`[${index + 1}]`)} ${label}`,
+    );
+    console.log(
+      `       ${green("+")} ${diff.added}  ${yellow("~")} ${diff.modified}  ${red("-")} ${diff.deleted}  ${dim(`(${total} total)`)}`,
+    );
+  }
+}
+
 /**
  * CUIでの差分確認（フォールバック）
  */
 export async function cuiConfirm(
   diffResult: GitDiffResult,
-  options?: {
-    promptReader?: PromptReader;
-  },
+  options?: CuiConfirmOptions,
 ): Promise<CuiConfirmResult> {
+  const diffMode = options?.diffMode ?? "git";
+  const targets = options?.targets ?? [];
+  const uploadFiles = options?.uploadFiles ?? [];
+  const localDir = options?.localDir ?? "";
+
+  // remoteモードで複数ターゲットがある場合、各ターゲットの差分を取得
+  const shouldGetRemoteDiffs =
+    (diffMode === "remote" || diffMode === "both") &&
+    targets.length > 0 &&
+    uploadFiles.length > 0 &&
+    localDir;
+
+  let targetDiffs: TargetDiffInfo[] = [];
+
+  if (shouldGetRemoteDiffs) {
+    console.log(dim("  Checking remote differences..."));
+    targetDiffs = await getTargetDiffs(targets, uploadFiles, localDir);
+    // 進捗表示をクリア
+    console.log("\x1b[1A\x1b[2K");
+  }
+
+  // 全体の変更があるかチェック
+  const hasRemoteChanges = targetDiffs.some((info) => {
+    if (info.diff) {
+      return info.diff.added > 0 || info.diff.modified > 0 || info.diff.deleted > 0;
+    }
+    // エラーや未サポートの場合は変更ありとして扱う（安全側に倒す）
+    return info.error !== undefined || info.unsupported;
+  });
+  const hasGitChanges = diffResult.files.length > 0;
+
+  // remoteモードでは全ターゲットの差分が0なら変更なし
+  // gitモードではGit差分が0なら変更なし
+  // bothモードでは両方チェック
+  let hasAnyChanges: boolean;
+  if (diffMode === "remote") {
+    hasAnyChanges = targetDiffs.length === 0 ? hasGitChanges : hasRemoteChanges;
+  } else if (diffMode === "git") {
+    hasAnyChanges = hasGitChanges;
+  } else {
+    // bothモード
+    hasAnyChanges = hasGitChanges || hasRemoteChanges;
+  }
+
   // 差分サマリーを表示
   logSection("Changes detected (CUI mode)");
   console.log();
-  console.log(`   ${green("+")}  ${diffResult.added} files added`);
-  console.log(`   ${yellow("~")}  ${diffResult.modified} files modified`);
-  console.log(`   ${red("-")}  ${diffResult.deleted} files deleted`);
-  console.log(`   ${"─".repeat(20)}`);
-  console.log(`      ${diffResult.files.length} files total`);
-  console.log();
 
-  // ファイル一覧を表示
-  if (diffResult.added > 0) {
-    console.log(`   ${green("Added:")}`);
-    displayFiles(diffResult.files.filter((f) => f.status === "A"), 5);
+  // remoteモードでターゲットごとの差分を表示
+  if (targetDiffs.length > 0) {
+    console.log(`   ${dim("Remote diff by target:")}`);
+    console.log();
+    for (let i = 0; i < targetDiffs.length; i++) {
+      displayTargetDiffSummary(targetDiffs[i], i);
+    }
+    console.log();
+    console.log(`   ${"─".repeat(30)}`);
+    console.log();
   }
 
-  if (diffResult.modified > 0) {
-    console.log(`   ${yellow("Modified:")}`);
-    displayFiles(diffResult.files.filter((f) => f.status === "M"), 5);
-  }
+  // Gitモードまたは単一ターゲットの場合は従来の表示
+  if (diffMode === "git" || diffMode === "both" || targetDiffs.length === 0) {
+    if (diffMode === "git") {
+      console.log(`   ${dim("Git diff:")}`);
+      console.log();
+    } else if (targetDiffs.length === 0 && targets.length > 0) {
+      // ターゲット情報を表示（remoteモードだが差分取得できなかった場合）
+      if (targets.length === 1) {
+        const t = targets[0];
+        console.log(`   ${dim("Target:")} ${t.host}:${t.dest}`);
+      } else {
+        console.log(`   ${dim("Targets:")} ${targets.length} target(s)`);
+        for (let i = 0; i < targets.length; i++) {
+          const t = targets[i];
+          const isLast = i === targets.length - 1;
+          const prefix = isLast ? "└─" : "├─";
+          console.log(`   ${dim(prefix)} ${t.host}:${t.dest}`);
+        }
+      }
+      console.log();
+    }
 
-  if (diffResult.deleted > 0) {
-    console.log(`   ${red("Deleted:")}`);
-    displayFiles(diffResult.files.filter((f) => f.status === "D"), 5);
-  }
+    console.log(`   ${green("+")}  ${diffResult.added} files added`);
+    console.log(`   ${yellow("~")}  ${diffResult.modified} files modified`);
+    console.log(`   ${red("-")}  ${diffResult.deleted} files deleted`);
+    console.log(`   ${"─".repeat(20)}`);
+    console.log(`      ${diffResult.files.length} files total`);
+    console.log();
 
-  if (diffResult.renamed > 0) {
-    console.log(`   ${cyan("Renamed:")}`);
-    displayFiles(diffResult.files.filter((f) => f.status === "R"), 5);
+    // ファイル一覧を表示
+    if (diffResult.added > 0) {
+      console.log(`   ${green("Added:")}`);
+      displayFiles(diffResult.files.filter((f) => f.status === "A"), 5);
+    }
+
+    if (diffResult.modified > 0) {
+      console.log(`   ${yellow("Modified:")}`);
+      displayFiles(diffResult.files.filter((f) => f.status === "M"), 5);
+    }
+
+    if (diffResult.deleted > 0) {
+      console.log(`   ${red("Deleted:")}`);
+      displayFiles(diffResult.files.filter((f) => f.status === "D"), 5);
+    }
+
+    if (diffResult.renamed > 0) {
+      console.log(`   ${cyan("Renamed:")}`);
+      displayFiles(diffResult.files.filter((f) => f.status === "R"), 5);
+    }
   }
 
   logSectionClose();
   console.log();
+
+  // 変更がない場合は確認をスキップ
+  if (!hasAnyChanges) {
+    console.log(dim("  No changes to upload."));
+    console.log();
+    return { confirmed: false, noChanges: true };
+  }
 
   // 確認プロンプト
   const answer = await promptYesNo(

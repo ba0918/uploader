@@ -439,6 +439,16 @@ export function getHtmlContent(): string {
       font-size: 14px;
     }
 
+    .empty-tree-message {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      text-align: center;
+    }
+
     /* Side-by-side表示 */
     .diff-side-by-side {
       display: flex;
@@ -1701,6 +1711,19 @@ export function getHtmlContent(): string {
     // ファイルツリーの描画
     function renderFileTree() {
       elements.fileTree.innerHTML = '';
+
+      // ファイルが0件の場合はメッセージを表示
+      const hasFiles = state.lazyLoading
+        ? (state.tree && state.tree.length > 0)
+        : (state.files && state.files.length > 0);
+
+      if (!hasFiles) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'empty-tree-message';
+        messageDiv.textContent = 'No changes detected for this target';
+        elements.fileTree.appendChild(messageDiv);
+        return;
+      }
 
       // 遅延読み込みモードの場合はサーバーから受け取ったツリーを使用
       if (state.lazyLoading && state.tree) {

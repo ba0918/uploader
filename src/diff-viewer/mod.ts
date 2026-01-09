@@ -84,10 +84,19 @@ export async function startDiffViewer(
     logSectionClose();
     console.log();
 
-    const cuiResult = await cuiConfirm(diffResult);
+    const cuiResult = await cuiConfirm(diffResult, {
+      targets: options.targets,
+      diffMode: options.diffMode,
+      uploadFiles: options.uploadFiles,
+      localDir: options.localDir,
+    });
     return {
       confirmed: cuiResult.confirmed,
-      cancelReason: cuiResult.confirmed ? undefined : "user_cancel",
+      cancelReason: cuiResult.confirmed
+        ? undefined
+        : cuiResult.noChanges
+          ? "no_changes"
+          : "user_cancel",
     };
   }
 }
