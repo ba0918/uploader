@@ -7,9 +7,12 @@ import { exists } from "@std/fs";
 import { join } from "@std/path";
 import type {
   Config,
+  GlobalConfig,
+  IgnoreConfig,
   PartialTargetConfig,
   ProfileConfig,
   ResolvedProfileConfig,
+  ResolvedTargetConfig,
   TargetConfig,
   TargetDefaults,
 } from "../types/mod.ts";
@@ -125,6 +128,110 @@ function removeUndefinedProps<T extends object>(obj: T): Partial<T> {
 }
 
 /**
+ * グローバル設定からignoreグループを取得（後方互換性対応）
+ *
+ * 旧来の _global.ignore がある場合は _legacy グループとして扱う
+ */
+function getIgnoreGroups(
+  globalConfig?: GlobalConfig,
+): Record<string, string[]> {
+  const groups: Record<string, string[]> = {};
+
+  // 新しいignore_groupsがあればコピー
+  if (globalConfig?.ignore_groups) {
+    Object.assign(groups, globalConfig.ignore_groups);
+  }
+
+  // 後方互換性: 旧来の ignore があれば _legacy グループとして追加
+  // deno-lint-ignore no-deprecated
+  if (globalConfig?.ignore && globalConfig.ignore.length > 0) {
+    // deno-lint-ignore no-deprecated
+    groups._legacy = globalConfig.ignore;
+  }
+
+  return groups;
+}
+
+/**
+ * デフォルトのignoreグループ名を取得（後方互換性対応）
+ */
+function getDefaultIgnoreGroups(globalConfig?: GlobalConfig): string[] {
+  // 明示的に default_ignore が指定されていればそれを使用
+  if (globalConfig?.default_ignore) {
+    return globalConfig.default_ignore;
+  }
+
+  // 後方互換性: 旧来の ignore がある場合は _legacy をデフォルトとして使用
+  // deno-lint-ignore no-deprecated
+  if (globalConfig?.ignore && globalConfig.ignore.length > 0) {
+    return ["_legacy"];
+  }
+
+  return [];
+}
+
+/**
+ * IgnoreConfig をパターン配列に解決
+ *
+ * @param ignoreConfig ターゲットまたはdefaultsのignore設定
+ * @param ignoreGroups グローバルのignoreグループ定義
+ */
+function resolveIgnoreConfig(
+  ignoreConfig: IgnoreConfig | undefined,
+  ignoreGroups: Record<string, string[]>,
+): string[] {
+  if (!ignoreConfig) {
+    return [];
+  }
+
+  const patterns: string[] = [];
+
+  // use で指定されたグループのパターンを追加
+  if (ignoreConfig.use) {
+    for (const groupName of ignoreConfig.use) {
+      const groupPatterns = ignoreGroups[groupName];
+      if (groupPatterns) {
+        patterns.push(...groupPatterns);
+      }
+      // バリデーション済みなので存在しないグループはありえない
+    }
+  }
+
+  // add で指定された追加パターンを追加
+  if (ignoreConfig.add) {
+    patterns.push(...ignoreConfig.add);
+  }
+
+  // 重複を除去
+  return [...new Set(patterns)];
+}
+
+/**
+ * ターゲットのignoreパターンを解決
+ *
+ * 優先順位: target.ignore → defaults.ignore → default_ignore
+ */
+function resolveTargetIgnore(
+  targetIgnore: IgnoreConfig | undefined,
+  defaultsIgnore: IgnoreConfig | undefined,
+  defaultIgnoreGroups: string[],
+  ignoreGroups: Record<string, string[]>,
+): string[] {
+  // ターゲットに明示的なignore設定がある場合はそれを使用
+  if (targetIgnore !== undefined) {
+    return resolveIgnoreConfig(targetIgnore, ignoreGroups);
+  }
+
+  // defaultsにignore設定がある場合はそれを使用
+  if (defaultsIgnore !== undefined) {
+    return resolveIgnoreConfig(defaultsIgnore, ignoreGroups);
+  }
+
+  // どちらもない場合はグローバルのデフォルトを使用
+  return resolveIgnoreConfig({ use: defaultIgnoreGroups }, ignoreGroups);
+}
+
+/**
  * defaults と個別ターゲット設定をマージ
  * 個別設定が優先される（配列は完全に上書き）
  */
@@ -185,24 +292,45 @@ export function resolveProfile(
   // 環境変数を展開
   const resolved = expandEnvVarsInObject(profile) as ProfileConfig;
 
-  // グローバル ignore とマージ
-  const globalIgnore = config._global?.ignore || [];
+  // グローバルの ignore グループを取得（後方互換性対応）
+  const ignoreGroups = getIgnoreGroups(config._global);
+  const defaultIgnoreGroupNames = getDefaultIgnoreGroups(config._global);
 
-  // defaults を各ターゲットにマージしてから key_file を展開
+  // defaults を各ターゲットにマージしてから key_file を展開し、ignore を解決
   const defaults = resolved.to.defaults;
-  const targets = resolved.to.targets.map((target) => {
+  const targets: ResolvedTargetConfig[] = resolved.to.targets.map((target) => {
     const merged = mergeTargetWithDefaults(defaults, target);
+
+    // ターゲットごとのignoreパターンを解決
+    const resolvedIgnore = resolveTargetIgnore(
+      target.ignore,
+      defaults?.ignore,
+      defaultIgnoreGroupNames,
+      ignoreGroups,
+    );
+
+    // ignore プロパティを除外して ResolvedTargetConfig を構築
+    const { ignore: _ignore, ...rest } = merged;
     return {
-      ...merged,
+      ...rest,
       key_file: merged.key_file ? expandTilde(merged.key_file) : undefined,
       user: merged.user || "",
+      ignore: resolvedIgnore,
     };
   });
+
+  // プロファイル全体で共通のignore（後方互換性）
+  // 新しい仕組みではターゲットごとのignoreを使用するが、
+  // ResolvedProfileConfig.ignore は後方互換性のために維持
+  const profileIgnore = resolveIgnoreConfig(
+    { use: defaultIgnoreGroupNames },
+    ignoreGroups,
+  );
 
   return {
     from: resolved.from,
     to: { targets },
-    ignore: globalIgnore,
+    ignore: profileIgnore,
   };
 }
 

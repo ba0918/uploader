@@ -9,6 +9,7 @@ export type {
   FileSource,
   GitSource,
   GlobalConfig,
+  IgnoreConfig,
   PartialTargetConfig,
   ProfileConfig,
   Protocol,

@@ -14,9 +14,22 @@ export type SyncMode = "update" | "mirror";
 /** ソースタイプ */
 export type SourceType = "git" | "file";
 
+/** ignore設定（名前付きグループ方式） */
+export interface IgnoreConfig {
+  /** 使用するグループ名 */
+  use?: string[];
+  /** 追加のパターン */
+  add?: string[];
+}
+
 /** グローバル設定 */
 export interface GlobalConfig {
+  /** @deprecated 後方互換性のため。ignore_groups + default_ignore を使用してください */
   ignore?: string[];
+  /** 名前付きignoreグループ */
+  ignore_groups?: Record<string, string[]>;
+  /** ignore未指定時に適用するデフォルトグループ名 */
+  default_ignore?: string[];
 }
 
 /** Git ソース設定 */
@@ -57,6 +70,8 @@ export interface TargetConfig {
   rsync_options?: string[];
   /** 古いSSHサーバー向けのレガシーアルゴリズムを有効化 */
   legacy_mode?: boolean;
+  /** ターゲット固有のignore設定 */
+  ignore?: IgnoreConfig;
 }
 
 /** ターゲットのデフォルト設定（destは各ターゲットで必須なので除外） */
@@ -86,9 +101,11 @@ export interface Config {
 
 /** 解決済みターゲット設定（環境変数展開後） */
 export interface ResolvedTargetConfig
-  extends Omit<TargetConfig, "user" | "password"> {
+  extends Omit<TargetConfig, "user" | "password" | "ignore"> {
   user: string;
   password?: string;
+  /** 解決済みignoreパターン配列 */
+  ignore: string[];
 }
 
 /** 解決済みプロファイル設定 */

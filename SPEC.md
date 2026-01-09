@@ -62,11 +62,24 @@ uploader --diff=git staging                 # エラー（fileモードでは非
 
 ```yaml
 _global:
-  ignore: # 除外パターン（glob形式）
-    - "*.log"
-    - ".git/"
-    - ".claude/"
-    - "node_modules/"
+  # 名前付きignoreグループ（推奨）
+  ignore_groups:
+    common:
+      - "*.log"
+      - ".git/"
+      - ".claude/"
+      - "node_modules/"
+    template:
+      - "template/"
+    property:
+      - "property/"
+  # デフォルトで適用するグループ（ignore未指定時）
+  default_ignore: [common]
+
+  # 後方互換: 旧来のignore（非推奨）
+  # ignore:
+  #   - "*.log"
+  #   - ".git/"
 
 # ===========================================
 # プロファイル: development（gitモード）
@@ -121,17 +134,29 @@ staging:
     #     "dist"  → dest/dist/ として作成
 
   to:
+    # defaultsでターゲット共通のignoreを設定
+    defaults:
+      host: "staging.example.com"
+      protocol: "sftp"
+      port: 22
+      user: "deployer"
+      auth_type: "ssh_key"
+      key_file: "~/.ssh/deploy_key"
+      sync_mode: "update"
+      timeout: 30
+      retry: 3
+      ignore:
+        use: [common, template]  # グループを選択
     targets:
-      - host: "staging.example.com"
-        protocol: "sftp"
-        port: 22
-        user: "deployer"
-        auth_type: "ssh_key"
-        key_file: "~/.ssh/deploy_key"
-        dest: "/var/www/staging/"
-        sync_mode: "update"
-        timeout: 30
-        retry: 3
+      - dest: "/var/www/staging-a/"
+        # ignore未指定 → defaults.ignoreを使用
+      - dest: "/var/www/staging-b/"
+        ignore:
+          use: [common, property]  # defaults.ignoreを上書き
+          add: ["special_b/"]      # 追加パターン
+      - dest: "/var/www/staging-c/"
+        ignore:
+          use: []  # 何も除外しない（明示的）
 
 # ===========================================
 # プロファイル: local（ローカルコピー）

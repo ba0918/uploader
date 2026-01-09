@@ -717,3 +717,344 @@ development:
     );
   });
 });
+
+describe("ignore 解決ロジック", () => {
+  describe("後方互換性（旧 _global.ignore）", () => {
+    it("旧来のignoreが各ターゲットに適用される", () => {
+      const config: Config = {
+        _global: {
+          ignore: ["*.log", "node_modules/"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              { host: "localhost", protocol: "local", dest: "/tmp/" },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // プロファイルのignoreに適用される
+      assertEquals(resolved.ignore, ["*.log", "node_modules/"]);
+      // ターゲットのignoreにも適用される
+      assertEquals(resolved.to.targets[0].ignore, ["*.log", "node_modules/"]);
+    });
+  });
+
+  describe("ignore_groups と default_ignore", () => {
+    it("default_ignoreで指定したグループがデフォルト適用される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log", ".git/"],
+            template: ["template/"],
+          },
+          default_ignore: ["common"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              { host: "localhost", protocol: "local", dest: "/tmp/" },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.ignore, ["*.log", ".git/"]);
+      assertEquals(resolved.to.targets[0].ignore, ["*.log", ".git/"]);
+    });
+
+    it("複数グループを組み合わせられる", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+            assets: ["*.png", "*.jpg"],
+          },
+          default_ignore: ["common", "assets"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              { host: "localhost", protocol: "local", dest: "/tmp/" },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.ignore, ["*.log", "*.png", "*.jpg"]);
+    });
+
+    it("重複パターンは除去される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            group1: ["*.log", "*.tmp"],
+            group2: ["*.tmp", "*.bak"],
+          },
+          default_ignore: ["group1", "group2"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              { host: "localhost", protocol: "local", dest: "/tmp/" },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // *.tmpは重複しているので1回だけ
+      assertEquals(resolved.ignore, ["*.log", "*.tmp", "*.bak"]);
+    });
+  });
+
+  describe("ターゲット固有の ignore 設定", () => {
+    it("ターゲットのignoreがdefaults/default_ignoreを上書きする", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+            template: ["template/"],
+            property: ["property/"],
+          },
+          default_ignore: ["common"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/a",
+                // ignore未指定 → default_ignoreを使用
+              },
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/b",
+                ignore: {
+                  use: ["common", "template"],
+                },
+              },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // 1つ目はdefault_ignore
+      assertEquals(resolved.to.targets[0].ignore, ["*.log"]);
+      // 2つ目は個別設定
+      assertEquals(resolved.to.targets[1].ignore, ["*.log", "template/"]);
+    });
+
+    it("defaultsのignoreが適用される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+            template: ["template/"],
+          },
+          default_ignore: ["common"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: {
+                use: ["common", "template"],
+              },
+            },
+            targets: [
+              { dest: "/tmp/a" },
+              { dest: "/tmp/b" },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // 両方ともdefaultsのignoreが適用される
+      assertEquals(resolved.to.targets[0].ignore, ["*.log", "template/"]);
+      assertEquals(resolved.to.targets[1].ignore, ["*.log", "template/"]);
+    });
+
+    it("ターゲットのignoreがdefaultsを上書きする", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+            template: ["template/"],
+            property: ["property/"],
+          },
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: {
+                use: ["common"],
+              },
+            },
+            targets: [
+              { dest: "/tmp/a" },
+              {
+                dest: "/tmp/b",
+                ignore: {
+                  use: ["template", "property"],
+                },
+              },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // 1つ目はdefaultsのignore
+      assertEquals(resolved.to.targets[0].ignore, ["*.log"]);
+      // 2つ目はターゲット固有のignore
+      assertEquals(resolved.to.targets[1].ignore, ["template/", "property/"]);
+    });
+
+    it("addで追加パターンを指定できる", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+          },
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/",
+                ignore: {
+                  use: ["common"],
+                  add: ["special/", "*.bak"],
+                },
+              },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.to.targets[0].ignore, [
+        "*.log",
+        "special/",
+        "*.bak",
+      ]);
+    });
+
+    it("use: [] で何も除外しないことを明示できる", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+          },
+          default_ignore: ["common"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/",
+                ignore: {
+                  use: [],
+                },
+              },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // 明示的に空にした
+      assertEquals(resolved.to.targets[0].ignore, []);
+    });
+  });
+
+  describe("優先順位テスト", () => {
+    it("target.ignore > defaults.ignore > default_ignore の順で優先される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            level1: ["level1/"],
+            level2: ["level2/"],
+            level3: ["level3/"],
+          },
+          default_ignore: ["level1"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: {
+                use: ["level2"],
+              },
+            },
+            targets: [
+              { dest: "/tmp/no-ignore" }, // defaults.ignoreを使用
+              {
+                dest: "/tmp/with-ignore",
+                ignore: { use: ["level3"] }, // 個別設定
+              },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // defaults.ignoreが適用（default_ignoreより優先）
+      assertEquals(resolved.to.targets[0].ignore, ["level2/"]);
+      // target.ignoreが適用（defaults.ignoreより優先）
+      assertEquals(resolved.to.targets[1].ignore, ["level3/"]);
+    });
+
+    it("defaults.ignore未指定時はdefault_ignoreが使用される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+          },
+          default_ignore: ["common"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              // ignore未指定
+            },
+            targets: [{ dest: "/tmp/" }],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.to.targets[0].ignore, ["*.log"]);
+    });
+  });
+});
