@@ -10,18 +10,18 @@
 
 ### 高優先度
 
-- [ ] SSH接続設定の共通化 (`utils/ssh-config.ts`)
+- [x] SSH接続設定の共通化 (`utils/ssh-config.ts`)
   - `buildSshArgs()` が ssh-base.ts, rsync.ts, scp.ts で重複
   - StrictHostKeyChecking, ConnectTimeout, ポート設定
-- [ ] レガシーモード設定の共通化
+- [x] レガシーモード設定の共通化
   - KexAlgorithms, HostKeyAlgorithms, PubkeyAcceptedAlgorithms が4ファイルで分散
 
 ### 中優先度
 
-- [ ] リトライロジックの共通化 (`utils/retry.ts`)
+- [x] リトライロジックの共通化 (`utils/retry.ts`)
   - ssh-base.ts と sftp.ts で同じ指数バックオフ実装
-- [ ] エラーハンドリングの共通化 (`utils/error.ts`)
-  - `error instanceof Error ? error.message : String(error)` が18箇所で重複
+- [x] エラーハンドリングの共通化 (`utils/retry.ts` に含む)
+  - `getErrorMessage()`, `toError()` を追加
 - [ ] ディレクトリ操作の共通化
   - sftp.ts, scp.ts, rsync.ts, local.ts で親ディレクトリ作成処理が重複
 

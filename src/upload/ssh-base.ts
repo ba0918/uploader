@@ -8,7 +8,7 @@ import { join } from "@std/path";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
-import { buildSshArgs } from "../utils/mod.ts";
+import { buildSshArgs, toError, withRetry } from "../utils/mod.ts";
 
 /**
  * SSHベースアップローダーの共通オプション
@@ -171,28 +171,22 @@ export abstract class SshBaseUploader implements Uploader {
    */
   async connect(): Promise<void> {
     const maxRetries = this.options.retry ?? 3;
-    let lastError: Error | undefined;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await this.testConnection();
-        this.connected = true;
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < maxRetries) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * Math.pow(2, attempt - 1))
-          );
-        }
-      }
+    try {
+      await withRetry(
+        async () => {
+          await this.testConnection();
+          this.connected = true;
+        },
+        { maxRetries },
+      );
+    } catch (error) {
+      throw new UploadError(
+        `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
+        "CONNECTION_ERROR",
+        toError(error),
+      );
     }
-
-    throw new UploadError(
-      `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
-      "CONNECTION_ERROR",
-      lastError,
-    );
   }
 
   /**

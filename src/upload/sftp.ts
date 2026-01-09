@@ -8,7 +8,7 @@ import { join as posixJoin } from "@std/path/posix";
 import { Buffer } from "node:buffer";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { LEGACY_ALGORITHMS_SSH2 } from "../utils/mod.ts";
+import { LEGACY_ALGORITHMS_SSH2, toError, withRetry } from "../utils/mod.ts";
 
 /**
  * SFTP接続オプション
@@ -58,28 +58,19 @@ export class SftpUploader implements Uploader {
    */
   async connect(): Promise<void> {
     const maxRetries = this.options.retry ?? 3;
-    let lastError: Error | undefined;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await this.tryConnect();
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < maxRetries) {
-          // 指数バックオフでリトライ
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * Math.pow(2, attempt - 1))
-          );
-        }
-      }
+    try {
+      await withRetry(
+        () => this.tryConnect(),
+        { maxRetries },
+      );
+    } catch (error) {
+      throw new UploadError(
+        `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
+        "CONNECTION_ERROR",
+        toError(error),
+      );
     }
-
-    throw new UploadError(
-      `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
-      "CONNECTION_ERROR",
-      lastError,
-    );
   }
 
   /**
