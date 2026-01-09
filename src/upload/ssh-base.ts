@@ -142,9 +142,9 @@ export abstract class SshBaseUploader implements Uploader {
     if (this.options.legacyMode) {
       args.push(
         "-o",
-        "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
+        "KexAlgorithms=+diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
         "-o",
-        "HostKeyAlgorithms=+ssh-rsa",
+        "HostKeyAlgorithms=+ssh-rsa,ssh-dss",
         "-o",
         "PubkeyAcceptedAlgorithms=+ssh-rsa",
       );
