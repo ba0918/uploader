@@ -15,6 +15,25 @@ Git差分またはローカルファイルをSFTP/SCPでリモートサーバに
 ## Requirements
 
 - [Deno](https://deno.land/) 1.40+
+- [Git](https://git-scm.com/) （gitモード使用時）
+
+### プラットフォーム別の注意事項
+
+#### Linux / macOS
+
+sftp, scp, rsync は標準でインストールされているか、簡単に導入可能です。
+
+#### Windows
+
+このツールは内部で `sftp`, `scp`, `rsync` コマンドを使用します。
+
+| プロトコル | 必要な準備 |
+| ---------- | ---------- |
+| sftp / scp | OpenSSHの有効化（設定 → アプリ → オプション機能 → OpenSSHクライアント） |
+| rsync | Git Bash / cwRsync / WSL のいずれかをインストール |
+| local | 追加設定不要 |
+
+> **Tip**: rsyncを使わない場合は、OpenSSHの有効化のみで動作します。
 
 ## Installation
 
