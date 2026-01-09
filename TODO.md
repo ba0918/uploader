@@ -28,7 +28,9 @@
 
 ### 低優先度
 
-- [ ] バッファ→一時ファイル書き込みの共通化
+- [x] バッファ→一時ファイル書き込みの共通化 (`ssh-base.ts`)
+  - `uploadBuffer()`, `uploadFileFromPath()` を追加
+  - scp.ts, rsync.ts の重複コードを削除
 - [ ] 設定検証パターンの共通化
 - [ ] 定数の集約 (`config/constants.ts`)
   - validProtocols, validAuthTypes, validSyncModes
