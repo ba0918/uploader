@@ -14,8 +14,8 @@ Git差分またはローカルファイルをSFTP/SCPでリモートサーバに
 
 ## Requirements
 
-- [Deno](https://deno.land/) 1.40+
 - [Git](https://git-scm.com/) （gitモード使用時）
+- [Deno](https://deno.land/) 2.0+（ソースから実行する場合のみ）
 
 ### プラットフォーム別の注意事項
 
@@ -37,8 +37,31 @@ sftp, scp, rsync は標準でインストールされているか、簡単に導
 
 ## Installation
 
+### ワンライナーインストール（推奨）
+
 ```sh
-deno install --allow-read --allow-write --allow-net --allow-run --allow-env -n uploader ./main.ts
+curl -fsSL https://raw.githubusercontent.com/ba0918/uploader/main/install.sh | sh
+```
+
+インストール先を変更する場合:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ba0918/uploader/main/install.sh | INSTALL_DIR=~/.local/bin sh
+```
+
+### Denoから直接インストール
+
+```sh
+deno install --allow-read --allow-write --allow-net --allow-run --allow-env -n uploader \
+  https://raw.githubusercontent.com/ba0918/uploader/main/main.ts
+```
+
+### ソースからビルド
+
+```sh
+git clone https://github.com/ba0918/uploader.git
+cd uploader
+deno task build
 ```
 
 ## Quick Start
