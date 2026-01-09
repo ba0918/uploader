@@ -2,8 +2,8 @@
  * config/loader.ts のテスト
  */
 
-import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert";
-import { afterEach, beforeEach, describe, it } from "jsr:@std/testing/bdd";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { parse as parseYaml } from "@std/yaml";
 import type { Config, ProfileConfig } from "../../src/types/mod.ts";
 import {

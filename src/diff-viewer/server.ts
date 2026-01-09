@@ -617,7 +617,7 @@ async function handleWebSocketMessage(
   switch (message.type) {
     case "file_request": {
       // リクエストタイプを取得（常にremote）
-      const requestType: "remote" = "remote";
+      const requestType = "remote" as const;
 
       await handleFileRequest(socket, message.path, requestType, state);
       break;

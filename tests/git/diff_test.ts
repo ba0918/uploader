@@ -2,8 +2,8 @@
  * git/diff.ts のテスト
  */
 
-import { assertEquals, assertRejects } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
+import { assertEquals, assertRejects } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import type { CommandExecutor, CommandResult } from "../../src/types/mod.ts";
 import {
   getCurrentBranch,
@@ -21,7 +21,7 @@ function createMockExecutor(
   responses: Map<string, CommandResult>,
 ): CommandExecutor {
   return {
-    async execute(
+    execute(
       command: string,
       args: string[],
     ): Promise<CommandResult> {
@@ -29,22 +29,22 @@ function createMockExecutor(
 
       // 完全一致を試みる
       if (responses.has(key)) {
-        return responses.get(key)!;
+        return Promise.resolve(responses.get(key)!);
       }
 
       // 部分一致を試みる（diff --name-status など）
       for (const [pattern, result] of responses) {
         if (key.includes(pattern) || pattern.includes(key)) {
-          return result;
+          return Promise.resolve(result);
         }
       }
 
       // デフォルトはエラー
-      return {
+      return Promise.resolve({
         code: 1,
         stdout: new Uint8Array(),
         stderr: new TextEncoder().encode(`Command not found: ${key}`),
-      };
+      });
     },
   };
 }

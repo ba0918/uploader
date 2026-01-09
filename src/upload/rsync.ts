@@ -57,21 +57,21 @@ export class RsyncUploader extends SshBaseUploader {
   /**
    * mkdir（rsync用：sudo考慮）
    */
-  override async mkdir(remotePath: string): Promise<void> {
+  override mkdir(remotePath: string): Promise<void> {
     return super.mkdir(remotePath, this.useSudo());
   }
 
   /**
    * delete（rsync用：sudo考慮）
    */
-  override async delete(remotePath: string): Promise<void> {
+  override delete(remotePath: string): Promise<void> {
     return super.delete(remotePath, this.useSudo());
   }
 
   /**
    * readFile（rsync用：sudo考慮）
    */
-  override async readFile(remotePath: string) {
+  override readFile(remotePath: string) {
     return super.readFile(remotePath, this.useSudo());
   }
 

@@ -8,7 +8,6 @@ import type {
   PartialTargetConfig,
   ProfileConfig,
   SourceConfig,
-  TargetConfig,
   TargetDefaults,
 } from "../types/mod.ts";
 

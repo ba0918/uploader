@@ -801,7 +801,7 @@ export function logUploadProgress(progress: UploadProgress): void {
   if (config.level === "quiet") return;
 
   const {
-    targetIndex,
+    targetIndex: _targetIndex,
     totalTargets,
     host,
     fileIndex,
