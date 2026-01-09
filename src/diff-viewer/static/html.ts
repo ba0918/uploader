@@ -955,6 +955,49 @@ export function getHtmlContent(): string {
       gap: 10px;
     }
 
+    /* 初期ローディングオーバーレイ */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(30, 30, 30, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .loading-overlay.hidden {
+      display: none;
+    }
+
+    .loading-overlay .spinner-large {
+      width: 80px;
+      height: 80px;
+      border: 5px solid var(--border-color);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .loading-overlay .loading-text {
+      font-size: 20px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .loading-overlay .loading-subtext {
+      font-size: 14px;
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 400px;
+      line-height: 1.5;
+    }
+
     /* 複数ターゲット進捗表示 */
     .progress-multi-target {
       width: 600px;
@@ -1098,6 +1141,13 @@ export function getHtmlContent(): string {
   <!-- トースト通知コンテナ -->
   <div class="toast-container" id="toast-container"></div>
 
+  <!-- 初期ローディングオーバーレイ -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="spinner-large"></div>
+    <div class="loading-text">Checking remote differences...</div>
+    <div class="loading-subtext">This may take a few minutes for large projects.<br>Please wait...</div>
+  </div>
+
   <script>
     // アプリケーション状態
     const state = {
@@ -1143,7 +1193,8 @@ export function getHtmlContent(): string {
       remoteTargetBadge: document.getElementById('remote-target-badge'),
       targetSelector: document.getElementById('target-selector'),
       targetSelect: document.getElementById('target-select'),
-      uploadTooltip: document.getElementById('upload-tooltip')
+      uploadTooltip: document.getElementById('upload-tooltip'),
+      loadingOverlay: document.getElementById('loading-overlay')
     };
 
     // Uploadボタンの状態を更新
@@ -1189,6 +1240,8 @@ export function getHtmlContent(): string {
         elements.statusText.textContent = 'Disconnected';
         // ボタンを無効化
         updateUploadButtonState(true, 'connection_error', 'Disconnected from server');
+        // ローディングオーバーレイを非表示
+        elements.loadingOverlay.classList.add('hidden');
       };
 
       state.ws.onerror = (error) => {
@@ -1197,6 +1250,8 @@ export function getHtmlContent(): string {
         elements.statusText.textContent = 'Connection error';
         // ボタンを無効化
         updateUploadButtonState(true, 'connection_error', 'Connection lost');
+        // ローディングオーバーレイを非表示
+        elements.loadingOverlay.classList.add('hidden');
       };
     }
 
@@ -1566,6 +1621,12 @@ export function getHtmlContent(): string {
 
     // 初期化データの処理
     function handleInit(data) {
+      // ローディングオーバーレイを非表示
+      elements.loadingOverlay.classList.add('hidden');
+
+      // diff表示を常にリセット（ターゲット切り替え時の「Switching target...」を消すため）
+      elements.diffContainer.innerHTML = '<div class="diff-placeholder">Select a file to view diff</div>';
+
       // 以前のターゲットインデックスを保存（再初期化時用）
       const previousTargetIndex = state.currentTargetIndex;
       const isReinit = state.files.length > 0;
@@ -1583,8 +1644,6 @@ export function getHtmlContent(): string {
       if (isReinit) {
         state.fileContents.clear();
         state.selectedFile = null;
-        // diff表示をリセット
-        elements.diffContainer.innerHTML = '<div class="diff-placeholder">Select a file to view diff</div>';
       }
 
       // 初期タブを設定（常にremote）
@@ -1658,6 +1717,9 @@ export function getHtmlContent(): string {
     // ターゲットを切り替え
     function switchTarget(newIndex) {
       state.currentTargetIndex = newIndex;
+
+      // ローディングオーバーレイを表示
+      elements.loadingOverlay.classList.remove('hidden');
 
       // ボタンを「確認中」状態に更新
       updateUploadButtonState(true, 'checking', 'Checking for changes...');

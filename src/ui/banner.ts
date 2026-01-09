@@ -3,8 +3,9 @@
  */
 
 import { bold, box, dim, info } from "./colors.ts";
+import denoConfig from "../../deno.json" with { type: "json" };
 
-const VERSION = "1.0.0";
+const VERSION = denoConfig.version;
 
 /**
  * 起動バナーを表示
