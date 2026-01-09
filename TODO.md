@@ -4,7 +4,44 @@
 
 ---
 
-## リファクタリング: DRY原則違反の修正
+## セキュリティ修正（最優先）
+
+- [ ] コマンドインジェクション脆弱性の修正 (`ssh-base.ts`)
+  - `mkdir()`, `delete()`, `readFile()` でパスが文字列に直接埋め込まれている
+  - 配列形式で引数を渡すように修正
+
+---
+
+## リファクタリング: 原則違反の修正
+
+### 高優先度
+
+- [ ] 認証エラー検出パターンの共通化 (`utils/error.ts`)
+  - `isAuthError(errorMsg)` 関数を追加
+  - scp.ts, rsync.ts, ssh-base.ts, sftp.ts で利用
+- [ ] upload() 処理フローの共通化
+  - テンプレートメソッドパターンで基底クラスに実装
+  - 接続確認 → ディレクトリ処理 → 親ディレクトリ確保 → アップロード
+
+### 中優先度
+
+- [ ] Uploader インターフェースの分割 (ISP)
+  - `BasicUploader`: 基本操作（connect, upload, delete, etc.）
+  - `BulkUploadCapable`: bulkUpload()
+  - `DiffCapable`: getDiff()
+- [ ] "No source for file upload" エラーメッセージの定数化
+  - 4ファイルで同じメッセージが重複
+
+### 低優先度
+
+- [ ] マジックナンバーの定数化
+  - diff-viewer/server.ts: 8192, 65536 など
+- [ ] チャンク読み込みロジックの共通化
+  - sftp.ts と local.ts で重複
+
+---
+
+## リファクタリング: DRY原則違反の修正（完了）
 
 **目的**: 重複コードの統合による保守性向上
 

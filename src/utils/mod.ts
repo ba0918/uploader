@@ -26,3 +26,4 @@ export {
   type RetryOptions,
 } from "./retry.ts";
 export { ensureParentDir, getParentDir } from "./directory.ts";
+export { escapeShellArg } from "./shell.ts";

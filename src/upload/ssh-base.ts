@@ -8,7 +8,7 @@ import { join } from "@std/path";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
-import { buildSshArgs, toError, withRetry } from "../utils/mod.ts";
+import { buildSshArgs, escapeShellArg, toError, withRetry } from "../utils/mod.ts";
 
 /**
  * SSHベースアップローダーの共通オプション
@@ -220,9 +220,10 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
+    const escapedPath = escapeShellArg(fullPath);
     const mkdirCmd = useSudo
-      ? `sudo mkdir -p "${fullPath}"`
-      : `mkdir -p "${fullPath}"`;
+      ? `sudo mkdir -p ${escapedPath}`
+      : `mkdir -p ${escapedPath}`;
 
     const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, mkdirCmd);
@@ -249,9 +250,10 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
+    const escapedPath = escapeShellArg(fullPath);
     const rmCmd = useSudo
-      ? `sudo rm -rf "${fullPath}"`
-      : `rm -rf "${fullPath}"`;
+      ? `sudo rm -rf ${escapedPath}`
+      : `rm -rf ${escapedPath}`;
 
     const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, rmCmd);
@@ -284,7 +286,8 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
-    const catCmd = useSudo ? `sudo cat "${fullPath}"` : `cat "${fullPath}"`;
+    const escapedPath = escapeShellArg(fullPath);
+    const catCmd = useSudo ? `sudo cat ${escapedPath}` : `cat ${escapedPath}`;
 
     const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, catCmd);
