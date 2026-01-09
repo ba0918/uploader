@@ -91,11 +91,20 @@ export function getHtmlContent(): string {
       align-items: center;
       gap: 8px;
       font-size: 13px;
-      color: var(--text-secondary);
+      background: rgba(86, 156, 214, 0.1);
+      border: 1px solid rgba(86, 156, 214, 0.3);
+      border-radius: 6px;
+      padding: 6px 12px;
     }
 
     .target-selector.hidden {
       display: none;
+    }
+
+    .target-selector label {
+      color: var(--accent-blue);
+      font-weight: 500;
+      white-space: nowrap;
     }
 
     .target-selector select {
@@ -103,19 +112,25 @@ export function getHtmlContent(): string {
       color: var(--text-primary);
       border: 1px solid var(--border-color);
       border-radius: 4px;
-      padding: 4px 8px;
+      padding: 6px 28px 6px 10px;
       font-size: 13px;
       cursor: pointer;
       min-width: 200px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23808080' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
     }
 
     .target-selector select:hover {
       border-color: var(--accent-blue);
+      background-color: var(--bg-secondary);
     }
 
     .target-selector select:focus {
       outline: none;
       border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(86, 156, 214, 0.2);
     }
 
     .btn {
