@@ -2,6 +2,7 @@
  * SSHベースアップローダーの共通基底クラス
  *
  * SCP/Rsyncで共通するSSH接続処理を抽象化
+ * テンプレートメソッドパターンでupload()の共通フローを実装
  */
 
 import { join } from "@std/path";
@@ -10,6 +11,7 @@ import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
 import {
   buildSshArgs,
+  ensureParentDir,
   escapeShellArg,
   isSshAuthError,
   toError,
@@ -337,6 +339,11 @@ export abstract class SshBaseUploader implements Uploader {
   }
 
   /**
+   * 一時ディレクトリのプレフィックス（サブクラスで実装）
+   */
+  protected abstract get tempDirPrefix(): string;
+
+  /**
    * ローカルファイルパスからリモートへアップロード（サブクラスで実装）
    */
   protected abstract uploadFileFromPath(
@@ -352,17 +359,15 @@ export abstract class SshBaseUploader implements Uploader {
    * @param buffer アップロードするデータ
    * @param destPath リモートの宛先パス
    * @param size ファイルサイズ
-   * @param tempDirPrefix 一時ディレクトリのプレフィックス
    * @param onProgress 進捗コールバック
    */
   protected async uploadBuffer(
     buffer: Uint8Array,
     destPath: string,
     size: number,
-    tempDirPrefix: string,
     onProgress?: (transferred: number, total: number) => void,
   ): Promise<void> {
-    const tempDir = await this.getOrCreateTempDir(tempDirPrefix);
+    const tempDir = await this.getOrCreateTempDir(this.tempDirPrefix);
 
     // 一時ファイルに書き込み
     const tempFile = join(tempDir, crypto.randomUUID());
@@ -385,11 +390,56 @@ export abstract class SshBaseUploader implements Uploader {
   }
 
   /**
-   * ファイルアップロード（サブクラスで実装）
+   * ファイルアップロード（テンプレートメソッド）
+   *
+   * 共通のアップロードフローを実装:
+   * 1. 接続確認
+   * 2. ディレクトリの場合は作成のみ
+   * 3. 親ディレクトリを確保
+   * 4. コンテンツまたはファイルパスからアップロード
    */
-  abstract upload(
+  async upload(
     file: UploadFile,
     remotePath: string,
     onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void>;
+  ): Promise<void> {
+    if (!this.isConnected()) {
+      throw new UploadError("Not connected", "CONNECTION_ERROR");
+    }
+
+    // ディレクトリの場合は作成のみ
+    if (file.isDirectory) {
+      await this.mkdir(remotePath);
+      onProgress?.(0, 0);
+      return;
+    }
+
+    // 親ディレクトリを確保
+    await ensureParentDir(remotePath, (path) => this.mkdir(path));
+
+    const destPath = join(this.options.dest, remotePath);
+
+    if (file.content) {
+      // Gitモードの場合: 一時ファイルに書き込んでからアップロード
+      await this.uploadBuffer(
+        file.content,
+        destPath,
+        file.size,
+        onProgress,
+      );
+    } else if (file.sourcePath) {
+      // ファイルモードの場合: 直接アップロード
+      await this.uploadFileFromPath(
+        file.sourcePath,
+        destPath,
+        file.size,
+        onProgress,
+      );
+    } else {
+      throw new UploadError(
+        "No source for file upload",
+        "TRANSFER_ERROR",
+      );
+    }
+  }
 }

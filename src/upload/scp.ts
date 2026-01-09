@@ -4,10 +4,8 @@
  * 外部scpコマンドを使用して転送を行う
  */
 
-import { join } from "@std/path";
-import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { buildSshArgs, ensureParentDir, isSshAuthError } from "../utils/mod.ts";
+import { buildSshArgs, isSshAuthError } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -27,52 +25,10 @@ export class ScpUploader extends SshBaseUploader {
   }
 
   /**
-   * ファイルアップロード
+   * 一時ディレクトリのプレフィックス
    */
-  async upload(
-    file: UploadFile,
-    remotePath: string,
-    onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void> {
-    if (!this.isConnected()) {
-      throw new UploadError("Not connected", "CONNECTION_ERROR");
-    }
-
-    // ディレクトリの場合は作成のみ
-    if (file.isDirectory) {
-      await this.mkdir(remotePath);
-      onProgress?.(0, 0);
-      return;
-    }
-
-    // 親ディレクトリを確保
-    await ensureParentDir(remotePath, (path) => this.mkdir(path));
-
-    const destPath = join(this.options.dest, remotePath);
-
-    if (file.content) {
-      // Gitモードの場合: 一時ファイルに書き込んでからアップロード
-      await this.uploadBuffer(
-        file.content,
-        destPath,
-        file.size,
-        "uploader_scp_",
-        onProgress,
-      );
-    } else if (file.sourcePath) {
-      // ファイルモードの場合: 直接アップロード
-      await this.uploadFileFromPath(
-        file.sourcePath,
-        destPath,
-        file.size,
-        onProgress,
-      );
-    } else {
-      throw new UploadError(
-        "No source for file upload",
-        "TRANSFER_ERROR",
-      );
-    }
+  protected get tempDirPrefix(): string {
+    return "uploader_scp_";
   }
 
   /**
