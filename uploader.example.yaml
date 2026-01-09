@@ -21,7 +21,7 @@ development:
   to:
     targets:
       - host: "web1.example.com"
-        protocol: "sftp" # sftp / scp / local
+        protocol: "sftp" # sftp / scp / rsync / local
         port: 22
         user: "${DEPLOY_USER}"
         auth_type: "ssh_key"
@@ -55,6 +55,60 @@ staging:
         sync_mode: "update"
         timeout: 30
         retry: 3
+
+# ===========================================
+# プロファイル: production（defaults使用、複数ターゲット）
+# ===========================================
+production:
+  from:
+    type: "git"
+    base: "origin/main"
+
+  to:
+    # defaults: 全ターゲット共通の設定
+    defaults:
+      protocol: "rsync"
+      port: 22
+      user: "${DEPLOY_USER}"
+      auth_type: "ssh_key"
+      key_file: "~/.ssh/deploy_key"
+      sync_mode: "mirror"
+      timeout: 60
+      retry: 3
+      rsync_path: "sudo rsync" # リモートでsudo実行
+      rsync_options: # rsync追加オプション
+        - "--chmod=D755,F644"
+        - "--chown=www-data:www-data"
+
+    targets:
+      # 各ターゲットはdestのみ必須、他はdefaultsから継承
+      - host: "web1.example.com"
+        dest: "/var/www/html/"
+      - host: "web2.example.com"
+        dest: "/var/www/html/"
+      - host: "web3.example.com"
+        dest: "/var/www/html/"
+        timeout: 120 # 個別設定でdefaultsを上書き可能
+
+# ===========================================
+# プロファイル: legacy（古いSSHサーバー向け）
+# ===========================================
+legacy:
+  from:
+    type: "file"
+    src:
+      - "dist/"
+
+  to:
+    targets:
+      - host: "old-server.example.com"
+        protocol: "scp"
+        port: 22
+        user: "admin"
+        auth_type: "password"
+        password: "${LEGACY_PASSWORD}" # 環境変数推奨
+        dest: "/home/admin/public_html/"
+        legacy_mode: true # 古いSSHアルゴリズムを有効化
 
 # ===========================================
 # プロファイル: local（ローカルコピー）
