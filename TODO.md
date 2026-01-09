@@ -31,9 +31,8 @@
 - [x] バッファ→一時ファイル書き込みの共通化 (`ssh-base.ts`)
   - `uploadBuffer()`, `uploadFileFromPath()` を追加
   - scp.ts, rsync.ts の重複コードを削除
-- [ ] 設定検証パターンの共通化
-- [ ] 定数の集約 (`config/constants.ts`)
-  - validProtocols, validAuthTypes, validSyncModes
+- [x] 設定検証パターンの共通化 (`config/validator.ts`)
+  - `VALID_PROTOCOLS`, `VALID_AUTH_TYPES`, `VALID_SYNC_MODES` を定数化
 - [ ] TextDecoderのユーティリティ化
 
 ---
