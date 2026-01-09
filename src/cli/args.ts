@@ -29,6 +29,7 @@ Options:
   -l, --log-file <path>    ログファイルのパス
       --concurrency <num>  リモートステータスチェックの同時実行数 (default: 10)
       --parallel           複数ターゲットへ並列にアップロード
+      --checksum           rsync差分検出でchecksumを使用（正確だが重い）
   -L, --list               プロファイル一覧を表示
   -V, --version            バージョン表示
   -h, --help               このヘルプを表示
@@ -135,6 +136,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       "no-browser",
       "strict",
       "parallel",
+      "checksum",
       "version",
       "help",
       "list",
@@ -147,6 +149,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       "no-browser": false,
       strict: false,
       parallel: false,
+      checksum: false,
       port: 3000,
       concurrency: 10,
     },
@@ -219,6 +222,7 @@ export function parseArgs(args: string[]): CliArgs | null {
     logFile: parsed["log-file"],
     concurrency,
     parallel: parsed.parallel,
+    checksum: parsed.checksum,
     list: parsed.list,
   };
 }

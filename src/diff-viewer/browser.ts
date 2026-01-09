@@ -113,6 +113,7 @@ export interface CuiConfirmOptions {
   targets?: ResolvedTargetConfig[];
   uploadFiles?: UploadFile[];
   localDir?: string;
+  checksum?: boolean;
 }
 
 /** ターゲットごとの差分結果 */
@@ -130,6 +131,7 @@ async function getTargetDiffs(
   targets: ResolvedTargetConfig[],
   uploadFiles: UploadFile[],
   localDir: string,
+  checksum?: boolean,
 ): Promise<TargetDiffInfo[]> {
   const results: TargetDiffInfo[] = [];
   const filePaths = uploadFiles.map((f) => f.relativePath);
@@ -150,7 +152,7 @@ async function getTargetDiffs(
       await uploader.connect();
       try {
         if (uploader.getDiff) {
-          const diff = await uploader.getDiff(localDir, filePaths);
+          const diff = await uploader.getDiff(localDir, filePaths, { checksum });
           results.push({ target, diff });
         } else {
           results.push({ target, diff: null, unsupported: true });
@@ -216,6 +218,7 @@ export async function cuiConfirm(
   const targets = options?.targets ?? [];
   const uploadFiles = options?.uploadFiles ?? [];
   const localDir = options?.localDir ?? "";
+  const checksum = options?.checksum ?? false;
 
   // 複数ターゲットがある場合、各ターゲットの差分を取得
   const shouldGetRemoteDiffs = targets.length > 0 &&
@@ -226,7 +229,7 @@ export async function cuiConfirm(
 
   if (shouldGetRemoteDiffs) {
     console.log(dim("  Checking remote differences..."));
-    targetDiffs = await getTargetDiffs(targets, uploadFiles, localDir);
+    targetDiffs = await getTargetDiffs(targets, uploadFiles, localDir, checksum);
     // 進捗表示をクリア
     console.log("\x1b[1A\x1b[2K");
   }

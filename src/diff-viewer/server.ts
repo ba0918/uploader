@@ -393,11 +393,13 @@ async function tryRsyncGetDiff(
       .map((f) => f.relativePath);
 
     debugLog(
-      `[RsyncDiff] Running rsync getDiff() on ${options.localDir} for ${filePaths.length} files...`,
+      `[RsyncDiff] Running rsync getDiff() on ${options.localDir} for ${filePaths.length} files (checksum: ${options.checksum ?? false})...`,
     );
 
     // rsync dry-runで差分を取得（比較対象をuploadFilesに限定）
-    const result = await uploader.getDiff(options.localDir, filePaths);
+    const result = await uploader.getDiff(options.localDir, filePaths, {
+      checksum: options.checksum,
+    });
 
     debugLog(
       `[RsyncDiff] Found ${result.entries.length} changed files (${result.added} new, ${result.modified} modified, ${result.deleted} deleted)`,

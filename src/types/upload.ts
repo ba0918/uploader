@@ -206,9 +206,14 @@ export interface Uploader {
    * rsyncプロトコル専用。ローカルとリモートの差分を高速に検出する。
    * @param localDir ローカルディレクトリのパス
    * @param files 比較対象のファイルパス（相対パス）のリスト。省略時はディレクトリ全体を比較
+   * @param options オプション
    * @returns 差分結果、サポートしていない場合はundefined
    */
-  getDiff?(localDir: string, files?: string[]): Promise<RsyncDiffResult>;
+  getDiff?(
+    localDir: string,
+    files?: string[],
+    options?: { checksum?: boolean },
+  ): Promise<RsyncDiffResult>;
 }
 
 /** アップローダーエラー */

@@ -45,8 +45,9 @@ export function parseItemizeLine(
   // X: < (受信側から送信側へ), > (送信側から受信側へ), . (属性のみ変更), c (ローカル変更), h (ハードリンク)
   // Y: f (ファイル), d (ディレクトリ), L (シンボリックリンク), D (デバイス), S (特殊ファイル)
   // flags: 9文字のフラグ（変更内容を示す）
-  // 例: >f+++++++++ new.txt, >f.st...... modified.txt, .f..t...... timestamp.txt
-  const match = line.match(/^([<>.ch])([fdLDS])([csptogax.+]{9})\s+(.+)$/);
+  // 各フラグは小文字（ソースが新しい）と大文字（更新が必要）の両方がある
+  // 例: >f+++++++++ new.txt, >f.st...... modified.txt, <f..T...... timestamp.txt
+  const match = line.match(/^([<>.ch])([fdLDS])([cCsSpPtToOgGuUaAxX.+]{9})\s+(.+)$/);
   if (!match) {
     return null;
   }
@@ -58,13 +59,31 @@ export function parseItemizeLine(
     return null;
   }
 
-  // フラグを解析
-  // +が全てなら新規（A）、それ以外なら変更（M）
+  // フラグを解析（9文字）
+  // 位置0: checksum (c)
+  // 位置1: size (s/S)
+  // 位置2: time (t/T)
+  // 以降: permissions, owner, group, etc.
+
+  // +が全てなら新規（A）
   const isNew = /^\++$/.test(flags);
+  if (isNew) {
+    return { path, changeType: "A" as const };
+  }
+
+  // 内容変更: checksumまたはsizeフラグがある場合のみ
+  // flags[0] = checksum (c), flags[1] = size (s/S)
+  const hasContentChange = flags[0] === "c" ||
+    flags[1] === "s" || flags[1] === "S";
+
+  if (!hasContentChange) {
+    // タイムスタンプやパーミッションのみの変更はスキップ
+    return null;
+  }
 
   return {
     path,
-    changeType: isNew ? "A" : "M",
+    changeType: "M" as const,
   };
 }
 

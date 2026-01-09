@@ -88,6 +88,7 @@ export async function startDiffViewer(
       targets: options.targets,
       uploadFiles: options.uploadFiles,
       localDir: options.localDir,
+      checksum: options.checksum,
     });
     return {
       confirmed: cuiResult.confirmed,

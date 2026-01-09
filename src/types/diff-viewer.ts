@@ -33,6 +33,8 @@ export interface DiffViewerOptions {
   localDir?: string;
   /** Uploader接続のアイドルタイムアウト（秒、デフォルト: 300 = 5分、0で無効） */
   uploaderIdleTimeout?: number;
+  /** rsync checksum比較を使用するか */
+  checksum?: boolean;
 }
 
 /** diff-viewerの起動結果 */

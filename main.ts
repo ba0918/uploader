@@ -341,6 +341,7 @@ async function main(): Promise<number> {
           uploadFiles,
           concurrency: args.concurrency,
           localDir,
+          checksum: args.checksum,
         });
 
         if (!viewerResult.confirmed) {

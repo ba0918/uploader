@@ -54,6 +54,9 @@ export interface CliOptions {
 
   /** 複数ターゲットへの並列アップロード */
   parallel: boolean;
+
+  /** rsync checksum比較（--checksum）*/
+  checksum: boolean;
 }
 
 /** CLI 引数（プロファイル名含む） */
