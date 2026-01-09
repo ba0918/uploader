@@ -2,8 +2,8 @@
  * cli/list.ts のテスト
  */
 
-import { assertEquals } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
+import { assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import { showProfileList } from "../../src/cli/list.ts";
 import type { Config } from "../../src/types/mod.ts";
 
@@ -126,7 +126,11 @@ describe("showProfileList", () => {
           from: { type: "file", src: ["dist/", "public/"] },
           to: {
             targets: [
-              { host: "staging.example.com", protocol: "sftp", dest: "/var/www/" },
+              {
+                host: "staging.example.com",
+                protocol: "sftp",
+                dest: "/var/www/",
+              },
             ],
           },
         },
@@ -181,7 +185,11 @@ describe("showProfileList", () => {
           from: { type: "file", src: ["dist/"] },
           to: {
             targets: [
-              { host: "staging.example.com", protocol: "sftp", dest: "/var/www/" },
+              {
+                host: "staging.example.com",
+                protocol: "sftp",
+                dest: "/var/www/",
+              },
             ],
           },
         },

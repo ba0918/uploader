@@ -2,8 +2,8 @@
  * diff-viewer/mod.ts のテスト
  */
 
-import { assertEquals } from "jsr:@std/assert@^1";
-import { describe, it } from "jsr:@std/testing@^1/bdd";
+import { assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import { isDiffViewerSupported } from "../../src/diff-viewer/mod.ts";
 
 describe("isDiffViewerSupported", () => {

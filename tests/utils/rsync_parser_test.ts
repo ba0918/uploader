@@ -2,7 +2,7 @@
  * rsync-parser テスト
  */
 
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
   parseItemizeChanges,

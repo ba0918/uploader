@@ -66,6 +66,7 @@ import {
   logUploadProgress,
   logUploadStart,
   logUploadSuccess,
+  logVerbose,
   path,
   showBanner,
 } from "./src/ui/mod.ts";
@@ -128,10 +129,20 @@ async function main(): Promise<number> {
     }
 
     // 設定ファイルを読み込み
+    logVerbose(`Loading profile "${args.profile}" from config...`);
     const { profile, configPath } = await loadAndResolveProfile(
       args.profile,
       args.config,
     );
+    logVerbose(`Config loaded from: ${configPath}`);
+    logVerbose(`Profile type: ${profile.from.type}`);
+    logVerbose(`Target count: ${profile.to.targets.length}`);
+    for (const target of profile.to.targets) {
+      logVerbose(`  - ${target.host}:${target.dest} (${target.protocol})`);
+    }
+    if (profile.ignore.length > 0) {
+      logVerbose(`Ignore patterns: ${profile.ignore.join(", ")}`);
+    }
 
     // CLI引数で設定を上書き
     if (profile.from.type === "git") {
@@ -179,9 +190,13 @@ async function main(): Promise<number> {
       const base = profile.from.base;
       const target = profile.from.target || "HEAD";
 
+      logVerbose(`Getting git diff: ${base}...${target}`);
+      const startTime = Date.now();
       diffResult = await getDiff(base, target, {
         excludePatterns: profile.ignore,
       });
+      const elapsed = Date.now() - startTime;
+      logVerbose(`Git diff completed in ${elapsed}ms`);
 
       // 差分サマリーを表示
       if (diffResult.files.length === 0) {
@@ -198,9 +213,15 @@ async function main(): Promise<number> {
       });
     } else {
       // ファイルモード: ファイルを収集
+      logVerbose(`Collecting files from: ${profile.from.src.join(", ")}`);
+      const startTime = Date.now();
       fileResult = await collectFiles(profile.from.src, {
         ignorePatterns: profile.ignore,
       });
+      const elapsed = Date.now() - startTime;
+      logVerbose(
+        `File collection completed in ${elapsed}ms: ${fileResult.fileCount} files, ${fileResult.totalSize} bytes`,
+      );
 
       // ファイルサマリーを表示
       if (fileResult.fileCount === 0) {
@@ -350,6 +371,12 @@ async function main(): Promise<number> {
 
     // アップロード実行
     const totalSize = uploadFiles.reduce((sum, f) => sum + f.size, 0);
+    logVerbose(
+      `Starting upload: ${uploadFiles.length} files, ${totalSize} bytes to ${profile.to.targets.length} target(s)`,
+    );
+    logVerbose(
+      `Upload options: dryRun=${args.dryRun}, delete=${args.delete}, strict=${args.strict}, parallel=${args.parallel}`,
+    );
     logUploadStart(
       profile.to.targets.length,
       uploadFiles.length,
@@ -376,6 +403,7 @@ async function main(): Promise<number> {
       diffViewerController?.sendProgress(event);
     };
 
+    const uploadStartTime = Date.now();
     const result = await uploadToTargets(
       profile.to.targets,
       uploadFiles,
@@ -387,6 +415,18 @@ async function main(): Promise<number> {
       },
       onProgress,
     );
+    const uploadElapsed = Date.now() - uploadStartTime;
+    logVerbose(`Upload completed in ${uploadElapsed}ms`);
+    logVerbose(
+      `Result: ${result.successTargets} succeeded, ${result.failedTargets} failed, ${result.totalFiles} files transferred`,
+    );
+    for (const t of result.targets) {
+      logVerbose(
+        `  - ${t.target.host}: ${t.status} (${t.successCount}/${
+          t.successCount + t.failedCount
+        } files)`,
+      );
+    }
 
     // 進捗表示をクリア
     clearUploadProgress();

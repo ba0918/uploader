@@ -8,7 +8,6 @@ import type {
   PartialTargetConfig,
   ProfileConfig,
   SourceConfig,
-  TargetConfig,
   TargetDefaults,
 } from "../types/mod.ts";
 
@@ -254,7 +253,12 @@ function validateTargetDefaults(
 
   return {
     host: defaults.host ? String(defaults.host) : undefined,
-    protocol: defaults.protocol as "sftp" | "scp" | "rsync" | "local" | undefined,
+    protocol: defaults.protocol as
+      | "sftp"
+      | "scp"
+      | "rsync"
+      | "local"
+      | undefined,
     port: typeof defaults.port === "number" ? defaults.port : undefined,
     user: defaults.user ? String(defaults.user) : undefined,
     auth_type: defaults.auth_type as "ssh_key" | "password" | undefined,
@@ -267,7 +271,9 @@ function validateTargetDefaults(
     preserve_timestamps: typeof defaults.preserve_timestamps === "boolean"
       ? defaults.preserve_timestamps
       : undefined,
-    timeout: typeof defaults.timeout === "number" ? defaults.timeout : undefined,
+    timeout: typeof defaults.timeout === "number"
+      ? defaults.timeout
+      : undefined,
     retry: typeof defaults.retry === "number" ? defaults.retry : undefined,
     rsync_path: defaults.rsync_path ? String(defaults.rsync_path) : undefined,
     rsync_options: Array.isArray(defaults.rsync_options)

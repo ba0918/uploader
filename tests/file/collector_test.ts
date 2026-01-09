@@ -2,8 +2,8 @@
  * file/collector.ts のテスト
  */
 
-import { assertEquals, assertRejects } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
+import { assertEquals, assertRejects } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import type { DirEntry, FileInfo, FileSystem } from "../../src/types/mod.ts";
 import {
   collectFiles,
@@ -54,28 +54,30 @@ function createMockFileSystem(
   }
 
   return {
-    async stat(path: string): Promise<FileInfo> {
+    stat(path: string): Promise<FileInfo> {
       const entry = findEntry(path);
       if (!entry) {
-        throw new Deno.errors.NotFound(`Path not found: ${path}`);
+        return Promise.reject(
+          new Deno.errors.NotFound(`Path not found: ${path}`),
+        );
       }
 
       if (entry.type === "file") {
-        return {
+        return Promise.resolve({
           size: entry.size,
           mtime: entry.mtime,
           isFile: true,
           isDirectory: false,
           isSymlink: false,
-        };
+        });
       } else {
-        return {
+        return Promise.resolve({
           size: 0,
           mtime: null,
           isFile: false,
           isDirectory: true,
           isSymlink: false,
-        };
+        });
       }
     },
 
@@ -95,16 +97,16 @@ function createMockFileSystem(
       }
     },
 
-    async readTextFile(path: string): Promise<string> {
+    readTextFile(path: string): Promise<string> {
       const entry = findEntry(path);
       if (!entry || entry.type !== "file") {
-        throw new Error(`Not a file: ${path}`);
+        return Promise.reject(new Error(`Not a file: ${path}`));
       }
-      return "mock content";
+      return Promise.resolve("mock content");
     },
 
-    async realPath(path: string): Promise<string> {
-      return path;
+    realPath(path: string): Promise<string> {
+      return Promise.resolve(path);
     },
 
     cwd(): string {

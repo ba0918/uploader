@@ -7,6 +7,7 @@
 import { dirname, join } from "@std/path";
 import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
+import { logVerbose } from "../ui/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -87,8 +88,12 @@ export class ScpUploader extends SshBaseUploader {
       // 一時ファイルを削除
       try {
         await Deno.remove(tempFile);
-      } catch {
-        // 削除失敗は無視
+      } catch (err) {
+        logVerbose(
+          `Failed to remove temp file ${tempFile}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     }
   }

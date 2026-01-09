@@ -14,12 +14,14 @@ import type {
   GitDiffResult,
   RsyncDiffResult,
   TransferProgressEvent,
+  UploadButtonState,
   Uploader,
   UploadResult,
   WsClientMessage,
   WsDirectoryContentsMessage,
   WsFileResponseMessage,
   WsInitMessage,
+  WsUploadStateMessage,
 } from "../types/mod.ts";
 import { getHtmlContent } from "./static/html.ts";
 import { createUploader } from "../upload/mod.ts";
@@ -52,6 +54,9 @@ function debugError(message: string, ...args: unknown[]): void {
 /** 遅延読み込みの閾値（この数を超えたら遅延読み込みを有効化） */
 const LAZY_LOADING_THRESHOLD = 100;
 
+/** デフォルトのアイドルタイムアウト（秒） */
+const DEFAULT_UPLOADER_IDLE_TIMEOUT = 300; // 5分
+
 /** サーバの状態 */
 interface ServerState {
   /** 解決用のPromise resolve関数 */
@@ -76,6 +81,14 @@ interface ServerState {
   rsyncDiffResult: RsyncDiffResult | null;
   /** 現在選択中のターゲットインデックス */
   currentTargetIndex: number;
+  /** Uploaderの最終使用時刻 */
+  uploaderLastUsed: number;
+  /** アイドルチェックタイマー */
+  idleCheckTimer: number | null;
+  /** 全ファイルの差分チェックが完了したか */
+  diffCheckCompleted: boolean;
+  /** 差分があるファイルが存在するか */
+  hasChangesToUpload: boolean;
 }
 
 /**
@@ -94,6 +107,86 @@ function sendErrorMessage(socket: WebSocket, message: string): void {
 function sendJsonMessage(socket: WebSocket, message: unknown): void {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
+  }
+}
+
+/**
+ * アップロードボタン状態更新メッセージを送信
+ */
+function sendUploadStateMessage(
+  socket: WebSocket,
+  uploadButtonState: UploadButtonState,
+): void {
+  const message: WsUploadStateMessage = {
+    type: "upload_state",
+    data: uploadButtonState,
+  };
+  sendJsonMessage(socket, message);
+}
+
+/**
+ * バックグラウンドで全ファイルの差分チェックを実行（遅延読み込みモード用）
+ */
+async function startBackgroundDiffCheck(
+  socket: WebSocket,
+  state: ServerState,
+): Promise<void> {
+  const { diffResult, options } = state;
+  const concurrency = options.concurrency ?? 10;
+  const files = diffResult.files; // DiffFileはファイルのみ（ディレクトリは含まない）
+
+  debugLog(
+    `[BackgroundCheck] Starting diff check for ${files.length} files (concurrency: ${concurrency})...`,
+  );
+
+  let hasChanges = false;
+
+  try {
+    await batchAsync(
+      files,
+      async (file) => {
+        try {
+          const { remoteStatus } = await getLocalAndRemoteContents(
+            file.path,
+            state,
+          );
+          if (remoteStatus.hasChanges) {
+            hasChanges = true;
+          }
+        } catch (_err) {
+          // エラーの場合は差分ありとして扱う
+          hasChanges = true;
+        }
+      },
+      concurrency,
+    );
+
+    state.diffCheckCompleted = true;
+    state.hasChangesToUpload = hasChanges;
+
+    // 接続エラーが発生していないか再確認
+    if (state.connectionError) {
+      sendUploadStateMessage(socket, {
+        disabled: true,
+        reason: "connection_error",
+        message: state.connectionError,
+      });
+    } else if (!hasChanges) {
+      sendUploadStateMessage(socket, {
+        disabled: true,
+        reason: "no_changes",
+        message: "No changes to upload",
+      });
+    } else {
+      sendUploadStateMessage(socket, { disabled: false });
+    }
+
+    debugLog(`[BackgroundCheck] Completed. hasChanges=${hasChanges}`);
+  } catch (error) {
+    debugError(`[BackgroundCheck] Error:`, error);
+    state.diffCheckCompleted = true;
+    state.hasChangesToUpload = true; // エラー時は差分ありとして扱う
+    sendUploadStateMessage(socket, { disabled: false });
   }
 }
 
@@ -160,7 +253,14 @@ export function startDiffViewerServer(
       lazyLoading: useLazyLoading,
       rsyncDiffResult: null,
       currentTargetIndex: 0,
+      uploaderLastUsed: 0,
+      idleCheckTimer: null,
+      diffCheckCompleted: false,
+      hasChangesToUpload: false,
     };
+
+    // アイドルチェックタイマーを開始
+    startIdleCheckTimer(state);
 
     const server = Deno.serve(
       {
@@ -175,6 +275,8 @@ export function startDiffViewerServer(
 
     // サーバが終了したときの処理
     server.finished.then(() => {
+      // タイマーをクリア
+      stopIdleCheckTimer(state);
       // 正常終了以外の場合はキャンセル扱い
       if (state.socket === null) {
         resolve({ confirmed: false, cancelReason: "connection_closed" });
@@ -397,6 +499,28 @@ async function sendInitMessage(
         state.lazyLoading = false;
       }
 
+      // uploadButtonStateを決定
+      const hasChanges = files.length > 0;
+      state.diffCheckCompleted = true;
+      state.hasChangesToUpload = hasChanges;
+
+      let uploadButtonState: UploadButtonState;
+      if (state.connectionError) {
+        uploadButtonState = {
+          disabled: true,
+          reason: "connection_error",
+          message: state.connectionError,
+        };
+      } else if (!hasChanges) {
+        uploadButtonState = {
+          disabled: true,
+          reason: "no_changes",
+          message: "No changes to upload",
+        };
+      } else {
+        uploadButtonState = { disabled: false };
+      }
+
       const message: WsInitMessage = {
         type: "init",
         data: {
@@ -407,6 +531,7 @@ async function sendInitMessage(
           summary,
           remoteTargets,
           lazyLoading: false, // rsync getDiff()使用時は遅延読み込み不要
+          uploadButtonState,
         },
       };
 
@@ -450,13 +575,34 @@ async function sendInitMessage(
               node.status = remoteStatus.hasChanges
                 ? (remoteStatus.exists ? "M" : "A")
                 : "U";
-            } catch {
+            } catch (err) {
+              debugLog(
+                `[LazyLoading] Status check failed for ${node.path}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
               node.status = "A";
             }
           },
           concurrency,
         );
       }
+    }
+
+    // 遅延読み込み時は初期状態でchecking
+    let uploadButtonState: UploadButtonState;
+    if (state.connectionError) {
+      uploadButtonState = {
+        disabled: true,
+        reason: "connection_error",
+        message: state.connectionError,
+      };
+    } else {
+      uploadButtonState = {
+        disabled: true,
+        reason: "checking",
+        message: "Checking for changes...",
+      };
     }
 
     const message: WsInitMessage = {
@@ -476,6 +622,7 @@ async function sendInitMessage(
         remoteTargets,
         tree,
         lazyLoading: true,
+        uploadButtonState,
       },
     };
 
@@ -484,6 +631,11 @@ async function sendInitMessage(
     // 接続エラーがあればクライアントに通知
     if (state.connectionError) {
       sendErrorMessage(socket, state.connectionError);
+    }
+
+    // バックグラウンドで全ファイルの差分チェックを開始（接続エラーがなければ）
+    if (!state.connectionError) {
+      startBackgroundDiffCheck(socket, state);
     }
     return;
   }
@@ -566,6 +718,28 @@ async function sendInitMessage(
     state.changedFiles = files.map((f) => f.path);
   }
 
+  // uploadButtonStateを決定
+  const hasChanges = files.length > 0;
+  state.diffCheckCompleted = true;
+  state.hasChangesToUpload = hasChanges;
+
+  let uploadButtonState: UploadButtonState;
+  if (state.connectionError) {
+    uploadButtonState = {
+      disabled: true,
+      reason: "connection_error",
+      message: state.connectionError,
+    };
+  } else if (!hasChanges) {
+    uploadButtonState = {
+      disabled: true,
+      reason: "no_changes",
+      message: "No changes to upload",
+    };
+  } else {
+    uploadButtonState = { disabled: false };
+  }
+
   const message: WsInitMessage = {
     type: "init",
     data: {
@@ -576,6 +750,7 @@ async function sendInitMessage(
       summary,
       remoteTargets,
       lazyLoading: false,
+      uploadButtonState,
     },
   };
 
@@ -598,7 +773,7 @@ async function handleWebSocketMessage(
   switch (message.type) {
     case "file_request": {
       // リクエストタイプを取得（常にremote）
-      const requestType: "remote" = "remote";
+      const requestType = "remote" as const;
 
       await handleFileRequest(socket, message.path, requestType, state);
       break;
@@ -655,13 +830,17 @@ async function handleSwitchTarget(
   // インデックスが有効かチェック
   if (!targets || targetIndex < 0 || targetIndex >= targets.length) {
     debugLog(
-      `[SwitchTarget] Invalid target index: ${targetIndex} (targets: ${targets?.length ?? 0})`,
+      `[SwitchTarget] Invalid target index: ${targetIndex} (targets: ${
+        targets?.length ?? 0
+      })`,
     );
     return;
   }
 
   debugLog(
-    `[SwitchTarget] Switching to target ${targetIndex}: ${targets[targetIndex].host}`,
+    `[SwitchTarget] Switching to target ${targetIndex}: ${
+      targets[targetIndex].host
+    }`,
   );
 
   // 既存のUploader接続を切断
@@ -672,6 +851,10 @@ async function handleSwitchTarget(
 
   // rsync diffキャッシュをクリア
   state.rsyncDiffResult = null;
+
+  // 差分チェック状態をリセット
+  state.diffCheckCompleted = false;
+  state.hasChangesToUpload = false;
 
   // ターゲットインデックスを更新
   state.currentTargetIndex = targetIndex;
@@ -875,6 +1058,7 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
   // 既にUploaderが存在する場合はそれを返す
   if (state.uploader) {
     debugLog("[RemoteDiff] Using cached uploader connection");
+    updateUploaderLastUsed(state);
     return state.uploader;
   }
 
@@ -900,6 +1084,7 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
     await uploader.connect();
     debugLog(`[RemoteDiff] Connected to ${target.host}`);
     state.uploader = uploader;
+    updateUploaderLastUsed(state);
     return uploader;
   } catch (error) {
     // 接続エラーを記録
@@ -919,10 +1104,80 @@ async function disconnectUploader(state: ServerState): Promise<void> {
   if (state.uploader) {
     try {
       await state.uploader.disconnect();
-    } catch {
-      // 切断エラーは無視
+    } catch (err) {
+      debugLog(
+        `[RemoteDiff] Uploader disconnect failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
     state.uploader = null;
+  }
+}
+
+/**
+ * Uploaderの最終使用時刻を更新
+ */
+function updateUploaderLastUsed(state: ServerState): void {
+  state.uploaderLastUsed = Date.now();
+}
+
+/**
+ * アイドルチェックタイマーを開始
+ */
+function startIdleCheckTimer(state: ServerState): void {
+  const timeout = state.options.uploaderIdleTimeout ??
+    DEFAULT_UPLOADER_IDLE_TIMEOUT;
+
+  // タイムアウトが0以下なら無効
+  if (timeout <= 0) {
+    debugLog("[IdleCheck] Uploader idle timeout is disabled");
+    return;
+  }
+
+  // 30秒ごとにチェック
+  const checkInterval = 30 * 1000;
+  state.idleCheckTimer = setInterval(async () => {
+    await checkUploaderIdle(state, timeout);
+  }, checkInterval);
+
+  debugLog(`[IdleCheck] Started idle check timer (timeout: ${timeout}s)`);
+}
+
+/**
+ * アイドルチェックタイマーを停止
+ */
+function stopIdleCheckTimer(state: ServerState): void {
+  if (state.idleCheckTimer !== null) {
+    clearInterval(state.idleCheckTimer);
+    state.idleCheckTimer = null;
+    debugLog("[IdleCheck] Stopped idle check timer");
+  }
+}
+
+/**
+ * Uploaderのアイドル状態をチェック
+ */
+async function checkUploaderIdle(
+  state: ServerState,
+  timeoutSeconds: number,
+): Promise<void> {
+  if (!state.uploader || state.uploaderLastUsed === 0) {
+    return;
+  }
+
+  const now = Date.now();
+  const idleMs = now - state.uploaderLastUsed;
+  const timeoutMs = timeoutSeconds * 1000;
+
+  if (idleMs >= timeoutMs) {
+    debugLog(
+      `[IdleCheck] Uploader idle for ${
+        Math.floor(idleMs / 1000)
+      }s, disconnecting...`,
+    );
+    await disconnectUploader(state);
+    debugLog("[IdleCheck] Uploader disconnected due to idle timeout");
   }
 }
 
@@ -962,7 +1217,12 @@ async function handleExpandDirectory(
             node.status = remoteStatus.hasChanges
               ? (remoteStatus.exists ? "M" : "A")
               : "U";
-          } catch {
+          } catch (err) {
+            debugLog(
+              `[LazyLoading] Status check failed for ${node.path}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
             node.status = "A";
           }
         },

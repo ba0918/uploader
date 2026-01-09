@@ -200,11 +200,19 @@ async function uploadToTargetWithoutInit(
   const uploader = createUploader(target);
   const { host, dest } = target;
 
+  logVerbose(
+    `[${host}] Connecting to ${host}:${
+      target.port ?? 22
+    } via ${target.protocol}...`,
+  );
   progressManager.startTargetConnection(host, dest);
 
   try {
     // 接続
+    const connectStart = Date.now();
     await uploader.connect();
+    const connectTime = Date.now() - connectStart;
+    logVerbose(`[${host}] Connected in ${connectTime}ms`);
     progressManager.startTargetUpload(host, dest);
 
     // ファイルをアップロード
@@ -213,8 +221,12 @@ async function uploadToTargetWithoutInit(
 
     // 削除同期が有効な場合のみ削除を実行
     if (options.deleteRemote && target.sync_mode === "mirror") {
+      logVerbose(
+        `[${host}] Deleting ${filesToDelete.length} file(s) (mirror mode)`,
+      );
       for (const file of filesToDelete) {
         try {
+          logVerbose(`[${host}] Deleting: ${file.relativePath}`);
           await uploader.delete(file.relativePath);
           progressManager.recordFileResult(host, {
             path: file.relativePath,
@@ -238,6 +250,9 @@ async function uploadToTargetWithoutInit(
 
     // bulkUploadが利用可能な場合は一括アップロード
     if (uploader.bulkUpload && filesToUpload.length > 0) {
+      logVerbose(
+        `[${host}] Using bulk upload for ${filesToUpload.length} file(s)`,
+      );
       const startTime = Date.now();
 
       // 一括アップロードの進捗通知
@@ -269,6 +284,10 @@ async function uploadToTargetWithoutInit(
       );
 
       // 結果を記録
+      const bulkDuration = Date.now() - startTime;
+      logVerbose(
+        `[${host}] Bulk upload completed in ${bulkDuration}ms: ${result.successCount} succeeded, ${result.failedCount} failed`,
+      );
       if (result.successCount > 0) {
         for (const file of filesToUpload) {
           progressManager.recordFileResult(host, {
@@ -294,9 +313,17 @@ async function uploadToTargetWithoutInit(
       }
     } else {
       // 従来の1ファイルずつアップロード
+      logVerbose(
+        `[${host}] Uploading ${filesToUpload.length} file(s) one by one`,
+      );
       for (let i = 0; i < filesToUpload.length; i++) {
         const file = filesToUpload[i];
         const startTime = Date.now();
+        logVerbose(
+          `[${host}] Uploading (${
+            i + 1
+          }/${filesToUpload.length}): ${file.relativePath} (${file.size} bytes)`,
+        );
 
         progressManager.updateFileProgress(
           host,
@@ -380,7 +407,12 @@ export async function uploadToTargets(
 
     const uploadPromises = targets.map(async (target) => {
       try {
-        await uploadToTargetWithoutInit(target, files, options, progressManager);
+        await uploadToTargetWithoutInit(
+          target,
+          files,
+          options,
+          progressManager,
+        );
         return { target, success: true };
       } catch (error) {
         // エラーは記録済み

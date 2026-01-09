@@ -2,14 +2,14 @@
  * batchAsync のテスト
  */
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { batchAsync, batchAsyncWithProgress } from "../../src/utils/batch.ts";
 
 Deno.test("batchAsync", async (t) => {
   await t.step("空配列を処理できる", async () => {
     const results = await batchAsync(
       [],
-      async (x: number) => x * 2,
+      (x: number) => Promise.resolve(x * 2),
       5,
     );
     assertEquals(results, []);
@@ -19,7 +19,7 @@ Deno.test("batchAsync", async (t) => {
     const items = [1, 2, 3, 4, 5];
     const results = await batchAsync(
       items,
-      async (x) => x * 2,
+      (x) => Promise.resolve(x * 2),
       3,
     );
     assertEquals(results, [2, 4, 6, 8, 10]);
@@ -62,7 +62,7 @@ Deno.test("batchAsync", async (t) => {
     const items = [1, 2, 3];
     const results = await batchAsync(
       items,
-      async (x) => x * 2,
+      (x) => Promise.resolve(x * 2),
       100,
     );
     assertEquals(results, [2, 4, 6]);
@@ -72,7 +72,7 @@ Deno.test("batchAsync", async (t) => {
     const items = [1, 2, 3];
     const results = await batchAsync(
       items,
-      async (x) => x * 2,
+      (x) => Promise.resolve(x * 2),
       0,
     );
     assertEquals(results, [2, 4, 6]);
@@ -103,11 +103,11 @@ Deno.test("batchAsync", async (t) => {
     try {
       await batchAsync(
         items,
-        async (x) => {
+        (x) => {
           if (x === 3) {
-            throw new Error("Test error");
+            return Promise.reject(new Error("Test error"));
           }
-          return x;
+          return Promise.resolve(x);
         },
         2,
       );
@@ -126,7 +126,7 @@ Deno.test("batchAsyncWithProgress", async (t) => {
 
     await batchAsyncWithProgress(
       items,
-      async (x) => x * 2,
+      (x) => Promise.resolve(x * 2),
       {
         concurrency: 2,
         onProgress: (completed, total) => {
@@ -149,7 +149,7 @@ Deno.test("batchAsyncWithProgress", async (t) => {
 
     const results = await batchAsyncWithProgress(
       [],
-      async (x: number) => x,
+      (x: number) => Promise.resolve(x),
       {
         onProgress: (completed) => progressCalls.push(completed),
       },

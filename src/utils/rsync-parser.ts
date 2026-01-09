@@ -4,11 +4,7 @@
  * rsync dry-runの出力をパースして、変更ファイルの一覧を取得する
  */
 
-import type {
-  RsyncDiffChangeType,
-  RsyncDiffEntry,
-  RsyncDiffResult,
-} from "../types/mod.ts";
+import type { RsyncDiffEntry, RsyncDiffResult } from "../types/mod.ts";
 
 /**
  * rsync --itemize-changes の1行をパース

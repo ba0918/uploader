@@ -2,8 +2,8 @@
  * diff-viewer/server.ts のテスト
  */
 
-import { assertEquals, assertExists } from "jsr:@std/assert@^1";
-import { beforeEach, describe, it } from "jsr:@std/testing@^1/bdd";
+import { assertEquals, assertExists } from "@std/assert";
+import { beforeEach, describe, it } from "@std/testing/bdd";
 import {
   getServerUrl,
   startDiffViewerServer,

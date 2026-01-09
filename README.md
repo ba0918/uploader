@@ -27,11 +27,11 @@ sftp, scp, rsync は標準でインストールされているか、簡単に導
 
 このツールは内部で `sftp`, `scp`, `rsync` コマンドを使用します。
 
-| プロトコル | 必要な準備 |
-| ---------- | ---------- |
+| プロトコル | 必要な準備                                                              |
+| ---------- | ----------------------------------------------------------------------- |
 | sftp / scp | OpenSSHの有効化（設定 → アプリ → オプション機能 → OpenSSHクライアント） |
-| rsync | Git Bash / cwRsync / WSL のいずれかをインストール |
-| local | 追加設定不要 |
+| rsync      | Git Bash / cwRsync / WSL のいずれかをインストール                       |
+| local      | 追加設定不要                                                            |
 
 > **Tip**: rsyncを使わない場合は、OpenSSHの有効化のみで動作します。
 
@@ -283,7 +283,7 @@ staging:
       - dest: "/var/www/app1/"
       - dest: "/var/www/app2/"
       - dest: "/var/www/app3/"
-        port: 3333         # 個別設定で上書き
+        port: 3333 # 個別設定で上書き
         sync_mode: "mirror"
 ```
 

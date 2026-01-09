@@ -7,6 +7,7 @@
 import { join } from "@std/path";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
+import { logVerbose } from "../ui/mod.ts";
 
 /**
  * SSHベースアップローダーの共通オプション
@@ -77,7 +78,12 @@ export abstract class SshBaseUploader implements Uploader {
       const { code } = await command.output();
       this.sshpassAvailable = code === 0;
       return this.sshpassAvailable;
-    } catch {
+    } catch (err) {
+      logVerbose(
+        `Failed to check sshpass availability: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       this.sshpassAvailable = false;
       return false;
     }
@@ -223,8 +229,12 @@ export abstract class SshBaseUploader implements Uploader {
     if (this.tempDir) {
       try {
         await Deno.remove(this.tempDir, { recursive: true });
-      } catch {
-        // 削除失敗は無視
+      } catch (err) {
+        logVerbose(
+          `Failed to remove temp directory ${this.tempDir}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
       this.tempDir = null;
     }

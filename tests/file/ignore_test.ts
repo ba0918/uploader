@@ -2,8 +2,8 @@
  * file/ignore.ts のテスト
  */
 
-import { assertEquals } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
+import { assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import {
   DEFAULT_IGNORE_PATTERNS,
   IgnoreMatcher,

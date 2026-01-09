@@ -91,11 +91,20 @@ export function getHtmlContent(): string {
       align-items: center;
       gap: 8px;
       font-size: 13px;
-      color: var(--text-secondary);
+      background: rgba(86, 156, 214, 0.1);
+      border: 1px solid rgba(86, 156, 214, 0.3);
+      border-radius: 6px;
+      padding: 6px 12px;
     }
 
     .target-selector.hidden {
       display: none;
+    }
+
+    .target-selector label {
+      color: var(--accent-blue);
+      font-weight: 500;
+      white-space: nowrap;
     }
 
     .target-selector select {
@@ -103,19 +112,25 @@ export function getHtmlContent(): string {
       color: var(--text-primary);
       border: 1px solid var(--border-color);
       border-radius: 4px;
-      padding: 4px 8px;
+      padding: 6px 28px 6px 10px;
       font-size: 13px;
       cursor: pointer;
       min-width: 200px;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23808080' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
     }
 
     .target-selector select:hover {
       border-color: var(--accent-blue);
+      background-color: var(--bg-secondary);
     }
 
     .target-selector select:focus {
       outline: none;
       border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(86, 156, 214, 0.2);
     }
 
     .btn {
@@ -144,6 +159,58 @@ export function getHtmlContent(): string {
 
     .btn-secondary:hover {
       background: #3c3c3c;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary:disabled {
+      background: #4a4a4a;
+    }
+
+    .btn-primary:disabled:hover {
+      background: #4a4a4a;
+    }
+
+    /* ボタンラッパー（ツールチップ用） */
+    .btn-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    .btn-tooltip {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      margin-bottom: 8px;
+      z-index: 100;
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: var(--bg-tertiary);
+    }
+
+    .btn-wrapper:hover .btn-tooltip:not(:empty) {
+      opacity: 1;
     }
 
     /* メインコンテンツ */
@@ -983,7 +1050,10 @@ export function getHtmlContent(): string {
     </div>
     <div class="header-actions">
       <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
-      <button class="btn btn-primary" id="upload-btn">Upload</button>
+      <div class="btn-wrapper">
+        <button class="btn btn-primary" id="upload-btn" disabled>Checking...</button>
+        <span class="btn-tooltip" id="upload-tooltip">Checking for changes...</span>
+      </div>
     </div>
   </header>
 
@@ -1045,7 +1115,11 @@ export function getHtmlContent(): string {
       // 遅延読み込み対応
       lazyLoading: false, // 遅延読み込みモードか
       tree: null, // サーバーから受け取ったツリー構造（lazyLoading時のみ使用）
-      loadingDirs: new Set() // 読み込み中のディレクトリパス
+      loadingDirs: new Set(), // 読み込み中のディレクトリパス
+      // アップロードボタン状態
+      uploadDisabled: true, // ボタンが無効化されているか
+      uploadDisabledReason: 'checking', // 'no_changes' | 'connection_error' | 'checking' | null
+      uploadDisabledMessage: 'Checking for changes...' // ツールチップに表示するメッセージ
     };
 
     // DOM要素
@@ -1068,8 +1142,32 @@ export function getHtmlContent(): string {
       tabRemoteDiff: document.getElementById('tab-remote-diff'),
       remoteTargetBadge: document.getElementById('remote-target-badge'),
       targetSelector: document.getElementById('target-selector'),
-      targetSelect: document.getElementById('target-select')
+      targetSelect: document.getElementById('target-select'),
+      uploadTooltip: document.getElementById('upload-tooltip')
     };
+
+    // Uploadボタンの状態を更新
+    function updateUploadButtonState(disabled, reason, message) {
+      state.uploadDisabled = disabled;
+      state.uploadDisabledReason = reason || null;
+      state.uploadDisabledMessage = message || '';
+
+      elements.uploadBtn.disabled = disabled;
+
+      // ボタンテキストを更新
+      if (reason === 'checking') {
+        elements.uploadBtn.textContent = 'Checking...';
+      } else {
+        elements.uploadBtn.textContent = 'Upload';
+      }
+
+      // ツールチップを更新
+      if (disabled && message) {
+        elements.uploadTooltip.textContent = message;
+      } else {
+        elements.uploadTooltip.textContent = '';
+      }
+    }
 
     // WebSocket接続
     function connect() {
@@ -1089,12 +1187,16 @@ export function getHtmlContent(): string {
       state.ws.onclose = () => {
         elements.statusBar.className = 'status-bar disconnected';
         elements.statusText.textContent = 'Disconnected';
+        // ボタンを無効化
+        updateUploadButtonState(true, 'connection_error', 'Disconnected from server');
       };
 
       state.ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         elements.statusBar.className = 'status-bar disconnected';
         elements.statusText.textContent = 'Connection error';
+        // ボタンを無効化
+        updateUploadButtonState(true, 'connection_error', 'Connection lost');
       };
     }
 
@@ -1447,7 +1549,17 @@ export function getHtmlContent(): string {
             showUploadError(message.message);
           } else {
             showToast('error', 'Connection Error', message.message);
+            // 接続エラーの場合はボタンを無効化
+            updateUploadButtonState(true, 'connection_error', message.message);
           }
+          break;
+        case 'upload_state':
+          // アップロードボタンの状態を更新
+          updateUploadButtonState(
+            message.data.disabled,
+            message.data.reason,
+            message.data.message
+          );
           break;
       }
     }
@@ -1499,6 +1611,23 @@ export function getHtmlContent(): string {
 
       // ファイルツリーを描画
       renderFileTree();
+
+      // アップロードボタン状態を更新
+      if (data.uploadButtonState) {
+        updateUploadButtonState(
+          data.uploadButtonState.disabled,
+          data.uploadButtonState.reason,
+          data.uploadButtonState.message
+        );
+      } else {
+        // デフォルト: ファイルがない場合は無効化
+        const hasFiles = data.summary.total > 0;
+        updateUploadButtonState(
+          !hasFiles,
+          hasFiles ? null : 'no_changes',
+          hasFiles ? null : 'No changes to upload'
+        );
+      }
     }
 
     // ターゲットセレクターを初期化
@@ -1529,6 +1658,9 @@ export function getHtmlContent(): string {
     // ターゲットを切り替え
     function switchTarget(newIndex) {
       state.currentTargetIndex = newIndex;
+
+      // ボタンを「確認中」状態に更新
+      updateUploadButtonState(true, 'checking', 'Checking for changes...');
 
       // ローディング表示（サーバーからinitメッセージが来るまで）
       elements.diffContainer.innerHTML = \`
