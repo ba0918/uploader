@@ -69,10 +69,25 @@ profile:
           use: []                  # 何も除外しない
 ```
 
-### 後方互換性
+### 後方互換性（削除済み）
 
-既存の `_global.ignore`（文字列配列）は内部的に `_legacy` グループとして扱い、
-`default_ignore: [_legacy]` として動作。既存の設定はそのまま動作する。
+~~既存の `_global.ignore`（文字列配列）は内部的に `_legacy` グループとして扱い、
+`default_ignore: [_legacy]` として動作。既存の設定はそのまま動作する。~~
+
+**注: 後方互換性機能は削除されました。** `_global.ignore_groups` + `_global.default_ignore` を使用してください。
+
+### 不具合修正: defaults.ignoreがprofile.ignoreに反映されない問題
+
+**問題**: `to.defaults.ignore`で設定したignoreパターンが`profile.ignore`に反映されず、
+常に`_global.default_ignore`が使われていた。
+
+**修正内容**: `resolveProfile()`で`profile.ignore`を解決する際に、
+`defaults.ignore`が存在すればそれを優先的に使用するように変更。
+
+**優先順位**:
+1. `target.ignore` - ターゲット固有の設定
+2. `to.defaults.ignore` - プロファイル内のデフォルト設定
+3. `_global.default_ignore` - グローバルデフォルト設定
 
 ---
 

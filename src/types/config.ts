@@ -24,8 +24,6 @@ export interface IgnoreConfig {
 
 /** グローバル設定 */
 export interface GlobalConfig {
-  /** @deprecated 後方互換性のため。ignore_groups + default_ignore を使用してください */
-  ignore?: string[];
   /** 名前付きignoreグループ */
   ignore_groups?: Record<string, string[]>;
   /** ignore未指定時に適用するデフォルトグループ名 */

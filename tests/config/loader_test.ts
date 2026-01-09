@@ -17,14 +17,17 @@ import { validateConfig } from "../../src/config/validator.ts";
 /** テスト用の有効なConfig */
 function createValidConfig(
   overrides?: Partial<{
-    _global: { ignore: string[] };
+    _global: { ignore_groups?: Record<string, string[]>; default_ignore?: string[] };
     development: ProfileConfig;
     production: ProfileConfig;
   }>,
 ): Config {
   const base: Config = {
     _global: {
-      ignore: ["*.log", "node_modules/"],
+      ignore_groups: {
+        common: ["*.log", "node_modules/"],
+      },
+      default_ignore: ["common"],
     },
     development: {
       from: {
@@ -136,17 +139,20 @@ describe("resolveProfile", () => {
     });
   });
 
-  describe("グローバルignoreのマージ", () => {
-    it("グローバルignoreがプロファイルに適用される", () => {
+  describe("グローバルignore_groupsとdefault_ignore", () => {
+    it("default_ignoreがプロファイルに適用される", () => {
       const config = createValidConfig({
-        _global: { ignore: ["*.log", "*.tmp"] },
+        _global: {
+          ignore_groups: { common: ["*.log", "*.tmp"] },
+          default_ignore: ["common"],
+        },
       });
       const resolved = resolveProfile(config, "development");
 
       assertEquals(resolved.ignore, ["*.log", "*.tmp"]);
     });
 
-    it("グローバルignoreがない場合は空配列", () => {
+    it("ignore_groupsがない場合は空配列", () => {
       const config: Config = {
         development: {
           from: { type: "git", base: "main" },
@@ -719,30 +725,6 @@ development:
 });
 
 describe("ignore 解決ロジック", () => {
-  describe("後方互換性（旧 _global.ignore）", () => {
-    it("旧来のignoreが各ターゲットに適用される", () => {
-      const config: Config = {
-        _global: {
-          ignore: ["*.log", "node_modules/"],
-        },
-        test: {
-          from: { type: "git", base: "main" },
-          to: {
-            targets: [
-              { host: "localhost", protocol: "local", dest: "/tmp/" },
-            ],
-          },
-        },
-      };
-      const resolved = resolveProfile(config, "test");
-
-      // プロファイルのignoreに適用される
-      assertEquals(resolved.ignore, ["*.log", "node_modules/"]);
-      // ターゲットのignoreにも適用される
-      assertEquals(resolved.to.targets[0].ignore, ["*.log", "node_modules/"]);
-    });
-  });
-
   describe("ignore_groups と default_ignore", () => {
     it("default_ignoreで指定したグループがデフォルト適用される", () => {
       const config: Config = {
@@ -993,16 +975,15 @@ describe("ignore 解決ロジック", () => {
     });
   });
 
-  describe("優先順位テスト", () => {
-    it("target.ignore > defaults.ignore > default_ignore の順で優先される", () => {
+  describe("profile.ignore の解決（defaults.ignore対応）", () => {
+    it("defaults.ignoreがprofile.ignoreに反映される", () => {
       const config: Config = {
         _global: {
           ignore_groups: {
-            level1: ["level1/"],
-            level2: ["level2/"],
-            level3: ["level3/"],
+            common: ["*.log", ".git/"],
+            template: ["template/"],
           },
-          default_ignore: ["level1"],
+          default_ignore: ["common", "template"],
         },
         test: {
           from: { type: "git", base: "main" },
@@ -1011,34 +992,32 @@ describe("ignore 解決ロジック", () => {
               host: "localhost",
               protocol: "local",
               ignore: {
-                use: ["level2"],
+                use: ["common"],
+                add: [".ai-docs/", "dev-tools/"],
               },
             },
-            targets: [
-              { dest: "/tmp/no-ignore" }, // defaults.ignoreを使用
-              {
-                dest: "/tmp/with-ignore",
-                ignore: { use: ["level3"] }, // 個別設定
-              },
-            ],
+            targets: [{ dest: "/tmp/" }],
           },
         },
       };
       const resolved = resolveProfile(config, "test");
 
-      // defaults.ignoreが適用（default_ignoreより優先）
-      assertEquals(resolved.to.targets[0].ignore, ["level2/"]);
-      // target.ignoreが適用（defaults.ignoreより優先）
-      assertEquals(resolved.to.targets[1].ignore, ["level3/"]);
+      // defaults.ignoreがprofile.ignoreに反映される
+      // default_ignoreの["common", "template"]ではなく、
+      // defaults.ignoreの["common"] + addの[".ai-docs/", "dev-tools/"]が使われる
+      assertEquals(resolved.ignore, ["*.log", ".git/", ".ai-docs/", "dev-tools/"]);
+      // "template/"は含まれない
+      assertEquals(resolved.ignore.includes("template/"), false);
     });
 
-    it("defaults.ignore未指定時はdefault_ignoreが使用される", () => {
+    it("defaults.ignore未指定時はdefault_ignoreがprofile.ignoreに適用される", () => {
       const config: Config = {
         _global: {
           ignore_groups: {
             common: ["*.log"],
+            template: ["template/"],
           },
-          default_ignore: ["common"],
+          default_ignore: ["common", "template"],
         },
         test: {
           from: { type: "git", base: "main" },
@@ -1054,7 +1033,224 @@ describe("ignore 解決ロジック", () => {
       };
       const resolved = resolveProfile(config, "test");
 
-      assertEquals(resolved.to.targets[0].ignore, ["*.log"]);
+      // defaults.ignoreがないのでdefault_ignoreが使われる
+      assertEquals(resolved.ignore, ["*.log", "template/"]);
+    });
+
+    it("defaults自体がない場合もdefault_ignoreがprofile.ignoreに適用される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+          },
+          default_ignore: ["common"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              { host: "localhost", protocol: "local", dest: "/tmp/" },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.ignore, ["*.log"]);
+    });
+  });
+
+  describe("優先順位テスト: target.ignore > defaults.ignore > _global.default_ignore", () => {
+    // 各レベルの設定を明確に識別できるように別々のパターンを使用
+    // global: ["GLOBAL-PATTERN"]
+    // defaults: ["DEFAULTS-PATTERN"]
+    // target: ["TARGET-PATTERN"]
+
+    it("全3レベルが設定された場合、ターゲットごとのignoreは正しい優先順位で解決される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            global: ["GLOBAL-PATTERN"],
+            defaults: ["DEFAULTS-PATTERN"],
+            target: ["TARGET-PATTERN"],
+          },
+          default_ignore: ["global"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: { use: ["defaults"] },
+            },
+            targets: [
+              { dest: "/tmp/use-defaults" }, // ignore未指定 → defaults.ignore
+              { dest: "/tmp/use-target", ignore: { use: ["target"] } }, // 個別設定
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // ターゲット[0]: ignore未指定 → defaults.ignoreを使用
+      assertEquals(resolved.to.targets[0].ignore, ["DEFAULTS-PATTERN"]);
+      // ターゲット[1]: ignore指定あり → target.ignoreを使用
+      assertEquals(resolved.to.targets[1].ignore, ["TARGET-PATTERN"]);
+    });
+
+    it("全3レベルが設定された場合、profile.ignoreはdefaults.ignoreから解決される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            global: ["GLOBAL-PATTERN"],
+            defaults: ["DEFAULTS-PATTERN"],
+          },
+          default_ignore: ["global"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: { use: ["defaults"] },
+            },
+            targets: [{ dest: "/tmp/" }],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // profile.ignoreはdefaults.ignoreから解決される（default_ignoreより優先）
+      assertEquals(resolved.ignore, ["DEFAULTS-PATTERN"]);
+      assertEquals(resolved.ignore.includes("GLOBAL-PATTERN"), false);
+    });
+
+    it("defaults.ignore未指定の場合、profile.ignoreは_global.default_ignoreから解決される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            global: ["GLOBAL-PATTERN"],
+          },
+          default_ignore: ["global"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              // ignore未指定
+            },
+            targets: [{ dest: "/tmp/" }],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // defaults.ignoreがないので_global.default_ignoreを使用
+      assertEquals(resolved.ignore, ["GLOBAL-PATTERN"]);
+      assertEquals(resolved.to.targets[0].ignore, ["GLOBAL-PATTERN"]);
+    });
+
+    it("defaults自体がない場合も_global.default_ignoreが使用される", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            global: ["GLOBAL-PATTERN"],
+          },
+          default_ignore: ["global"],
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              { host: "localhost", protocol: "local", dest: "/tmp/" },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.ignore, ["GLOBAL-PATTERN"]);
+      assertEquals(resolved.to.targets[0].ignore, ["GLOBAL-PATTERN"]);
+    });
+
+    it("target.ignoreはdefaults.ignoreを完全に上書きする（マージではない）", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            base: ["BASE-PATTERN"],
+            extra: ["EXTRA-PATTERN"],
+          },
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: {
+                use: ["base"],
+                add: ["DEFAULTS-ADD"],
+              },
+            },
+            targets: [
+              { dest: "/tmp/defaults-only" },
+              {
+                // target.ignoreが指定されると、defaults.ignoreは完全に無視される
+                dest: "/tmp/target-override",
+                ignore: { use: ["extra"], add: ["TARGET-ADD"] },
+              },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // ターゲット[0]: defaults.ignoreをそのまま使用
+      assertEquals(resolved.to.targets[0].ignore, ["BASE-PATTERN", "DEFAULTS-ADD"]);
+
+      // ターゲット[1]: target.ignoreで完全に上書き
+      // defaults.ignoreの内容（BASE-PATTERN, DEFAULTS-ADD）は含まれない
+      assertEquals(resolved.to.targets[1].ignore, ["EXTRA-PATTERN", "TARGET-ADD"]);
+      assertEquals(resolved.to.targets[1].ignore.includes("BASE-PATTERN"), false);
+      assertEquals(resolved.to.targets[1].ignore.includes("DEFAULTS-ADD"), false);
+    });
+
+    it("addはグループのパターンに追加するものであり、親レベルとのマージではない", () => {
+      const config: Config = {
+        _global: {
+          ignore_groups: {
+            base: ["BASE-PATTERN"],
+          },
+        },
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: { use: ["base"], add: ["DEFAULTS-ADD"] },
+            },
+            targets: [
+              {
+                dest: "/tmp/",
+                // addはuse: ["base"]のパターンに追加する
+                // defaults.ignoreのaddとは別物
+                ignore: { use: ["base"], add: ["TARGET-ADD"] },
+              },
+            ],
+          },
+        },
+      };
+      const resolved = resolveProfile(config, "test");
+
+      // target.ignoreで上書き: BASE-PATTERN + TARGET-ADD
+      // DEFAULTS-ADDは含まれない（マージではなく上書き）
+      assertEquals(resolved.to.targets[0].ignore, ["BASE-PATTERN", "TARGET-ADD"]);
+      assertEquals(resolved.to.targets[0].ignore.includes("DEFAULTS-ADD"), false);
     });
   });
 });

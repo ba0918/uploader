@@ -128,46 +128,19 @@ function removeUndefinedProps<T extends object>(obj: T): Partial<T> {
 }
 
 /**
- * グローバル設定からignoreグループを取得（後方互換性対応）
- *
- * 旧来の _global.ignore がある場合は _legacy グループとして扱う
+ * グローバル設定からignoreグループを取得
  */
 function getIgnoreGroups(
   globalConfig?: GlobalConfig,
 ): Record<string, string[]> {
-  const groups: Record<string, string[]> = {};
-
-  // 新しいignore_groupsがあればコピー
-  if (globalConfig?.ignore_groups) {
-    Object.assign(groups, globalConfig.ignore_groups);
-  }
-
-  // 後方互換性: 旧来の ignore があれば _legacy グループとして追加
-  // deno-lint-ignore no-deprecated
-  if (globalConfig?.ignore && globalConfig.ignore.length > 0) {
-    // deno-lint-ignore no-deprecated
-    groups._legacy = globalConfig.ignore;
-  }
-
-  return groups;
+  return globalConfig?.ignore_groups ?? {};
 }
 
 /**
- * デフォルトのignoreグループ名を取得（後方互換性対応）
+ * デフォルトのignoreグループ名を取得
  */
 function getDefaultIgnoreGroups(globalConfig?: GlobalConfig): string[] {
-  // 明示的に default_ignore が指定されていればそれを使用
-  if (globalConfig?.default_ignore) {
-    return globalConfig.default_ignore;
-  }
-
-  // 後方互換性: 旧来の ignore がある場合は _legacy をデフォルトとして使用
-  // deno-lint-ignore no-deprecated
-  if (globalConfig?.ignore && globalConfig.ignore.length > 0) {
-    return ["_legacy"];
-  }
-
-  return [];
+  return globalConfig?.default_ignore ?? [];
 }
 
 /**
@@ -319,11 +292,10 @@ export function resolveProfile(
     };
   });
 
-  // プロファイル全体で共通のignore（後方互換性）
-  // 新しい仕組みではターゲットごとのignoreを使用するが、
-  // ResolvedProfileConfig.ignore は後方互換性のために維持
+  // プロファイル全体で共通のignore
+  // 優先順位: defaults.ignore → _global.default_ignore
   const profileIgnore = resolveIgnoreConfig(
-    { use: defaultIgnoreGroupNames },
+    defaults?.ignore ?? { use: defaultIgnoreGroupNames },
     ignoreGroups,
   );
 

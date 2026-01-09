@@ -68,25 +68,6 @@ function validateGlobal(value: unknown): GlobalConfig {
   const global = value as Record<string, unknown>;
   const result: GlobalConfig = {};
 
-  // 後方互換性: 旧来の ignore（文字列配列）
-  if (global.ignore !== undefined) {
-    if (!Array.isArray(global.ignore)) {
-      throw new ConfigValidationError(
-        "ignore は配列である必要があります",
-        "_global.ignore",
-      );
-    }
-    result.ignore = global.ignore.map((item, i) => {
-      if (typeof item !== "string") {
-        throw new ConfigValidationError(
-          "ignore の各要素は文字列である必要があります",
-          `_global.ignore[${i}]`,
-        );
-      }
-      return item;
-    });
-  }
-
   // ignore_groups: 名前付きグループ
   if (global.ignore_groups !== undefined) {
     if (

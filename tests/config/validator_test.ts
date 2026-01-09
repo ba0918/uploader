@@ -44,48 +44,11 @@ describe("validateConfig", () => {
   });
 
   describe("_global セクション", () => {
-    it("ignoreパターンを持つ_globalは有効", () => {
+    it("空の_globalオブジェクトは有効", () => {
       const result = validateConfig({
-        _global: {
-          ignore: ["*.log", ".git/"],
-        },
+        _global: {},
       });
-      assertEquals(result._global?.ignore, ["*.log", ".git/"]);
-    });
-
-    it("空のignore配列は有効", () => {
-      const result = validateConfig({
-        _global: {
-          ignore: [],
-        },
-      });
-      assertEquals(result._global?.ignore, []);
-    });
-
-    it("ignoreが配列でない場合は無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            _global: {
-              ignore: "not-array",
-            },
-          }),
-        ConfigValidationError,
-        "ignore は配列である必要があります",
-      );
-    });
-
-    it("ignore要素が文字列でない場合は無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            _global: {
-              ignore: [123],
-            },
-          }),
-        ConfigValidationError,
-        "ignore の各要素は文字列である必要があります",
-      );
+      assertEquals(result._global, {});
     });
 
     it("_globalがオブジェクトでない場合は無効", () => {
@@ -496,7 +459,7 @@ describe("validateConfig", () => {
 
 describe("hasProfile", () => {
   const config = {
-    _global: { ignore: [] },
+    _global: {},
     development: {
       from: { type: "git" as const, base: "main" },
       to: {
@@ -527,7 +490,7 @@ describe("hasProfile", () => {
 
 describe("getProfile", () => {
   const config = {
-    _global: { ignore: [] },
+    _global: {},
     development: {
       from: { type: "git" as const, base: "main" },
       to: {
@@ -555,7 +518,7 @@ describe("getProfile", () => {
 describe("getProfileNames", () => {
   it("プロファイル名のリストを取得できる", () => {
     const config = {
-      _global: { ignore: [] },
+      _global: {},
       development: {
         from: { type: "git" as const, base: "main" },
         to: {
