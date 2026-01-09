@@ -9,6 +9,7 @@ import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import {
   ensureParentDir,
+  isSftpAuthError,
   LEGACY_ALGORITHMS_SSH2,
   toError,
   withRetry,
@@ -117,11 +118,7 @@ export class SftpUploader implements Uploader {
 
       client.on("error", (err: Error) => {
         clearTimeout(timeout);
-        if (
-          err.message.includes("authentication") ||
-          err.message.includes("publickey") ||
-          err.message.includes("password")
-        ) {
+        if (isSftpAuthError(err.message)) {
           reject(
             new UploadError(
               `Authentication failed: ${this.options.host}`,

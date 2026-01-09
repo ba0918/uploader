@@ -27,3 +27,8 @@ export {
 } from "./retry.ts";
 export { ensureParentDir, getParentDir } from "./directory.ts";
 export { escapeShellArg } from "./shell.ts";
+export {
+  isConnectionRefusedError,
+  isSftpAuthError,
+  isSshAuthError,
+} from "./error.ts";

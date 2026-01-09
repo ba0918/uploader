@@ -8,7 +8,13 @@ import { join } from "@std/path";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
-import { buildSshArgs, escapeShellArg, toError, withRetry } from "../utils/mod.ts";
+import {
+  buildSshArgs,
+  escapeShellArg,
+  isSshAuthError,
+  toError,
+  withRetry,
+} from "../utils/mod.ts";
 
 /**
  * SSHベースアップローダーの共通オプション
@@ -150,10 +156,7 @@ export abstract class SshBaseUploader implements Uploader {
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",

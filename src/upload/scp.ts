@@ -7,7 +7,7 @@
 import { join } from "@std/path";
 import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { buildSshArgs, ensureParentDir } from "../utils/mod.ts";
+import { buildSshArgs, ensureParentDir, isSshAuthError } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -110,10 +110,7 @@ export class ScpUploader extends SshBaseUploader {
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",

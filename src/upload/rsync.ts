@@ -17,6 +17,8 @@ import { logVerbose, logWarning } from "../ui/mod.ts";
 import {
   buildSshCommand,
   ensureParentDir,
+  isConnectionRefusedError,
+  isSshAuthError,
   parseItemizeChanges,
 } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
@@ -193,10 +195,7 @@ export class RsyncUploader extends SshBaseUploader {
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",
@@ -372,10 +371,7 @@ export class RsyncUploader extends SshBaseUploader {
     const warningCodes = [23, 24];
     if (code !== 0 && !warningCodes.includes(code)) {
       logVerbose(`[rsync] Exit code: ${code}, stderr: ${errorMsg}`);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",
@@ -478,16 +474,13 @@ export class RsyncUploader extends SshBaseUploader {
       if (code !== 0) {
         const errorMsg = new TextDecoder().decode(stderr);
         // 接続/認証エラーの場合は例外をスロー
-        if (
-          errorMsg.includes("Permission denied") ||
-          errorMsg.includes("publickey")
-        ) {
+        if (isSshAuthError(errorMsg)) {
           throw new UploadError(
             `Authentication failed: ${this.options.host}`,
             "AUTH_ERROR",
           );
         }
-        if (errorMsg.includes("Connection refused")) {
+        if (isConnectionRefusedError(errorMsg)) {
           throw new UploadError(
             `Connection refused: ${this.options.host}`,
             "CONNECTION_ERROR",
