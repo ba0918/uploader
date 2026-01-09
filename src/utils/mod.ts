@@ -11,3 +11,11 @@ export {
   getDirectChildren,
   shouldUseLazyLoading,
 } from "./tree.ts";
+export {
+  buildSshArgs,
+  buildSshCommand,
+  LEGACY_ALGORITHMS,
+  LEGACY_ALGORITHMS_SSH2,
+  type BuildSshArgsOptions,
+  type SshConnectionOptions,
+} from "./ssh-config.ts";

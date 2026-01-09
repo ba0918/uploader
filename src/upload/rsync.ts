@@ -14,7 +14,7 @@ import type {
 } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose, logWarning } from "../ui/mod.ts";
-import { parseItemizeChanges } from "../utils/mod.ts";
+import { buildSshCommand, parseItemizeChanges } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -78,33 +78,14 @@ export class RsyncUploader extends SshBaseUploader {
   /**
    * rsync用のSSH接続オプションを構築
    */
-  private buildSshCommand(): string {
-    const parts: string[] = ["ssh"];
-
-    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
-    if (!this.options.password) {
-      parts.push("-o", "BatchMode=yes");
-    }
-
-    parts.push("-o", "StrictHostKeyChecking=accept-new");
-    parts.push("-o", `ConnectTimeout=${this.options.timeout ?? 30}`);
-    parts.push("-p", String(this.options.port));
-
-    if (this.options.keyFile) {
-      parts.push("-i", this.options.keyFile);
-    }
-
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
-    if (this.options.legacyMode) {
-      parts.push(
-        "-o",
-        "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
-      );
-      parts.push("-o", "HostKeyAlgorithms=+ssh-rsa");
-      parts.push("-o", "PubkeyAcceptedAlgorithms=+ssh-rsa");
-    }
-
-    return parts.join(" ");
+  private buildSshCommandInternal(): string {
+    return buildSshCommand({
+      password: this.options.password,
+      keyFile: this.options.keyFile,
+      port: this.options.port,
+      timeout: this.options.timeout,
+      legacyMode: this.options.legacyMode,
+    });
   }
 
   /**
@@ -208,7 +189,7 @@ export class RsyncUploader extends SshBaseUploader {
     }
 
     // SSH経由で接続
-    args.push("-e", this.buildSshCommand());
+    args.push("-e", this.buildSshCommandInternal());
 
     // リモート側のrsyncパス（sudo対応）
     if (this.options.rsyncPath) {
@@ -378,7 +359,7 @@ export class RsyncUploader extends SshBaseUploader {
     }
 
     // SSH経由で接続
-    args.push("-e", this.buildSshCommand());
+    args.push("-e", this.buildSshCommandInternal());
 
     // リモート側のrsyncパス（sudo対応）
     if (this.options.rsyncPath) {
@@ -477,7 +458,7 @@ export class RsyncUploader extends SshBaseUploader {
       }
 
       // SSH経由で接続
-      args.push("-e", this.buildSshCommand());
+      args.push("-e", this.buildSshCommandInternal());
 
       // リモート側のrsyncパス（sudo対応）
       if (this.options.rsyncPath) {

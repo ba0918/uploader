@@ -8,6 +8,7 @@ import { join } from "@std/path";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
+import { buildSshArgs } from "../utils/mod.ts";
 
 /**
  * SSHベースアップローダーの共通オプション
@@ -117,40 +118,14 @@ export abstract class SshBaseUploader implements Uploader {
   /**
    * SSH共通引数を構築
    */
-  protected buildSshArgs(): string[] {
-    const args: string[] = [];
-
-    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
-    if (!this.options.password) {
-      args.push("-o", "BatchMode=yes");
-    }
-
-    args.push(
-      "-o",
-      "StrictHostKeyChecking=accept-new",
-      "-o",
-      `ConnectTimeout=${this.options.timeout ?? 30}`,
-      "-p",
-      String(this.options.port),
-    );
-
-    if (this.options.keyFile) {
-      args.push("-i", this.options.keyFile);
-    }
-
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
-    if (this.options.legacyMode) {
-      args.push(
-        "-o",
-        "KexAlgorithms=+diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
-        "-o",
-        "HostKeyAlgorithms=+ssh-rsa,ssh-dss",
-        "-o",
-        "PubkeyAcceptedAlgorithms=+ssh-rsa",
-      );
-    }
-
-    return args;
+  protected buildSshArgsInternal(): string[] {
+    return buildSshArgs({
+      password: this.options.password,
+      keyFile: this.options.keyFile,
+      port: this.options.port,
+      timeout: this.options.timeout,
+      legacyMode: this.options.legacyMode,
+    });
   }
 
   /**
@@ -168,7 +143,7 @@ export abstract class SshBaseUploader implements Uploader {
       }
     }
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, "echo", "ok");
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
@@ -255,7 +230,7 @@ export abstract class SshBaseUploader implements Uploader {
       ? `sudo mkdir -p "${fullPath}"`
       : `mkdir -p "${fullPath}"`;
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, mkdirCmd);
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
@@ -284,7 +259,7 @@ export abstract class SshBaseUploader implements Uploader {
       ? `sudo rm -rf "${fullPath}"`
       : `rm -rf "${fullPath}"`;
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, rmCmd);
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
@@ -317,7 +292,7 @@ export abstract class SshBaseUploader implements Uploader {
     const fullPath = join(this.options.dest, remotePath);
     const catCmd = useSudo ? `sudo cat "${fullPath}"` : `cat "${fullPath}"`;
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, catCmd);
 
     const { code, stdout, stderr } = await this.runWithSshpass("ssh", args);

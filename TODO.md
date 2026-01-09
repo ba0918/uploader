@@ -4,6 +4,37 @@
 
 ---
 
+## リファクタリング: DRY原則違反の修正
+
+**目的**: 重複コードの統合による保守性向上
+
+### 高優先度
+
+- [ ] SSH接続設定の共通化 (`utils/ssh-config.ts`)
+  - `buildSshArgs()` が ssh-base.ts, rsync.ts, scp.ts で重複
+  - StrictHostKeyChecking, ConnectTimeout, ポート設定
+- [ ] レガシーモード設定の共通化
+  - KexAlgorithms, HostKeyAlgorithms, PubkeyAcceptedAlgorithms が4ファイルで分散
+
+### 中優先度
+
+- [ ] リトライロジックの共通化 (`utils/retry.ts`)
+  - ssh-base.ts と sftp.ts で同じ指数バックオフ実装
+- [ ] エラーハンドリングの共通化 (`utils/error.ts`)
+  - `error instanceof Error ? error.message : String(error)` が18箇所で重複
+- [ ] ディレクトリ操作の共通化
+  - sftp.ts, scp.ts, rsync.ts, local.ts で親ディレクトリ作成処理が重複
+
+### 低優先度
+
+- [ ] バッファ→一時ファイル書き込みの共通化
+- [ ] 設定検証パターンの共通化
+- [ ] 定数の集約 (`config/constants.ts`)
+  - validProtocols, validAuthTypes, validSyncModes
+- [ ] TextDecoderのユーティリティ化
+
+---
+
 ## 保留中 (Phase 9.4: diff viewer 仮想スクロール)
 
 **目的**: 大量ファイル表示時のブラウザパフォーマンス改善

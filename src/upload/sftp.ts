@@ -8,6 +8,7 @@ import { join as posixJoin } from "@std/path/posix";
 import { Buffer } from "node:buffer";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
+import { LEGACY_ALGORITHMS_SSH2 } from "../utils/mod.ts";
 
 /**
  * SFTP接続オプション
@@ -168,48 +169,12 @@ export class SftpUploader implements Uploader {
       ],
     };
 
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを追加
+    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを追加（共通モジュールを使用）
     if (this.options.legacyMode) {
-      // 鍵交換アルゴリズム（古いサーバー向け）
-      algorithms.kex = [
-        // モダンなアルゴリズム
-        "ecdh-sha2-nistp256",
-        "ecdh-sha2-nistp384",
-        "ecdh-sha2-nistp521",
-        "diffie-hellman-group-exchange-sha256",
-        "diffie-hellman-group14-sha256",
-        // レガシーアルゴリズム
-        "diffie-hellman-group-exchange-sha1",
-        "diffie-hellman-group14-sha1",
-        "diffie-hellman-group1-sha1",
-      ];
-      // ホスト鍵アルゴリズム（古いサーバーはssh-rsaのみ対応の場合がある）
-      // ssh-rsaを優先的に配置
-      algorithms.serverHostKey = [
-        "ssh-rsa", // レガシー（SHA-1ベース）- 古いサーバー向け
-        "ssh-dss", // レガシー（DSA）
-        "rsa-sha2-512",
-        "rsa-sha2-256",
-        "ecdsa-sha2-nistp256",
-        "ecdsa-sha2-nistp384",
-        "ecdsa-sha2-nistp521",
-      ];
-      // 暗号アルゴリズム（CBC対応追加）
-      algorithms.cipher = [
-        "aes128-ctr",
-        "aes192-ctr",
-        "aes256-ctr",
-        "aes128-cbc", // レガシー
-        "aes256-cbc", // レガシー
-        "3des-cbc", // レガシー
-      ];
-      // HMACアルゴリズム（古いサーバー向け）
-      algorithms.hmac = [
-        "hmac-sha2-256",
-        "hmac-sha2-512",
-        "hmac-sha1", // レガシー
-        "hmac-md5", // レガシー
-      ];
+      algorithms.kex = [...LEGACY_ALGORITHMS_SSH2.kex];
+      algorithms.serverHostKey = [...LEGACY_ALGORITHMS_SSH2.serverHostKey];
+      algorithms.cipher = [...LEGACY_ALGORITHMS_SSH2.cipher];
+      algorithms.hmac = [...LEGACY_ALGORITHMS_SSH2.hmac];
     }
 
     const config: Record<string, unknown> = {

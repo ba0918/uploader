@@ -8,6 +8,7 @@ import { dirname, join } from "@std/path";
 import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
+import { buildSshArgs } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -107,38 +108,18 @@ export class ScpUploader extends SshBaseUploader {
     size: number,
     onProgress?: (transferred: number, total: number) => void,
   ): Promise<void> {
-    const args: string[] = [];
-
-    // SCP引数を構築
-    if (this.options.keyFile) {
-      args.push("-i", this.options.keyFile);
-    }
-
-    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
-    if (!this.options.password) {
-      args.push("-o", "BatchMode=yes");
-    }
-
-    args.push(
-      "-o",
-      "StrictHostKeyChecking=accept-new",
-      "-o",
-      `ConnectTimeout=${this.options.timeout ?? 30}`,
-      "-P",
-      String(this.options.port),
+    // SCP引数を構築（共通モジュールを使用）
+    // SCPはポートオプションが -P（大文字）で、keyFileを先頭に配置
+    const args = buildSshArgs(
+      {
+        password: this.options.password,
+        keyFile: this.options.keyFile,
+        port: this.options.port,
+        timeout: this.options.timeout,
+        legacyMode: this.options.legacyMode,
+      },
+      { portFlag: "-P", keyFileFirst: true },
     );
-
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
-    if (this.options.legacyMode) {
-      args.push(
-        "-o",
-        "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
-        "-o",
-        "HostKeyAlgorithms=+ssh-rsa",
-        "-o",
-        "PubkeyAcceptedAlgorithms=+ssh-rsa",
-      );
-    }
 
     if (this.options.preserveTimestamps) {
       args.push("-p");
