@@ -551,6 +551,7 @@ export function getHtmlContent(): string {
     .diff-line {
       display: flex;
       white-space: pre;
+      min-width: fit-content;
     }
 
     .diff-line-number {
