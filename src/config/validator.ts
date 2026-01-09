@@ -5,6 +5,8 @@
 import type {
   Config,
   DestinationConfig,
+  GlobalConfig,
+  IgnoreConfig,
   PartialTargetConfig,
   ProfileConfig,
   SourceConfig,
@@ -36,12 +38,17 @@ export function validateConfig(config: unknown): Config {
   const result: Config = {};
   const configObj = config as Record<string, unknown>;
 
+  // まずグローバル設定を検証（プロファイル検証で参照するため）
+  if ("_global" in configObj) {
+    result._global = validateGlobal(configObj._global);
+  }
+
+  // プロファイルを検証
   for (const [key, value] of Object.entries(configObj)) {
     if (key === "_global") {
-      result._global = validateGlobal(value);
-    } else {
-      result[key] = validateProfile(value, key);
+      continue; // 既に処理済み
     }
+    result[key] = validateProfile(value, key, result._global);
   }
 
   return result;
@@ -50,7 +57,7 @@ export function validateConfig(config: unknown): Config {
 /**
  * グローバル設定を検証
  */
-function validateGlobal(value: unknown): { ignore?: string[] } {
+function validateGlobal(value: unknown): GlobalConfig {
   if (typeof value !== "object" || value === null) {
     throw new ConfigValidationError(
       "_global はオブジェクトである必要があります",
@@ -59,8 +66,9 @@ function validateGlobal(value: unknown): { ignore?: string[] } {
   }
 
   const global = value as Record<string, unknown>;
-  const result: { ignore?: string[] } = {};
+  const result: GlobalConfig = {};
 
+  // 後方互換性: 旧来の ignore（文字列配列）
   if (global.ignore !== undefined) {
     if (!Array.isArray(global.ignore)) {
       throw new ConfigValidationError(
@@ -79,13 +87,144 @@ function validateGlobal(value: unknown): { ignore?: string[] } {
     });
   }
 
+  // ignore_groups: 名前付きグループ
+  if (global.ignore_groups !== undefined) {
+    if (
+      typeof global.ignore_groups !== "object" || global.ignore_groups === null
+    ) {
+      throw new ConfigValidationError(
+        "ignore_groups はオブジェクトである必要があります",
+        "_global.ignore_groups",
+      );
+    }
+    const groups = global.ignore_groups as Record<string, unknown>;
+    result.ignore_groups = {};
+
+    for (const [groupName, patterns] of Object.entries(groups)) {
+      if (!Array.isArray(patterns)) {
+        throw new ConfigValidationError(
+          `ignore_groups.${groupName} は配列である必要があります`,
+          `_global.ignore_groups.${groupName}`,
+        );
+      }
+      result.ignore_groups[groupName] = patterns.map((item, i) => {
+        if (typeof item !== "string") {
+          throw new ConfigValidationError(
+            "パターンは文字列である必要があります",
+            `_global.ignore_groups.${groupName}[${i}]`,
+          );
+        }
+        return item;
+      });
+    }
+  }
+
+  // default_ignore: デフォルトで適用するグループ名
+  if (global.default_ignore !== undefined) {
+    if (!Array.isArray(global.default_ignore)) {
+      throw new ConfigValidationError(
+        "default_ignore は配列である必要があります",
+        "_global.default_ignore",
+      );
+    }
+    result.default_ignore = global.default_ignore.map((item, i) => {
+      if (typeof item !== "string") {
+        throw new ConfigValidationError(
+          "default_ignore の各要素は文字列である必要があります",
+          `_global.default_ignore[${i}]`,
+        );
+      }
+      // グループが存在するかチェック
+      if (result.ignore_groups && !(item in result.ignore_groups)) {
+        throw new ConfigValidationError(
+          `存在しないグループ名が指定されています: ${item}`,
+          `_global.default_ignore[${i}]`,
+        );
+      }
+      return item;
+    });
+  }
+
+  return result;
+}
+
+/**
+ * IgnoreConfig を検証
+ * @param value 検証する値
+ * @param path 設定パス（エラーメッセージ用）
+ * @param ignoreGroups 有効なグループ名（undefined の場合はグループ名の検証をスキップ）
+ */
+function validateIgnoreConfig(
+  value: unknown,
+  path: string,
+  ignoreGroups?: Record<string, string[]>,
+): IgnoreConfig {
+  if (typeof value !== "object" || value === null) {
+    throw new ConfigValidationError(
+      "ignore はオブジェクトである必要があります",
+      path,
+    );
+  }
+
+  const ignore = value as Record<string, unknown>;
+  const result: IgnoreConfig = {};
+
+  // use: 使用するグループ名
+  if (ignore.use !== undefined) {
+    if (!Array.isArray(ignore.use)) {
+      throw new ConfigValidationError(
+        "ignore.use は配列である必要があります",
+        `${path}.use`,
+      );
+    }
+    result.use = ignore.use.map((item, i) => {
+      if (typeof item !== "string") {
+        throw new ConfigValidationError(
+          "グループ名は文字列である必要があります",
+          `${path}.use[${i}]`,
+        );
+      }
+      // グループが存在するかチェック
+      if (ignoreGroups && !(item in ignoreGroups)) {
+        throw new ConfigValidationError(
+          `存在しないグループ名が指定されています: ${item}`,
+          `${path}.use[${i}]`,
+        );
+      }
+      return item;
+    });
+  }
+
+  // add: 追加のパターン
+  if (ignore.add !== undefined) {
+    if (!Array.isArray(ignore.add)) {
+      throw new ConfigValidationError(
+        "ignore.add は配列である必要があります",
+        `${path}.add`,
+      );
+    }
+    result.add = ignore.add.map((item, i) => {
+      if (typeof item !== "string") {
+        throw new ConfigValidationError(
+          "パターンは文字列である必要があります",
+          `${path}.add[${i}]`,
+        );
+      }
+      return item;
+    });
+  }
+
   return result;
 }
 
 /**
  * プロファイルを検証
  */
-function validateProfile(value: unknown, name: string): ProfileConfig {
+function validateProfile(
+  value: unknown,
+  name: string,
+  globalConfig?: GlobalConfig,
+): ProfileConfig {
   if (typeof value !== "object" || value === null) {
     throw new ConfigValidationError(
       "プロファイルはオブジェクトである必要があります",
@@ -105,7 +244,7 @@ function validateProfile(value: unknown, name: string): ProfileConfig {
 
   return {
     from: validateSource(profile.from, `${name}.from`),
-    to: validateDestination(profile.to, `${name}.to`),
+    to: validateDestination(profile.to, `${name}.to`, globalConfig),
   };
 }
 
@@ -171,6 +310,7 @@ function validateSource(value: unknown, path: string): SourceConfig {
 function validateDestination(
   value: unknown,
   path: string,
+  globalConfig?: GlobalConfig,
 ): DestinationConfig {
   if (typeof value !== "object" || value === null) {
     throw new ConfigValidationError("オブジェクトである必要があります", path);
@@ -192,15 +332,17 @@ function validateDestination(
     );
   }
 
+  const ignoreGroups = globalConfig?.ignore_groups;
+
   // defaults を検証（あれば）
   const defaults = dest.defaults
-    ? validateTargetDefaults(dest.defaults, `${path}.defaults`)
+    ? validateTargetDefaults(dest.defaults, `${path}.defaults`, ignoreGroups)
     : undefined;
 
   return {
     defaults,
     targets: dest.targets.map((target, i) =>
-      validateTarget(target, `${path}.targets[${i}]`, defaults)
+      validateTarget(target, `${path}.targets[${i}]`, defaults, ignoreGroups)
     ),
   };
 }
@@ -211,6 +353,7 @@ function validateDestination(
 function validateTargetDefaults(
   value: unknown,
   path: string,
+  ignoreGroups?: Record<string, string[]>,
 ): TargetDefaults {
   if (typeof value !== "object" || value === null) {
     throw new ConfigValidationError("オブジェクトである必要があります", path);
@@ -251,6 +394,11 @@ function validateTargetDefaults(
     }
   }
 
+  // ignore の検証（指定されていれば）
+  const ignore = defaults.ignore !== undefined
+    ? validateIgnoreConfig(defaults.ignore, `${path}.ignore`, ignoreGroups)
+    : undefined;
+
   return {
     host: defaults.host ? String(defaults.host) : undefined,
     protocol: defaults.protocol as
@@ -282,6 +430,7 @@ function validateTargetDefaults(
     legacy_mode: typeof defaults.legacy_mode === "boolean"
       ? defaults.legacy_mode
       : undefined,
+    ignore,
   };
 }
 
@@ -293,6 +442,7 @@ function validateTarget(
   value: unknown,
   path: string,
   defaults?: TargetDefaults,
+  ignoreGroups?: Record<string, string[]>,
 ): PartialTargetConfig {
   if (typeof value !== "object" || value === null) {
     throw new ConfigValidationError("オブジェクトである必要があります", path);
@@ -370,6 +520,11 @@ function validateTarget(
     }
   }
 
+  // ignore の検証（個別に指定されている場合）
+  const ignore = target.ignore !== undefined
+    ? validateIgnoreConfig(target.ignore, `${path}.ignore`, ignoreGroups)
+    : undefined;
+
   // PartialTargetConfig を返す（defaults のマージは loader で行う）
   return {
     host: target.host ? String(target.host) : undefined,
@@ -396,6 +551,7 @@ function validateTarget(
     legacy_mode: typeof target.legacy_mode === "boolean"
       ? target.legacy_mode
       : undefined,
+    ignore,
   };
 }
 

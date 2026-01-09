@@ -26,6 +26,7 @@ function createTestTarget(host: string): ResolvedTargetConfig {
     preserve_timestamps: false,
     timeout: 30,
     retry: 3,
+    ignore: [],
   };
 }
 

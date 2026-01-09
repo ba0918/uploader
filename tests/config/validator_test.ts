@@ -584,3 +584,370 @@ describe("getProfileNames", () => {
     assertEquals(getProfileNames({}), []);
   });
 });
+
+describe("ignore_groups バリデーション", () => {
+  describe("_global.ignore_groups", () => {
+    it("有効なignore_groupsは通過する", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            common: ["*.log", ".git/"],
+            template: ["template/"],
+          },
+        },
+      });
+      assertEquals(result._global?.ignore_groups, {
+        common: ["*.log", ".git/"],
+        template: ["template/"],
+      });
+    });
+
+    it("空のignore_groupsは有効", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {},
+        },
+      });
+      assertEquals(result._global?.ignore_groups, {});
+    });
+
+    it("空のグループ配列は有効", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            empty: [],
+          },
+        },
+      });
+      assertEquals(result._global?.ignore_groups?.empty, []);
+    });
+
+    it("ignore_groupsがオブジェクトでない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: "not-object",
+            },
+          }),
+        ConfigValidationError,
+        "ignore_groups はオブジェクトである必要があります",
+      );
+    });
+
+    it("グループの値が配列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: "not-array",
+              },
+            },
+          }),
+        ConfigValidationError,
+        "ignore_groups.common は配列である必要があります",
+      );
+    });
+
+    it("グループ要素が文字列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: [123],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "パターンは文字列である必要があります",
+      );
+    });
+  });
+
+  describe("_global.default_ignore", () => {
+    it("有効なdefault_ignoreは通過する", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+            template: ["template/"],
+          },
+          default_ignore: ["common"],
+        },
+      });
+      assertEquals(result._global?.default_ignore, ["common"]);
+    });
+
+    it("空のdefault_ignore配列は有効", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+          },
+          default_ignore: [],
+        },
+      });
+      assertEquals(result._global?.default_ignore, []);
+    });
+
+    it("default_ignoreが配列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: ["*.log"],
+              },
+              default_ignore: "common",
+            },
+          }),
+        ConfigValidationError,
+        "default_ignore は配列である必要があります",
+      );
+    });
+
+    it("default_ignore要素が文字列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: ["*.log"],
+              },
+              default_ignore: [123],
+            },
+          }),
+        ConfigValidationError,
+        "default_ignore の各要素は文字列である必要があります",
+      );
+    });
+
+    it("存在しないグループ名を指定した場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: ["*.log"],
+              },
+              default_ignore: ["nonexistent"],
+            },
+          }),
+        ConfigValidationError,
+        "存在しないグループ名が指定されています: nonexistent",
+      );
+    });
+  });
+
+  describe("ターゲットの ignore 設定", () => {
+    const baseProfile = {
+      from: { type: "file", src: ["dist/"] },
+    };
+
+    it("有効なignore設定（use）は通過する", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+            template: ["template/"],
+          },
+        },
+        test: {
+          ...baseProfile,
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/",
+                ignore: {
+                  use: ["common"],
+                },
+              },
+            ],
+          },
+        },
+      });
+      const profile = getProfile(result, "test");
+      assertEquals(profile?.to.targets[0].ignore, { use: ["common"] });
+    });
+
+    it("有効なignore設定（use + add）は通過する", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+          },
+        },
+        test: {
+          ...baseProfile,
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/",
+                ignore: {
+                  use: ["common"],
+                  add: ["extra/"],
+                },
+              },
+            ],
+          },
+        },
+      });
+      const profile = getProfile(result, "test");
+      assertEquals(profile?.to.targets[0].ignore, {
+        use: ["common"],
+        add: ["extra/"],
+      });
+    });
+
+    it("空のuse配列は有効（何も除外しない）", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+          },
+        },
+        test: {
+          ...baseProfile,
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/",
+                ignore: {
+                  use: [],
+                },
+              },
+            ],
+          },
+        },
+      });
+      const profile = getProfile(result, "test");
+      assertEquals(profile?.to.targets[0].ignore, { use: [] });
+    });
+
+    it("ignore.useが配列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: ["*.log"],
+              },
+            },
+            test: {
+              ...baseProfile,
+              to: {
+                targets: [
+                  {
+                    host: "localhost",
+                    protocol: "local",
+                    dest: "/tmp/",
+                    ignore: {
+                      use: "common",
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "ignore.use は配列である必要があります",
+      );
+    });
+
+    it("存在しないグループ名をuseで指定した場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: ["*.log"],
+              },
+            },
+            test: {
+              ...baseProfile,
+              to: {
+                targets: [
+                  {
+                    host: "localhost",
+                    protocol: "local",
+                    dest: "/tmp/",
+                    ignore: {
+                      use: ["nonexistent"],
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "存在しないグループ名が指定されています: nonexistent",
+      );
+    });
+
+    it("ignore.addが配列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: ["*.log"],
+              },
+            },
+            test: {
+              ...baseProfile,
+              to: {
+                targets: [
+                  {
+                    host: "localhost",
+                    protocol: "local",
+                    dest: "/tmp/",
+                    ignore: {
+                      add: "extra/",
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "ignore.add は配列である必要があります",
+      );
+    });
+
+    it("defaultsでignoreを設定できる", () => {
+      const result = validateConfig({
+        _global: {
+          ignore_groups: {
+            common: ["*.log"],
+            template: ["template/"],
+          },
+        },
+        test: {
+          ...baseProfile,
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              ignore: {
+                use: ["common", "template"],
+              },
+            },
+            targets: [{ dest: "/tmp/a" }, { dest: "/tmp/b" }],
+          },
+        },
+      });
+      const profile = getProfile(result, "test");
+      assertEquals(profile?.to.defaults?.ignore, {
+        use: ["common", "template"],
+      });
+    });
+  });
+});

@@ -10,6 +10,8 @@ Git差分またはローカルファイルをSFTP/SCPでリモートサーバに
   ブラウザベースの差分確認UI（アップロード前に変更内容を視覚的に確認）
 - **複数プロトコル対応**: SFTP / SCP / rsync / ローカルコピー
 - **複数ターゲット**: 1回の実行で複数サーバへ同時デプロイ
+- **階層的なIgnore設定**:
+  名前付きグループでターゲットごとに異なる除外パターンを適用
 - **モダンなCUI**: プログレスバー、ツリー表示、カラー出力
 
 ## Requirements
@@ -163,6 +165,7 @@ uploader --log-file=upload.log <profile>
 
 ```yaml
 _global:
+  # 基本的なignore設定（後方互換）
   ignore:
     - "*.log"
     - ".git/"
@@ -319,6 +322,92 @@ staging:
 - `dest` は各ターゲットで必須（defaults には含められない）
 - `host` と `protocol` は defaults か個別設定のどちらかで必須
 
+### Ignore設定
+
+除外パターンは階層的に設定でき、ターゲットごとに異なるパターンを適用できます。
+
+#### 基本的な使い方（後方互換）
+
+```yaml
+_global:
+  ignore:
+    - ".git/"
+    - "node_modules/"
+    - "*.log"
+```
+
+#### 名前付きグループを使った設定（推奨）
+
+複数の環境で異なる除外パターンを使い分ける場合は、名前付きグループが便利です。
+
+```yaml
+_global:
+  # 名前付きignoreグループを定義
+  ignore_groups:
+    common:
+      - ".git/"
+      - "node_modules/"
+      - "*.log"
+    development:
+      - "tests/"
+      - "*.test.ts"
+      - ".env.local"
+    cache:
+      - ".cache/"
+      - "tmp/"
+
+  # デフォルトで適用するグループ
+  default_ignore:
+    - common
+
+# 本番環境: commonグループのみ適用
+production:
+  from:
+    type: "git"
+    base: "origin/main"
+  to:
+    targets:
+      - host: "prod.example.com"
+        dest: "/var/www/html/"
+
+# ステージング: commonに加えてcacheも除外
+staging:
+  from:
+    type: "git"
+    base: "origin/develop"
+  to:
+    defaults:
+      ignore:
+        use:
+          - common
+          - cache
+    targets:
+      - host: "staging1.example.com"
+        dest: "/var/www/staging/"
+      - host: "staging2.example.com"
+        dest: "/var/www/staging/"
+        # このターゲットだけ追加パターンを適用
+        ignore:
+          use:
+            - common
+          add:
+            - "debug/"
+```
+
+#### Ignore設定の優先順位
+
+1. **ターゲット個別の `ignore`** が最優先
+2. **`defaults.ignore`** が次に優先
+3. **`default_ignore`** がフォールバック
+4. 何も設定がなければ **`_global.ignore`**（後方互換）
+
+#### Ignore設定オプション
+
+| 設定         | 説明                                   |
+| ------------ | -------------------------------------- |
+| `ignore.use` | 使用するグループ名の配列               |
+| `ignore.add` | グループに加えて追加するパターンの配列 |
+
 ### ターゲット設定リファレンス
 
 ```yaml
@@ -350,6 +439,13 @@ targets:
 
     # レガシーサーバー対応
     legacy_mode: false # 古いSSHアルゴリズムを有効化
+
+    # ターゲット固有のignore設定
+    ignore:
+      use: # 使用するグループ名
+        - common
+      add: # 追加パターン
+        - "local-only/"
 ```
 
 ### レガシーサーバー対応
