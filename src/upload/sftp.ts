@@ -179,17 +179,20 @@ export class SftpUploader implements Uploader {
         "diffie-hellman-group-exchange-sha256",
         "diffie-hellman-group14-sha256",
         // レガシーアルゴリズム
+        "diffie-hellman-group-exchange-sha1",
         "diffie-hellman-group14-sha1",
         "diffie-hellman-group1-sha1",
       ];
-      // ホスト鍵アルゴリズム（ssh-rsa対応）
+      // ホスト鍵アルゴリズム（古いサーバーはssh-rsaのみ対応の場合がある）
+      // ssh-rsaを優先的に配置
       algorithms.serverHostKey = [
+        "ssh-rsa", // レガシー（SHA-1ベース）- 古いサーバー向け
+        "ssh-dss", // レガシー（DSA）
+        "rsa-sha2-512",
+        "rsa-sha2-256",
         "ecdsa-sha2-nistp256",
         "ecdsa-sha2-nistp384",
         "ecdsa-sha2-nistp521",
-        "rsa-sha2-512",
-        "rsa-sha2-256",
-        "ssh-rsa", // レガシー
       ];
       // 暗号アルゴリズム（CBC対応追加）
       algorithms.cipher = [
@@ -199,6 +202,13 @@ export class SftpUploader implements Uploader {
         "aes128-cbc", // レガシー
         "aes256-cbc", // レガシー
         "3des-cbc", // レガシー
+      ];
+      // HMACアルゴリズム（古いサーバー向け）
+      algorithms.hmac = [
+        "hmac-sha2-256",
+        "hmac-sha2-512",
+        "hmac-sha1", // レガシー
+        "hmac-md5", // レガシー
       ];
     }
 
