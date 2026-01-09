@@ -51,6 +51,9 @@ export interface CliOptions {
 
   /** リモートステータスチェックの同時実行数（デフォルト: 10） */
   concurrency: number;
+
+  /** 複数ターゲットへの並列アップロード */
+  parallel: boolean;
 }
 
 /** CLI 引数（プロファイル名含む） */

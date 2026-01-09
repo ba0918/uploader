@@ -136,6 +136,13 @@ export interface WsCancelMessage extends WsMessageBase {
   type: "cancel";
 }
 
+/** ターゲット切り替えメッセージ */
+export interface WsSwitchTargetMessage extends WsMessageBase {
+  type: "switch_target";
+  /** 新しいターゲットインデックス */
+  targetIndex: number;
+}
+
 /** ディレクトリ展開リクエストメッセージ */
 export interface WsExpandDirectoryMessage extends WsMessageBase {
   type: "expand_directory";
@@ -204,7 +211,8 @@ export type WsClientMessage =
   | WsFileRequestMessage
   | WsExpandDirectoryMessage
   | WsConfirmMessage
-  | WsCancelMessage;
+  | WsCancelMessage
+  | WsSwitchTargetMessage;
 
 /** diff-viewerの状態 */
 export interface DiffViewerState {

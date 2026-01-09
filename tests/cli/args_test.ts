@@ -259,6 +259,18 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("parallelオプション", () => {
+    it("--parallelオプションをパースできる", () => {
+      const result = parseArgs(["--parallel", "profile"]);
+      assertEquals(result?.parallel, true);
+    });
+
+    it("デフォルトはfalse", () => {
+      const result = parseArgs(["profile"]);
+      assertEquals(result?.parallel, false);
+    });
+  });
+
   describe("helpオプション", () => {
     it("--helpオプションでnullを返す", () => {
       const result = parseArgs(["--help"]);

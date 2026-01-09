@@ -183,15 +183,29 @@ export async function uploadToTarget(
   options: UploadOptions,
   progressManager: TransferProgressManager,
 ): Promise<void> {
-  const uploader = createUploader(target);
-
   progressManager.initTarget(target);
-  progressManager.startTargetConnection(target.host);
+  await uploadToTargetWithoutInit(target, files, options, progressManager);
+}
+
+/**
+ * 単一ターゲットへアップロード（初期化済み前提）
+ * 並列アップロード時に使用
+ */
+async function uploadToTargetWithoutInit(
+  target: ResolvedTargetConfig,
+  files: UploadFile[],
+  options: UploadOptions,
+  progressManager: TransferProgressManager,
+): Promise<void> {
+  const uploader = createUploader(target);
+  const { host, dest } = target;
+
+  progressManager.startTargetConnection(host, dest);
 
   try {
     // 接続
     await uploader.connect();
-    progressManager.startTargetUpload(target.host);
+    progressManager.startTargetUpload(host, dest);
 
     // ファイルをアップロード
     const filesToUpload = files.filter((f) => f.changeType !== "delete");
@@ -202,18 +216,18 @@ export async function uploadToTarget(
       for (const file of filesToDelete) {
         try {
           await uploader.delete(file.relativePath);
-          progressManager.recordFileResult(target.host, {
+          progressManager.recordFileResult(host, {
             path: file.relativePath,
             status: "completed",
             size: 0,
-          });
+          }, dest);
         } catch (error) {
-          progressManager.recordFileResult(target.host, {
+          progressManager.recordFileResult(host, {
             path: file.relativePath,
             status: "failed",
             size: 0,
             error: error instanceof Error ? error.message : String(error),
-          });
+          }, dest);
 
           if (options.strict) {
             throw error;
@@ -228,26 +242,28 @@ export async function uploadToTarget(
 
       // 一括アップロードの進捗通知
       progressManager.updateFileProgress(
-        target.host,
+        host,
         0,
         filesToUpload.length,
         "Bulk upload starting...",
         0,
         0,
         "uploading",
+        dest,
       );
 
       const result = await uploader.bulkUpload(
         filesToUpload,
         (completed, total, currentFile) => {
           progressManager.updateFileProgress(
-            target.host,
+            host,
             completed,
             total,
             currentFile ?? "Transferring...",
             0,
             0,
             "uploading",
+            dest,
           );
         },
       );
@@ -255,22 +271,22 @@ export async function uploadToTarget(
       // 結果を記録
       if (result.successCount > 0) {
         for (const file of filesToUpload) {
-          progressManager.recordFileResult(target.host, {
+          progressManager.recordFileResult(host, {
             path: file.relativePath,
             status: "completed",
             size: file.size,
             duration: result.duration / filesToUpload.length,
-          });
+          }, dest);
         }
       } else if (result.failedCount > 0) {
         for (const file of filesToUpload) {
-          progressManager.recordFileResult(target.host, {
+          progressManager.recordFileResult(host, {
             path: file.relativePath,
             status: "failed",
             size: file.size,
             duration: Date.now() - startTime,
             error: "Bulk upload failed",
-          });
+          }, dest);
         }
         if (options.strict) {
           throw new Error("Bulk upload failed");
@@ -283,13 +299,14 @@ export async function uploadToTarget(
         const startTime = Date.now();
 
         progressManager.updateFileProgress(
-          target.host,
+          host,
           i,
           filesToUpload.length,
           file.relativePath,
           0,
           file.size,
           "uploading",
+          dest,
         );
 
         try {
@@ -298,31 +315,32 @@ export async function uploadToTarget(
             file.relativePath,
             (transferred: number, total: number) => {
               progressManager.updateFileProgress(
-                target.host,
+                host,
                 i,
                 filesToUpload.length,
                 file.relativePath,
                 transferred,
                 total,
                 "uploading",
+                dest,
               );
             },
           );
 
-          progressManager.recordFileResult(target.host, {
+          progressManager.recordFileResult(host, {
             path: file.relativePath,
             status: "completed",
             size: file.size,
             duration: Date.now() - startTime,
-          });
+          }, dest);
         } catch (error) {
-          progressManager.recordFileResult(target.host, {
+          progressManager.recordFileResult(host, {
             path: file.relativePath,
             status: "failed",
             size: file.size,
             duration: Date.now() - startTime,
             error: error instanceof Error ? error.message : String(error),
-          });
+          }, dest);
 
           if (options.strict) {
             throw error;
@@ -331,10 +349,10 @@ export async function uploadToTarget(
       }
     }
 
-    progressManager.completeTarget(target.host);
+    progressManager.completeTarget(host, undefined, dest);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    progressManager.failTargetConnection(target.host, errorMsg);
+    progressManager.failTargetConnection(host, errorMsg, dest);
     throw error;
   } finally {
     await uploader.disconnect();
@@ -353,14 +371,42 @@ export async function uploadToTargets(
   const progressManager = new TransferProgressManager(onProgress);
   progressManager.start();
 
-  // 順次アップロード（将来的には並列アップロードのオプションを追加）
-  for (const target of targets) {
-    try {
-      await uploadToTarget(target, files, options, progressManager);
-    } catch {
-      // エラーは記録済みなので、strictモード以外は続行
-      if (options.strict) {
+  if (options.parallel && targets.length > 1) {
+    // 並列アップロード
+    // 全ターゲットを先に初期化（インデックス順序を保証）
+    for (const target of targets) {
+      progressManager.initTarget(target);
+    }
+
+    const uploadPromises = targets.map(async (target) => {
+      try {
+        await uploadToTargetWithoutInit(target, files, options, progressManager);
+        return { target, success: true };
+      } catch (error) {
+        // エラーは記録済み
+        return { target, success: false, error };
+      }
+    });
+
+    const results = await Promise.all(uploadPromises);
+
+    // strictモードで失敗があれば早期終了
+    if (options.strict) {
+      const failed = results.find((r) => !r.success);
+      if (failed) {
         return progressManager.getResult();
+      }
+    }
+  } else {
+    // 順次アップロード
+    for (const target of targets) {
+      try {
+        await uploadToTarget(target, files, options, progressManager);
+      } catch {
+        // エラーは記録済みなので、strictモード以外は続行
+        if (options.strict) {
+          return progressManager.getResult();
+        }
       }
     }
   }

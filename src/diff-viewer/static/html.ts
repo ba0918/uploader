@@ -85,6 +85,39 @@ export function getHtmlContent(): string {
       gap: 10px;
     }
 
+    /* ターゲットセレクター */
+    .target-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .target-selector.hidden {
+      display: none;
+    }
+
+    .target-selector select {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 13px;
+      cursor: pointer;
+      min-width: 200px;
+    }
+
+    .target-selector select:hover {
+      border-color: var(--accent-blue);
+    }
+
+    .target-selector select:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+
     .btn {
       padding: 8px 16px;
       border: none;
@@ -844,6 +877,83 @@ export function getHtmlContent(): string {
       justify-content: flex-end;
       gap: 10px;
     }
+
+    /* 複数ターゲット進捗表示 */
+    .progress-multi-target {
+      width: 600px;
+      text-align: left;
+    }
+
+    .progress-targets-container {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .progress-target-row {
+      padding: 12px;
+      margin-bottom: 8px;
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      border-left: 3px solid var(--border-color);
+    }
+
+    .progress-target-row.completed {
+      border-left-color: var(--color-added);
+    }
+
+    .progress-target-row.failed {
+      border-left-color: var(--color-deleted);
+    }
+
+    .progress-target-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .progress-target-host {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .progress-target-status {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+    }
+
+    .progress-target-status.uploading {
+      color: var(--accent-blue);
+      background: rgba(86, 156, 214, 0.2);
+    }
+
+    .progress-target-status.completed {
+      color: var(--color-added);
+      background: rgba(78, 201, 176, 0.2);
+    }
+
+    .progress-target-status.failed {
+      color: var(--color-deleted);
+      background: rgba(244, 71, 71, 0.2);
+    }
+
+    .progress-target-details {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    .progress-target-file {
+      max-width: 60%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -856,6 +966,10 @@ export function getHtmlContent(): string {
       <span id="base-branch">base</span>
       &rarr;
       <span id="target-branch">target</span>
+    </div>
+    <div class="target-selector hidden" id="target-selector">
+      <label>Target:</label>
+      <select id="target-select"></select>
     </div>
     <div class="header-actions">
       <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
@@ -917,6 +1031,7 @@ export function getHtmlContent(): string {
       diffMode: 'git', // 'git' | 'remote' | 'both'
       currentDiffTab: 'git', // 'git' | 'remote'
       remoteTargets: [], // [{host, dest}]
+      currentTargetIndex: 0, // 現在選択中のターゲットインデックス
       // 遅延読み込み対応
       lazyLoading: false, // 遅延読み込みモードか
       tree: null, // サーバーから受け取ったツリー構造（lazyLoading時のみ使用）
@@ -941,7 +1056,9 @@ export function getHtmlContent(): string {
       viewUnified: document.getElementById('view-unified'),
       tabGitDiff: document.getElementById('tab-git-diff'),
       tabRemoteDiff: document.getElementById('tab-remote-diff'),
-      remoteTargetBadge: document.getElementById('remote-target-badge')
+      remoteTargetBadge: document.getElementById('remote-target-badge'),
+      targetSelector: document.getElementById('target-selector'),
+      targetSelect: document.getElementById('target-select')
     };
 
     // WebSocket接続
@@ -1003,45 +1120,146 @@ export function getHtmlContent(): string {
       }
     }
 
+    // 進捗追跡用の状態
+    const progressState = {
+      targets: new Map() // host -> { fileIndex, totalFiles, status, currentFile }
+    };
+
     // 進捗モーダルを表示
     function showProgressModal() {
       // 既存のモーダルを削除
       const existing = document.getElementById('progress-modal');
       if (existing) existing.remove();
 
+      // 進捗状態をリセット
+      progressState.targets.clear();
+
       const modal = document.createElement('div');
       modal.id = 'progress-modal';
       modal.className = 'progress-modal';
-      modal.innerHTML = \`
-        <div class="progress-modal-content">
-          <div class="progress-header">
-            <div class="spinner"></div>
-            <span class="progress-title">Uploading...</span>
+
+      // 複数ターゲットの場合は複数行表示
+      const targetCount = state.remoteTargets.length;
+
+      if (targetCount > 1) {
+        // 複数ターゲット用のHTML
+        const targetRows = state.remoteTargets.map((target, index) => \`
+          <div class="progress-target-row" id="progress-target-\${index}">
+            <div class="progress-target-header">
+              <span class="progress-target-host">\${escapeHtml(target.host)}</span>
+              <span class="progress-target-status" id="progress-status-\${index}">Waiting...</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar" id="progress-bar-\${index}" style="width: 0%"></div>
+            </div>
+            <div class="progress-target-details">
+              <span id="progress-details-\${index}">0 / 0 files</span>
+              <span class="progress-target-file" id="progress-file-\${index}"></span>
+            </div>
           </div>
-          <div class="progress-host" id="progress-host">Preparing...</div>
-          <div class="progress-bar-container">
-            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+        \`).join('');
+
+        modal.innerHTML = \`
+          <div class="progress-modal-content progress-multi-target">
+            <div class="progress-header">
+              <div class="spinner"></div>
+              <span class="progress-title">Uploading to \${targetCount} targets...</span>
+            </div>
+            <div class="progress-targets-container">
+              \${targetRows}
+            </div>
           </div>
-          <div class="progress-details" id="progress-details">0 / 0 files</div>
-          <div class="progress-file" id="progress-file"></div>
-        </div>
-      \`;
+        \`;
+      } else {
+        // 単一ターゲット用のHTML（従来と同じ）
+        modal.innerHTML = \`
+          <div class="progress-modal-content">
+            <div class="progress-header">
+              <div class="spinner"></div>
+              <span class="progress-title">Uploading...</span>
+            </div>
+            <div class="progress-host" id="progress-host">Preparing...</div>
+            <div class="progress-bar-container">
+              <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+            </div>
+            <div class="progress-details" id="progress-details">0 / 0 files</div>
+            <div class="progress-file" id="progress-file"></div>
+          </div>
+        \`;
+      }
+
       document.body.appendChild(modal);
     }
 
     // 進捗を更新
     function updateProgress(data) {
-      const bar = document.getElementById('progress-bar');
-      const details = document.getElementById('progress-details');
-      const file = document.getElementById('progress-file');
-      const host = document.getElementById('progress-host');
+      const targetCount = state.remoteTargets.length;
 
-      if (bar && details && file && host) {
-        const percent = data.totalFiles > 0 ? ((data.fileIndex + 1) / data.totalFiles) * 100 : 0;
-        bar.style.width = percent + '%';
-        details.textContent = (data.fileIndex + 1) + ' / ' + data.totalFiles + ' files';
-        file.textContent = data.currentFile;
-        host.textContent = 'Target: ' + data.host + (data.totalTargets > 1 ? ' (' + (data.targetIndex + 1) + '/' + data.totalTargets + ')' : '');
+      if (targetCount > 1) {
+        // 複数ターゲット用の更新
+        const targetIndex = data.targetIndex ?? 0;
+        const bar = document.getElementById('progress-bar-' + targetIndex);
+        const details = document.getElementById('progress-details-' + targetIndex);
+        const file = document.getElementById('progress-file-' + targetIndex);
+        const status = document.getElementById('progress-status-' + targetIndex);
+        const row = document.getElementById('progress-target-' + targetIndex);
+
+        if (bar && details) {
+          const percent = data.totalFiles > 0 ? ((data.fileIndex + 1) / data.totalFiles) * 100 : 0;
+          bar.style.width = percent + '%';
+          details.textContent = (data.fileIndex + 1) + ' / ' + data.totalFiles + ' files';
+
+          if (file) {
+            file.textContent = data.currentFile || '';
+          }
+
+          // ターゲット完了は最後のファイルが完了した時
+          const isTargetCompleted = data.fileIndex + 1 === data.totalFiles && data.status === 'completed';
+          const isTargetFailed = data.status === 'failed';
+
+          if (status) {
+            if (isTargetCompleted) {
+              status.textContent = 'Completed';
+              status.className = 'progress-target-status completed';
+            } else if (isTargetFailed) {
+              status.textContent = 'Failed';
+              status.className = 'progress-target-status failed';
+            } else {
+              status.textContent = 'Uploading...';
+              status.className = 'progress-target-status uploading';
+            }
+          }
+
+          if (row) {
+            if (isTargetCompleted) {
+              row.classList.add('completed');
+            } else if (isTargetFailed) {
+              row.classList.add('failed');
+            }
+          }
+        }
+
+        // 進捗状態を保存
+        progressState.targets.set(data.host, {
+          fileIndex: data.fileIndex,
+          totalFiles: data.totalFiles,
+          status: data.status,
+          currentFile: data.currentFile
+        });
+      } else {
+        // 単一ターゲット用の更新（従来と同じ）
+        const bar = document.getElementById('progress-bar');
+        const details = document.getElementById('progress-details');
+        const file = document.getElementById('progress-file');
+        const host = document.getElementById('progress-host');
+
+        if (bar && details && file && host) {
+          const percent = data.totalFiles > 0 ? ((data.fileIndex + 1) / data.totalFiles) * 100 : 0;
+          bar.style.width = percent + '%';
+          details.textContent = (data.fileIndex + 1) + ' / ' + data.totalFiles + ' files';
+          file.textContent = data.currentFile;
+          host.textContent = 'Target: ' + data.host;
+        }
       }
     }
 
@@ -1226,6 +1444,10 @@ export function getHtmlContent(): string {
 
     // 初期化データの処理
     function handleInit(data) {
+      // 以前のターゲットインデックスを保存（再初期化時用）
+      const previousTargetIndex = state.currentTargetIndex;
+      const isReinit = state.files.length > 0;
+
       state.base = data.base;
       state.target = data.target;
       state.files = data.files;
@@ -1234,6 +1456,14 @@ export function getHtmlContent(): string {
       // 遅延読み込み設定を反映
       state.lazyLoading = data.lazyLoading || false;
       state.tree = data.tree || null;
+
+      // ファイルコンテンツキャッシュをクリア（ターゲット切り替え時）
+      if (isReinit) {
+        state.fileContents.clear();
+        state.selectedFile = null;
+        // diff表示をリセット
+        elements.diffContainer.innerHTML = '<div class="diff-placeholder">Select a file to view diff</div>';
+      }
 
       // 初期タブを設定
       if (state.diffMode === 'remote') {
@@ -1253,8 +1483,71 @@ export function getHtmlContent(): string {
       // タブ表示を更新
       updateTabVisibility();
 
+      // ターゲットセレクターを初期化（初回のみ）または選択状態を維持
+      if (isReinit) {
+        // 再初期化時はセレクターの値を維持
+        elements.targetSelect.value = previousTargetIndex.toString();
+      } else {
+        initTargetSelector();
+      }
+
       // ファイルツリーを描画
       renderFileTree();
+    }
+
+    // ターゲットセレクターを初期化
+    function initTargetSelector() {
+      if (state.remoteTargets.length <= 1) {
+        // ターゲットが1つ以下なら非表示
+        elements.targetSelector.classList.add('hidden');
+        return;
+      }
+
+      // セレクターを表示
+      elements.targetSelector.classList.remove('hidden');
+
+      // オプションを生成
+      elements.targetSelect.innerHTML = state.remoteTargets.map((target, index) =>
+        \`<option value="\${index}">\${escapeHtml(target.host)}:\${escapeHtml(target.dest)}</option>\`
+      ).join('');
+
+      // 変更イベントリスナー
+      elements.targetSelect.addEventListener('change', (e) => {
+        const newIndex = parseInt(e.target.value, 10);
+        if (newIndex !== state.currentTargetIndex) {
+          switchTarget(newIndex);
+        }
+      });
+    }
+
+    // ターゲットを切り替え
+    function switchTarget(newIndex) {
+      state.currentTargetIndex = newIndex;
+
+      // ローディング表示（サーバーからinitメッセージが来るまで）
+      elements.diffContainer.innerHTML = \`
+        <div class="loading">
+          <div class="spinner"></div>
+          Switching target...
+        </div>
+      \`;
+
+      // ファイルツリーもローディング状態を表示
+      elements.fileTree.innerHTML = \`
+        <div class="loading" style="padding: 20px;">
+          <div class="spinner"></div>
+          Loading...
+        </div>
+      \`;
+
+      // サーバーにターゲット変更を通知（サーバーからinitメッセージが再送信される）
+      state.ws.send(JSON.stringify({
+        type: 'switch_target',
+        targetIndex: newIndex
+      }));
+
+      // タブバーのバッジも更新
+      updateTabVisibility();
     }
 
     // タブの表示/非表示を更新
@@ -1269,9 +1562,9 @@ export function getHtmlContent(): string {
       elements.tabGitDiff.classList.toggle('active', state.currentDiffTab === 'git');
       elements.tabRemoteDiff.classList.toggle('active', state.currentDiffTab === 'remote');
 
-      // リモートターゲットバッジを更新
+      // リモートターゲットバッジを更新（現在選択中のターゲットを表示）
       if (showRemoteTab && state.remoteTargets.length > 0) {
-        const target = state.remoteTargets[0];
+        const target = state.remoteTargets[state.currentTargetIndex] || state.remoteTargets[0];
         elements.remoteTargetBadge.textContent = target.host;
         elements.remoteTargetBadge.classList.remove('hidden');
       } else {
@@ -1769,9 +2062,9 @@ export function getHtmlContent(): string {
       // ヘッダーラベルを決定
       let leftHeader, rightHeader;
       if (diffType === 'remote') {
-        const target = state.remoteTargets[0];
+        const target = state.remoteTargets[state.currentTargetIndex] || state.remoteTargets[0];
         leftHeader = 'Local';
-        rightHeader = target ? \`Remote (\${target.host})\` : 'Remote';
+        rightHeader = target ? \`Remote (\${target.host}:\${target.dest})\` : 'Remote';
       } else {
         leftHeader = state.base;
         rightHeader = state.target;
@@ -1815,8 +2108,8 @@ export function getHtmlContent(): string {
       // ヘッダー情報を決定
       let headerInfo;
       if (diffType === 'remote') {
-        const target = state.remoteTargets[0];
-        headerInfo = \`\${file.path} (Local vs \${target ? target.host : 'Remote'})\`;
+        const target = state.remoteTargets[state.currentTargetIndex] || state.remoteTargets[0];
+        headerInfo = \`\${file.path} (Local vs \${target ? target.host + ':' + target.dest : 'Remote'})\`;
       } else {
         headerInfo = file.path;
       }

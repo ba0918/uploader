@@ -12,10 +12,18 @@ import type {
 import type { ResolvedTargetConfig } from "../types/config.ts";
 
 /**
+ * ターゲットの一意キーを生成
+ */
+function createTargetKey(target: ResolvedTargetConfig): string {
+  return `${target.host}:${target.dest}`;
+}
+
+/**
  * 転送進捗マネージャー
  */
 export class TransferProgressManager {
   private targetResults: Map<string, TargetUploadResult> = new Map();
+  private targetIndexMap: Map<string, number> = new Map();
   private startTime: number = 0;
   private callback?: TransferProgressCallback;
 
@@ -29,13 +37,17 @@ export class TransferProgressManager {
   start(): void {
     this.startTime = Date.now();
     this.targetResults.clear();
+    this.targetIndexMap.clear();
   }
 
   /**
    * ターゲットの初期化
    */
   initTarget(target: ResolvedTargetConfig): void {
-    this.targetResults.set(target.host, {
+    const key = createTargetKey(target);
+    const index = this.targetResults.size;
+    this.targetIndexMap.set(key, index);
+    this.targetResults.set(key, {
       target,
       status: "pending",
       successCount: 0,
@@ -49,20 +61,26 @@ export class TransferProgressManager {
   /**
    * ターゲットの接続開始
    */
-  startTargetConnection(host: string): void {
-    const result = this.targetResults.get(host);
-    if (result) {
-      result.status = "connecting";
+  startTargetConnection(host: string, dest?: string): void {
+    const key = this.findTargetKey(host, dest);
+    if (key) {
+      const result = this.targetResults.get(key);
+      if (result) {
+        result.status = "connecting";
+      }
     }
   }
 
   /**
    * ターゲットのアップロード開始
    */
-  startTargetUpload(host: string): void {
-    const result = this.targetResults.get(host);
-    if (result) {
-      result.status = "uploading";
+  startTargetUpload(host: string, dest?: string): void {
+    const key = this.findTargetKey(host, dest);
+    if (key) {
+      const result = this.targetResults.get(key);
+      if (result) {
+        result.status = "uploading";
+      }
     }
   }
 
@@ -77,9 +95,11 @@ export class TransferProgressManager {
     bytesTransferred: number,
     fileSize: number,
     status: TransferStatus,
+    dest?: string,
   ): void {
     if (this.callback) {
-      const targetIndex = this.getTargetIndex(host);
+      const key = this.findTargetKey(host, dest);
+      const targetIndex = key ? (this.targetIndexMap.get(key) ?? 0) : 0;
       this.callback({
         targetIndex,
         totalTargets: this.targetResults.size,
@@ -100,16 +120,20 @@ export class TransferProgressManager {
   recordFileResult(
     host: string,
     result: FileTransferResult,
+    dest?: string,
   ): void {
-    const targetResult = this.targetResults.get(host);
-    if (targetResult) {
-      targetResult.files.push(result);
-      if (result.status === "completed") {
-        targetResult.successCount++;
-      } else if (result.status === "failed") {
-        targetResult.failedCount++;
-      } else if (result.status === "skipped") {
-        targetResult.skippedCount++;
+    const key = this.findTargetKey(host, dest);
+    if (key) {
+      const targetResult = this.targetResults.get(key);
+      if (targetResult) {
+        targetResult.files.push(result);
+        if (result.status === "completed") {
+          targetResult.successCount++;
+        } else if (result.status === "failed") {
+          targetResult.failedCount++;
+        } else if (result.status === "skipped") {
+          targetResult.skippedCount++;
+        }
       }
     }
   }
@@ -117,17 +141,20 @@ export class TransferProgressManager {
   /**
    * ターゲット完了
    */
-  completeTarget(host: string, error?: string): void {
-    const result = this.targetResults.get(host);
-    if (result) {
-      result.duration = Date.now() - this.startTime;
-      if (error) {
-        result.status = "failed";
-        result.error = error;
-      } else if (result.failedCount > 0) {
-        result.status = "failed";
-      } else {
-        result.status = "completed";
+  completeTarget(host: string, error?: string, dest?: string): void {
+    const key = this.findTargetKey(host, dest);
+    if (key) {
+      const result = this.targetResults.get(key);
+      if (result) {
+        result.duration = Date.now() - this.startTime;
+        if (error) {
+          result.status = "failed";
+          result.error = error;
+        } else if (result.failedCount > 0) {
+          result.status = "failed";
+        } else {
+          result.status = "completed";
+        }
       }
     }
   }
@@ -135,12 +162,15 @@ export class TransferProgressManager {
   /**
    * 接続失敗
    */
-  failTargetConnection(host: string, error: string): void {
-    const result = this.targetResults.get(host);
-    if (result) {
-      result.status = "failed";
-      result.error = error;
-      result.duration = Date.now() - this.startTime;
+  failTargetConnection(host: string, error: string, dest?: string): void {
+    const key = this.findTargetKey(host, dest);
+    if (key) {
+      const result = this.targetResults.get(key);
+      if (result) {
+        result.status = "failed";
+        result.error = error;
+        result.duration = Date.now() - this.startTime;
+      }
     }
   }
 
@@ -175,17 +205,23 @@ export class TransferProgressManager {
   }
 
   /**
-   * ターゲットのインデックスを取得
+   * ターゲットキーを検索
+   * dest が指定されていれば host:dest で検索、なければ host で始まるキーを検索
    */
-  private getTargetIndex(host: string): number {
-    let index = 0;
-    for (const key of this.targetResults.keys()) {
-      if (key === host) {
-        return index;
+  private findTargetKey(host: string, dest?: string): string | undefined {
+    if (dest) {
+      const exactKey = `${host}:${dest}`;
+      if (this.targetResults.has(exactKey)) {
+        return exactKey;
       }
-      index++;
     }
-    return index;
+    // dest が指定されていない場合、host で始まる最初のキーを返す（後方互換性）
+    for (const key of this.targetResults.keys()) {
+      if (key.startsWith(host + ":")) {
+        return key;
+      }
+    }
+    return undefined;
   }
 }
 

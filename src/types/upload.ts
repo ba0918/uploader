@@ -87,6 +87,8 @@ export interface UploadOptions {
   deleteRemote?: boolean;
   /** 厳格モード（1ファイルでも失敗したらエラー終了） */
   strict?: boolean;
+  /** 複数ターゲットへの並列アップロード */
+  parallel?: boolean;
 }
 
 /** 転送進捗イベント */

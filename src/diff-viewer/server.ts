@@ -75,6 +75,8 @@ interface ServerState {
   lazyLoading: boolean;
   /** rsync getDiff()の結果（キャッシュ、rsyncプロトコル時のみ） */
   rsyncDiffResult: RsyncDiffResult | null;
+  /** 現在選択中のターゲットインデックス */
+  currentTargetIndex: number;
 }
 
 /**
@@ -158,6 +160,7 @@ export function startDiffViewerServer(
       changedFiles: null,
       lazyLoading: useLazyLoading,
       rsyncDiffResult: null,
+      currentTargetIndex: 0,
     };
 
     const server = Deno.serve(
@@ -632,6 +635,53 @@ async function handleWebSocketMessage(
       await handleExpandDirectory(socket, message.path, state);
       break;
     }
+
+    case "switch_target": {
+      // ターゲット切り替え
+      await handleSwitchTarget(socket, message.targetIndex, state);
+      break;
+    }
+  }
+}
+
+/**
+ * ターゲット切り替えを処理
+ */
+async function handleSwitchTarget(
+  socket: WebSocket,
+  targetIndex: number,
+  state: ServerState,
+): Promise<void> {
+  const { targets } = state.options;
+
+  // インデックスが有効かチェック
+  if (!targets || targetIndex < 0 || targetIndex >= targets.length) {
+    debugLog(
+      `[SwitchTarget] Invalid target index: ${targetIndex} (targets: ${targets?.length ?? 0})`,
+    );
+    return;
+  }
+
+  debugLog(
+    `[SwitchTarget] Switching to target ${targetIndex}: ${targets[targetIndex].host}`,
+  );
+
+  // 既存のUploader接続を切断
+  await disconnectUploader(state);
+
+  // 接続エラーをクリア
+  state.connectionError = null;
+
+  // rsync diffキャッシュをクリア
+  state.rsyncDiffResult = null;
+
+  // ターゲットインデックスを更新
+  state.currentTargetIndex = targetIndex;
+
+  // remoteモードの場合、新しいターゲットでの差分情報を再送信
+  if (state.options.diffMode === "remote" || state.options.diffMode === "both") {
+    debugLog(`[SwitchTarget] Re-sending init message for new target`);
+    await sendInitMessage(socket, state);
   }
 }
 
@@ -861,10 +911,11 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
     throw new Error(error);
   }
 
-  // 最初のターゲットを使用
-  const target = targets[0];
+  // 現在選択中のターゲットを使用
+  const targetIndex = state.currentTargetIndex;
+  const target = targets[targetIndex] || targets[0];
   debugLog(
-    `[RemoteDiff] Creating new uploader for ${target.host}:${target.dest}`,
+    `[RemoteDiff] Creating new uploader for ${target.host}:${target.dest} (index: ${targetIndex})`,
   );
   const uploader = createUploader(target);
 

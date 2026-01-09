@@ -14,7 +14,7 @@ import type {
 } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { parseItemizeChanges } from "../utils/mod.ts";
-import { SshBaseUploader, type SshBaseOptions } from "./ssh-base.ts";
+import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
  * rsync接続オプション

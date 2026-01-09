@@ -12,11 +12,11 @@ for i in {1..10}; do
 done
 
 # アップロードディレクトリを作成
-mkdir -p /upload /upload2 /upload3
+mkdir -p /upload /upload2 /upload3 /upload4
 
 # testuser 所有に変更
-chown -R testuser:users /upload /upload2 /upload3
-chmod 755 /upload /upload2 /upload3
+chown -R testuser:users /upload /upload2 /upload3 /upload4
+chmod 755 /upload /upload2 /upload3 /upload4
 
 echo "Upload directories created and owned by testuser"
 ls -la / | grep upload

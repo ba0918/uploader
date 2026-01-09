@@ -31,6 +31,7 @@ Options:
   -s, --strict             ファイル転送エラーで即座に終了
   -l, --log-file <path>    ログファイルのパス
       --concurrency <num>  リモートステータスチェックの同時実行数 (default: 10)
+      --parallel           複数ターゲットへ並列にアップロード
   -V, --version            バージョン表示
   -h, --help               このヘルプを表示
 
@@ -93,6 +94,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       "quiet",
       "no-browser",
       "strict",
+      "parallel",
       "version",
       "help",
     ],
@@ -103,6 +105,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       quiet: false,
       "no-browser": false,
       strict: false,
+      parallel: false,
       port: 3000,
       concurrency: 10,
     },
@@ -183,5 +186,6 @@ export function parseArgs(args: string[]): CliArgs | null {
     strict: parsed.strict,
     logFile: parsed["log-file"],
     concurrency,
+    parallel: parsed.parallel,
   };
 }

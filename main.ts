@@ -394,6 +394,7 @@ async function main(): Promise<number> {
         dryRun: args.dryRun,
         deleteRemote: args.delete,
         strict: args.strict,
+        parallel: args.parallel,
       },
       onProgress,
     );
