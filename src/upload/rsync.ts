@@ -195,7 +195,7 @@ export class RsyncUploader extends SshBaseUploader {
     args.push("--progress"); // 進捗表示
 
     // アーカイブモードの代わりに個別指定（-aは使わない）
-    args.push("-rlD"); // recursive, links, devices/specials
+    args.push("-rlKD"); // recursive, links, keep-dirlinks, devices/specials
 
     // タイムスタンプ保持
     if (this.options.preserveTimestamps) {
@@ -363,6 +363,7 @@ export class RsyncUploader extends SshBaseUploader {
     // 基本オプション
     args.push("-r"); // recursive
     args.push("-l"); // symlinks
+    args.push("-K"); // keep-dirlinks: リモート側のシンボリックリンクディレクトリを保持
     args.push("-D"); // devices/specials
 
     // タイムスタンプ保持
