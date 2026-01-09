@@ -1,6 +1,6 @@
 {
   "name": "uploader",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "exports": "./main.ts",
   "tasks": {
     "dev": "deno run --allow-read --allow-write --allow-net --allow-run --allow-env main.ts",
