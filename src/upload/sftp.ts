@@ -9,6 +9,8 @@ import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import {
   ensureParentDir,
+  ERROR_MESSAGES,
+  FILE_TRANSFER,
   isSftpAuthError,
   LEGACY_ALGORITHMS_SSH2,
   toError,
@@ -322,7 +324,7 @@ export class SftpUploader implements Uploader {
       await this.uploadFile(file.sourcePath, destPath, file.size, onProgress);
     } else {
       throw new UploadError(
-        "No source for file upload",
+        ERROR_MESSAGES.NO_SOURCE_FOR_FILE_UPLOAD,
         "TRANSFER_ERROR",
       );
     }
@@ -378,7 +380,6 @@ export class SftpUploader implements Uploader {
         return;
       }
 
-      const CHUNK_SIZE = 64 * 1024;
       const writeStream = this.sftp.createWriteStream(destPath);
 
       let transferred = 0;
@@ -401,7 +402,7 @@ export class SftpUploader implements Uploader {
       (async () => {
         try {
           const srcFile = await Deno.open(srcPath, { read: true });
-          const readBuffer = new Uint8Array(CHUNK_SIZE);
+          const readBuffer = new Uint8Array(FILE_TRANSFER.CHUNK_SIZE);
 
           try {
             while (true) {

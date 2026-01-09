@@ -6,7 +6,7 @@ import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { ensureParentDir } from "../utils/mod.ts";
+import { ensureParentDir, ERROR_MESSAGES, FILE_TRANSFER } from "../utils/mod.ts";
 
 /**
  * ローカルコピーオプション
@@ -123,7 +123,7 @@ export class LocalUploader implements Uploader {
         await this.copyFile(file.sourcePath, destPath, file.size, onProgress);
       } else {
         throw new UploadError(
-          "No source for file upload",
+          ERROR_MESSAGES.NO_SOURCE_FOR_FILE_UPLOAD,
           "TRANSFER_ERROR",
         );
       }
@@ -184,8 +184,6 @@ export class LocalUploader implements Uploader {
     size: number,
     onProgress?: (transferred: number, total: number) => void,
   ): Promise<void> {
-    const CHUNK_SIZE = 64 * 1024; // 64KB
-
     const srcFile = await Deno.open(src, { read: true });
     const destFile = await Deno.open(dest, {
       write: true,
@@ -195,7 +193,7 @@ export class LocalUploader implements Uploader {
 
     try {
       let transferred = 0;
-      const buffer = new Uint8Array(CHUNK_SIZE);
+      const buffer = new Uint8Array(FILE_TRANSFER.CHUNK_SIZE);
 
       while (true) {
         const bytesRead = await srcFile.read(buffer);

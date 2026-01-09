@@ -12,18 +12,18 @@ import {
 
 describe("withRetry", () => {
   it("成功した場合は結果を返す", async () => {
-    const result = await withRetry(async () => "success");
+    const result = await withRetry(() => Promise.resolve("success"));
     assertEquals(result, "success");
   });
 
   it("最初に失敗しても成功するまでリトライする", async () => {
     let attempts = 0;
-    const result = await withRetry(async () => {
+    const result = await withRetry(() => {
       attempts++;
       if (attempts < 3) {
-        throw new Error("fail");
+        return Promise.reject(new Error("fail"));
       }
-      return "success";
+      return Promise.resolve("success");
     });
     assertEquals(result, "success");
     assertEquals(attempts, 3);
@@ -34,9 +34,9 @@ describe("withRetry", () => {
     await assertRejects(
       async () => {
         await withRetry(
-          async () => {
+          () => {
             attempts++;
-            throw new Error("always fail");
+            return Promise.reject(new Error("always fail"));
           },
           { maxRetries: 3 },
         );
@@ -52,9 +52,9 @@ describe("withRetry", () => {
     await assertRejects(
       async () => {
         await withRetry(
-          async () => {
+          () => {
             attempts++;
-            throw new Error("fail");
+            return Promise.reject(new Error("fail"));
           },
           { maxRetries: 5 },
         );
@@ -69,9 +69,9 @@ describe("withRetry", () => {
     await assertRejects(
       async () => {
         await withRetry(
-          async () => {
+          () => {
             attempts++;
-            throw new Error("fail");
+            return Promise.reject(new Error("fail"));
           },
           { maxRetries: 1 },
         );
@@ -85,9 +85,7 @@ describe("withRetry", () => {
     await assertRejects(
       async () => {
         await withRetry(
-          async () => {
-            throw "string error";
-          },
+          () => Promise.reject("string error"),
           { maxRetries: 1 },
         );
       },

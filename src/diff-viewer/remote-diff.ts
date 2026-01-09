@@ -10,6 +10,7 @@ import type {
   RsyncDiffResult,
   UploadFile,
 } from "../types/mod.ts";
+import { hasDiff } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
 
@@ -85,7 +86,7 @@ export async function getRsyncDiffForTarget(
     await uploader.connect();
 
     try {
-      if (!uploader.getDiff) {
+      if (!hasDiff(uploader)) {
         return { target, diff: null, unsupported: true };
       }
 

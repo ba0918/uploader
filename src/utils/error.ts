@@ -3,6 +3,14 @@
  */
 
 /**
+ * 共通エラーメッセージ
+ */
+export const ERROR_MESSAGES = {
+  /** ソースファイル未指定エラー */
+  NO_SOURCE_FOR_FILE_UPLOAD: "No source for file upload",
+} as const;
+
+/**
  * SSH認証エラーかどうかを判定
  *
  * SSH/SCP/rsync で発生する認証エラーを検出する。

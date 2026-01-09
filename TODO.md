@@ -26,19 +26,22 @@
 
 ### 中優先度
 
-- [ ] Uploader インターフェースの分割 (ISP)
-  - `BasicUploader`: 基本操作（connect, upload, delete, etc.）
+- [x] Uploader インターフェースの分割 (ISP)
+  - `Uploader`: 基本操作（connect, upload, delete, etc.）
   - `BulkUploadCapable`: bulkUpload()
   - `DiffCapable`: getDiff()
-- [ ] "No source for file upload" エラーメッセージの定数化
-  - 4ファイルで同じメッセージが重複
+  - `hasBulkUpload()`, `hasDiff()` 型ガード関数追加
+- [x] "No source for file upload" エラーメッセージの定数化 (`utils/error.ts`)
+  - `ERROR_MESSAGES.NO_SOURCE_FOR_FILE_UPLOAD` として定義
+  - ssh-base.ts, sftp.ts, local.ts で使用
 
 ### 低優先度
 
-- [ ] マジックナンバーの定数化
-  - diff-viewer/server.ts: 8192, 65536 など
-- [ ] チャンク読み込みロジックの共通化
-  - sftp.ts と local.ts で重複
+- [x] マジックナンバーの定数化 (`utils/constants.ts`)
+  - `FILE_TRANSFER.CHUNK_SIZE` (64KB)
+  - `BINARY_CHECK.CHECK_LENGTH` (8192バイト)
+- [x] チャンク読み込みロジックの共通化
+  - 評価の結果、共通化しない判断（書き込み先が異なるため抽象化により複雑性が増す）
 
 ---
 

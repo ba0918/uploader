@@ -12,6 +12,7 @@ import { logVerbose } from "../ui/mod.ts";
 import {
   buildSshArgs,
   ensureParentDir,
+  ERROR_MESSAGES,
   escapeShellArg,
   isSshAuthError,
   toError,
@@ -437,7 +438,7 @@ export abstract class SshBaseUploader implements Uploader {
       );
     } else {
       throw new UploadError(
-        "No source for file upload",
+        ERROR_MESSAGES.NO_SOURCE_FOR_FILE_UPLOAD,
         "TRANSFER_ERROR",
       );
     }

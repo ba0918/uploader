@@ -47,8 +47,10 @@ export type {
 } from "./file.ts";
 
 export type {
+  BulkUploadCapable,
   BulkUploadProgressCallback,
   BulkUploadResult,
+  DiffCapable,
   FileTransferResult,
   RemoteFileContent,
   RsyncDiffChangeType,
@@ -64,7 +66,7 @@ export type {
   UploadResult,
 } from "./upload.ts";
 
-export { UploadError } from "./upload.ts";
+export { hasBulkUpload, hasDiff, UploadError } from "./upload.ts";
 
 export type {
   CommandExecutor,

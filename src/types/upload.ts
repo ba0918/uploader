@@ -168,7 +168,11 @@ export interface RsyncDiffResult {
   deleted: number;
 }
 
-/** アップローダーインターフェース */
+/**
+ * 基本アップローダーインターフェース (ISP: 必須メソッドのみ)
+ *
+ * すべてのアップローダー実装が提供する基本操作。
+ */
 export interface Uploader {
   /** 接続 */
   connect(): Promise<void>;
@@ -190,30 +194,69 @@ export interface Uploader {
    * @returns ファイル内容、存在しない場合はnull
    */
   readFile(remotePath: string): Promise<RemoteFileContent | null>;
+}
+
+/**
+ * 一括アップロード機能インターフェース (ISP: 拡張機能)
+ *
+ * 複数ファイルを一度のコマンドで効率的に転送できるプロトコル用。
+ * 現在はrsyncプロトコルのみがサポート。
+ */
+export interface BulkUploadCapable {
   /**
-   * 一括アップロード（オプション）
-   * サポートしているプロトコルでは大幅な高速化が可能
+   * 一括アップロード
    * @param files アップロードするファイル一覧
    * @param onProgress 進捗コールバック
-   * @returns 一括アップロード結果、サポートしていない場合はundefined
+   * @returns 一括アップロード結果
    */
-  bulkUpload?(
+  bulkUpload(
     files: UploadFile[],
     onProgress?: BulkUploadProgressCallback,
   ): Promise<BulkUploadResult>;
+}
+
+/**
+ * リモート差分検出機能インターフェース (ISP: 拡張機能)
+ *
+ * ローカルとリモートの差分を高速に検出できるプロトコル用。
+ * 現在はrsyncプロトコルのみがサポート。
+ */
+export interface DiffCapable {
   /**
-   * rsync dry-runで差分を取得（オプション）
-   * rsyncプロトコル専用。ローカルとリモートの差分を高速に検出する。
+   * リモートとの差分を取得
    * @param localDir ローカルディレクトリのパス
    * @param files 比較対象のファイルパス（相対パス）のリスト。省略時はディレクトリ全体を比較
    * @param options オプション
-   * @returns 差分結果、サポートしていない場合はundefined
+   * @returns 差分結果
    */
-  getDiff?(
+  getDiff(
     localDir: string,
     files?: string[],
     options?: { checksum?: boolean },
   ): Promise<RsyncDiffResult>;
+}
+
+/**
+ * 一括アップロード機能を持つかどうかを判定する型ガード
+ * @param uploader アップローダー
+ * @returns BulkUploadCapable を実装している場合 true
+ */
+export function hasBulkUpload(
+  uploader: Uploader,
+): uploader is Uploader & BulkUploadCapable {
+  return typeof (uploader as unknown as BulkUploadCapable).bulkUpload ===
+    "function";
+}
+
+/**
+ * リモート差分検出機能を持つかどうかを判定する型ガード
+ * @param uploader アップローダー
+ * @returns DiffCapable を実装している場合 true
+ */
+export function hasDiff(
+  uploader: Uploader,
+): uploader is Uploader & DiffCapable {
+  return typeof (uploader as unknown as DiffCapable).getDiff === "function";
 }
 
 /** アップローダーエラー */

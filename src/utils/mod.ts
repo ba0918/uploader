@@ -28,7 +28,9 @@ export {
 export { ensureParentDir, getParentDir } from "./directory.ts";
 export { escapeShellArg } from "./shell.ts";
 export {
+  ERROR_MESSAGES,
   isConnectionRefusedError,
   isSftpAuthError,
   isSshAuthError,
 } from "./error.ts";
+export { BINARY_CHECK, FILE_TRANSFER } from "./constants.ts";

@@ -23,11 +23,13 @@ import type {
   WsInitMessage,
   WsUploadStateMessage,
 } from "../types/mod.ts";
+import { hasDiff } from "../types/mod.ts";
 import { getHtmlContent } from "./static/html.ts";
 import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
 import {
   batchAsync,
+  BINARY_CHECK,
   buildRootLevelTree,
   getDirectChildren,
   shouldUseLazyLoading,
@@ -385,7 +387,7 @@ async function tryRsyncGetDiff(
     const uploader = await getOrCreateUploader(state);
 
     // getDiff()がサポートされているか確認
-    if (!uploader.getDiff) {
+    if (!hasDiff(uploader)) {
       debugLog(
         "[RsyncDiff] Uploader does not support getDiff(), falling back to readFile()",
       );
@@ -1243,8 +1245,8 @@ async function handleExpandDirectory(
  * バイナリコンテンツかどうかを判定
  */
 function isBinaryContent(content: Uint8Array): boolean {
-  // 最初の8192バイトをチェック
-  const checkLength = Math.min(content.length, 8192);
+  // 最初の一定バイト数をチェック
+  const checkLength = Math.min(content.length, BINARY_CHECK.CHECK_LENGTH);
   for (let i = 0; i < checkLength; i++) {
     // NULLバイトがあればバイナリ
     if (content[i] === 0) {
