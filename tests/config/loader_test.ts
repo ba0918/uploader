@@ -4,6 +4,7 @@
 
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert";
 import { afterEach, beforeEach, describe, it } from "jsr:@std/testing/bdd";
+import { parse as parseYaml } from "@std/yaml";
 import type { Config, ProfileConfig } from "../../src/types/mod.ts";
 import {
   ConfigLoadError,
@@ -11,6 +12,7 @@ import {
   loadConfigFile,
   resolveProfile,
 } from "../../src/config/loader.ts";
+import { validateConfig } from "../../src/config/validator.ts";
 
 /** テスト用の有効なConfig */
 function createValidConfig(
@@ -245,6 +247,355 @@ describe("resolveProfile", () => {
       if (resolved.from.type === "file") {
         assertEquals(resolved.from.src, ["dist/"]);
       }
+    });
+  });
+
+  describe("ターゲットdefaultsのマージ", () => {
+    it("defaultsが各ターゲットにマージされる", () => {
+      const config: Config = {
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              port: 2222,
+              protocol: "rsync",
+              user: "testuser",
+              sync_mode: "update",
+            },
+            targets: [
+              { dest: "/upload1/" },
+              { dest: "/upload2/" },
+              { dest: "/upload3/" },
+            ],
+          },
+        },
+      };
+
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.to.targets.length, 3);
+      // 全てのターゲットにdefaultsがマージされている
+      for (const target of resolved.to.targets) {
+        assertEquals(target.host, "localhost");
+        assertEquals(target.port, 2222);
+        assertEquals(target.protocol, "rsync");
+        assertEquals(target.user, "testuser");
+        assertEquals(target.sync_mode, "update");
+      }
+      // destは個別に設定されている
+      assertEquals(resolved.to.targets[0].dest, "/upload1/");
+      assertEquals(resolved.to.targets[1].dest, "/upload2/");
+      assertEquals(resolved.to.targets[2].dest, "/upload3/");
+    });
+
+    it("個別設定がdefaultsを上書きする", () => {
+      const config: Config = {
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              port: 2222,
+              protocol: "rsync",
+              sync_mode: "update",
+            },
+            targets: [
+              { dest: "/upload1/" },
+              { dest: "/upload2/", port: 3333, sync_mode: "mirror" },
+            ],
+          },
+        },
+      };
+
+      const resolved = resolveProfile(config, "test");
+
+      // 1つ目はdefaultsのまま
+      assertEquals(resolved.to.targets[0].port, 2222);
+      assertEquals(resolved.to.targets[0].sync_mode, "update");
+
+      // 2つ目は個別設定で上書き
+      assertEquals(resolved.to.targets[1].port, 3333);
+      assertEquals(resolved.to.targets[1].sync_mode, "mirror");
+    });
+
+    it("配列は完全に上書きされる（マージではない）", () => {
+      const config: Config = {
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "rsync",
+              rsync_options: ["--compress", "--verbose"],
+            },
+            targets: [
+              { dest: "/upload1/" },
+              { dest: "/upload2/", rsync_options: ["--bwlimit=1000"] },
+            ],
+          },
+        },
+      };
+
+      const resolved = resolveProfile(config, "test");
+
+      // 1つ目はdefaultsの配列
+      assertEquals(resolved.to.targets[0].rsync_options, [
+        "--compress",
+        "--verbose",
+      ]);
+
+      // 2つ目は個別設定で完全に上書き
+      assertEquals(resolved.to.targets[1].rsync_options, ["--bwlimit=1000"]);
+    });
+
+    it("defaultsがない場合も正常に動作する", () => {
+      const config: Config = {
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            targets: [
+              {
+                host: "example.com",
+                protocol: "sftp",
+                dest: "/var/www",
+              },
+            ],
+          },
+        },
+      };
+
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.to.targets[0].host, "example.com");
+      assertEquals(resolved.to.targets[0].protocol, "sftp");
+    });
+
+    it("hostがないとエラーになる", () => {
+      const config: Config = {
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              protocol: "rsync",
+            },
+            targets: [{ dest: "/upload1/" }],
+          },
+        },
+      };
+
+      assertThrows(
+        () => resolveProfile(config, "test"),
+        ConfigLoadError,
+        "host が指定されていません",
+      );
+    });
+
+    it("protocolがないとエラーになる", () => {
+      const config: Config = {
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "localhost",
+            },
+            targets: [{ dest: "/upload1/" }],
+          },
+        },
+      };
+
+      assertThrows(
+        () => resolveProfile(config, "test"),
+        ConfigLoadError,
+        "protocol が指定されていません",
+      );
+    });
+
+    it("defaultsの環境変数も展開される", () => {
+      Deno.env.set("TEST_HOST", "env-host.example.com");
+      Deno.env.set("TEST_USER", "env-user");
+
+      const config: Config = {
+        test: {
+          from: { type: "git", base: "main" },
+          to: {
+            defaults: {
+              host: "${TEST_HOST}",
+              protocol: "sftp",
+              user: "${TEST_USER}",
+            },
+            targets: [{ dest: "/upload1/" }, { dest: "/upload2/" }],
+          },
+        },
+      };
+
+      const resolved = resolveProfile(config, "test");
+
+      assertEquals(resolved.to.targets[0].host, "env-host.example.com");
+      assertEquals(resolved.to.targets[0].user, "env-user");
+      assertEquals(resolved.to.targets[1].host, "env-host.example.com");
+      assertEquals(resolved.to.targets[1].user, "env-user");
+    });
+  });
+
+  describe("YAML→validateConfig→resolveProfile 統合テスト", () => {
+    // 実際のYAML読み込みフローをテスト（validateConfigが返すundefinedプロパティを含む）
+    it("defaultsを使ったYAML設定が正しく解決される", () => {
+      const yaml = `
+test:
+  from:
+    type: "file"
+    src:
+      - "/tmp/test"
+  to:
+    defaults:
+      host: "localhost"
+      port: 2222
+      protocol: "rsync"
+      user: "testuser"
+      sync_mode: "update"
+    targets:
+      - dest: "/upload1/"
+      - dest: "/upload2/"
+      - dest: "/upload3/"
+`;
+      const parsed = parseYaml(yaml) as Record<string, unknown>;
+      const validated = validateConfig(parsed);
+      const resolved = resolveProfile(validated, "test");
+
+      assertEquals(resolved.to.targets.length, 3);
+      for (const target of resolved.to.targets) {
+        assertEquals(target.host, "localhost");
+        assertEquals(target.port, 2222);
+        assertEquals(target.protocol, "rsync");
+        assertEquals(target.user, "testuser");
+        assertEquals(target.sync_mode, "update");
+      }
+    });
+
+    it("個別設定がdefaultsを上書きする（YAML経由）", () => {
+      const yaml = `
+test:
+  from:
+    type: "git"
+    base: "main"
+  to:
+    defaults:
+      host: "localhost"
+      port: 2222
+      protocol: "rsync"
+      user: "testuser"
+    targets:
+      - dest: "/upload1/"
+      - dest: "/upload2/"
+        port: 3333
+        protocol: "sftp"
+`;
+      const parsed = parseYaml(yaml) as Record<string, unknown>;
+      const validated = validateConfig(parsed);
+      const resolved = resolveProfile(validated, "test");
+
+      // 1つ目はdefaultsのまま
+      assertEquals(resolved.to.targets[0].host, "localhost");
+      assertEquals(resolved.to.targets[0].port, 2222);
+      assertEquals(resolved.to.targets[0].protocol, "rsync");
+
+      // 2つ目は個別設定で上書き
+      assertEquals(resolved.to.targets[1].host, "localhost");
+      assertEquals(resolved.to.targets[1].port, 3333);
+      assertEquals(resolved.to.targets[1].protocol, "sftp");
+    });
+
+    it("rsync_optionsなどの配列も正しく処理される（YAML経由）", () => {
+      const yaml = `
+test:
+  from:
+    type: "file"
+    src: ["/tmp"]
+  to:
+    defaults:
+      host: "localhost"
+      protocol: "rsync"
+      user: "deploy"
+      rsync_options:
+        - "--compress"
+        - "--verbose"
+    targets:
+      - dest: "/upload1/"
+      - dest: "/upload2/"
+        rsync_options:
+          - "--bwlimit=1000"
+`;
+      const parsed = parseYaml(yaml) as Record<string, unknown>;
+      const validated = validateConfig(parsed);
+      const resolved = resolveProfile(validated, "test");
+
+      // 1つ目はdefaultsの配列
+      assertEquals(resolved.to.targets[0].rsync_options, [
+        "--compress",
+        "--verbose",
+      ]);
+
+      // 2つ目は個別設定で完全に上書き
+      assertEquals(resolved.to.targets[1].rsync_options, ["--bwlimit=1000"]);
+    });
+
+    it("複雑な設定もYAML経由で正しく処理される", () => {
+      const yaml = `
+_global:
+  ignore:
+    - "*.log"
+    - "node_modules/"
+
+production:
+  from:
+    type: "file"
+    src:
+      - "dist/"
+  to:
+    defaults:
+      host: "prod.example.com"
+      port: 22
+      protocol: "rsync"
+      user: "deploy"
+      auth_type: "ssh_key"
+      key_file: "~/.ssh/id_rsa"
+      rsync_path: "sudo rsync"
+      rsync_options:
+        - "--compress"
+        - "--chmod=D755,F644"
+      sync_mode: "update"
+      timeout: 60
+      retry: 5
+    targets:
+      - dest: "/var/www/app1/"
+      - dest: "/var/www/app2/"
+      - dest: "/var/www/app3/"
+        sync_mode: "mirror"
+        timeout: 120
+`;
+      const parsed = parseYaml(yaml) as Record<string, unknown>;
+      const validated = validateConfig(parsed);
+      const resolved = resolveProfile(validated, "production");
+
+      assertEquals(resolved.to.targets.length, 3);
+      assertEquals(resolved.ignore, ["*.log", "node_modules/"]);
+
+      // 全ターゲット共通
+      for (const target of resolved.to.targets) {
+        assertEquals(target.host, "prod.example.com");
+        assertEquals(target.port, 22);
+        assertEquals(target.protocol, "rsync");
+        assertEquals(target.user, "deploy");
+        assertEquals(target.rsync_path, "sudo rsync");
+        assertEquals(target.rsync_options, ["--compress", "--chmod=D755,F644"]);
+      }
+
+      // 個別設定
+      assertEquals(resolved.to.targets[0].sync_mode, "update");
+      assertEquals(resolved.to.targets[0].timeout, 60);
+      assertEquals(resolved.to.targets[2].sync_mode, "mirror");
+      assertEquals(resolved.to.targets[2].timeout, 120);
     });
   });
 });

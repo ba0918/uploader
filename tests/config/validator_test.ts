@@ -465,7 +465,9 @@ describe("validateConfig", () => {
       );
     });
 
-    it("デフォルト値が正しく設定される", () => {
+    it("デフォルト値はloaderで設定される（validatorではundefined）", () => {
+      // validator は PartialTargetConfig を返すので、デフォルト値は設定しない
+      // デフォルト値は loader の resolveProfile で設定される
       const result = validateConfig({
         test: {
           ...baseProfile,
@@ -482,11 +484,12 @@ describe("validateConfig", () => {
       });
       const profile = getProfile(result, "test");
       const target = profile?.to.targets[0];
-      assertEquals(target?.sync_mode, "update");
-      assertEquals(target?.timeout, 30);
-      assertEquals(target?.retry, 3);
-      assertEquals(target?.preserve_permissions, false);
-      assertEquals(target?.preserve_timestamps, false);
+      // validator では undefined のまま
+      assertEquals(target?.sync_mode, undefined);
+      assertEquals(target?.timeout, undefined);
+      assertEquals(target?.retry, undefined);
+      assertEquals(target?.preserve_permissions, undefined);
+      assertEquals(target?.preserve_timestamps, undefined);
     });
   });
 });

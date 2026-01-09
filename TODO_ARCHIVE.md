@@ -1,7 +1,7 @@
 # uploader 実装TODO（アーカイブ）
 
-このファイルは完了済みのタスクのアーカイブです。
-アクティブなタスクは [TODO.md](./TODO.md) を参照してください。
+このファイルは完了済みのタスクのアーカイブです。 アクティブなタスクは
+[TODO.md](./TODO.md) を参照してください。
 
 ---
 
@@ -183,7 +183,8 @@
 
 ## 完了済み (Phase 7.5: diff viewerリアルタイム進捗表示)
 
-diff viewerで「Upload」「Cancel」ボタン押下時に適切なフィードバックを表示する機能。
+diff
+viewerで「Upload」「Cancel」ボタン押下時に適切なフィードバックを表示する機能。
 
 ### タスク
 
@@ -277,7 +278,8 @@ diff viewerで「Upload」「Cancel」ボタン押下時に適切なフィード
 
 - [x] `RsyncUploader.getDiff()`メソッド追加
   - `rsync -n --itemize-changes`実行
-  - 出力パース（`>f+++++++++` = 新規A, `>f.st......` = 変更M, `*deleting` = 削除D）
+  - 出力パース（`>f+++++++++` = 新規A, `>f.st......` = 変更M, `*deleting` =
+    削除D）
   - 変更ファイル一覧を返す
 - [x] diff viewerの初期化時に`getDiff()`で変更ファイルのみ取得
 - [x] fileモード + rsyncプロトコル時のみ有効化
@@ -285,10 +287,12 @@ diff viewerで「Upload」「Cancel」ボタン押下時に適切なフィード
 
 **実装詳細**:
 
-- src/types/upload.ts: `RsyncDiffResult`, `RsyncDiffEntry`, `RsyncDiffChangeType`型追加
+- src/types/upload.ts: `RsyncDiffResult`, `RsyncDiffEntry`,
+  `RsyncDiffChangeType`型追加
 - src/types/upload.ts: `Uploader.getDiff?()`オプションメソッド追加
 - src/upload/rsync.ts: `RsyncUploader.getDiff()`実装
-- src/utils/rsync-parser.ts: `parseItemizeChanges()`, `parseItemizeLine()`パーサー実装
+- src/utils/rsync-parser.ts: `parseItemizeChanges()`,
+  `parseItemizeLine()`パーサー実装
 - src/diff-viewer/server.ts: `tryRsyncGetDiff()`, `filterFilesByRsyncDiff()`追加
 - src/types/diff-viewer.ts: `DiffViewerOptions.localDir`フィールド追加
 - main.ts: fileモード時にlocalDirを算出してdiff viewerに渡す

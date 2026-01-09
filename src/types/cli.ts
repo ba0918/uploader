@@ -5,11 +5,11 @@
 /** ログレベル */
 export type LogLevel = "verbose" | "normal" | "quiet";
 
-/** diff表示モードの種類 */
-export type DiffMode = "git" | "remote" | "both";
+/** diff表示モードの種類（リモート差分のみサポート） */
+export type DiffMode = "remote";
 
-/** diff指定の種類（auto = モードに応じてデフォルト値を使用） */
-export type DiffOption = false | DiffMode | "auto";
+/** diff指定の種類（auto = remoteモードを使用） */
+export type DiffOption = false | "remote" | "auto";
 
 /** CLI オプション */
 export interface CliOptions {
@@ -51,11 +51,16 @@ export interface CliOptions {
 
   /** リモートステータスチェックの同時実行数（デフォルト: 10） */
   concurrency: number;
+
+  /** 複数ターゲットへの並列アップロード */
+  parallel: boolean;
 }
 
 /** CLI 引数（プロファイル名含む） */
 export interface CliArgs extends CliOptions {
   profile?: string;
+  /** プロファイル一覧を表示 */
+  list: boolean;
 }
 
 /** 実行コンテキスト */

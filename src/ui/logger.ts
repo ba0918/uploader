@@ -3,10 +3,7 @@
  */
 
 import type { LogLevel } from "../types/mod.ts";
-import {
-  formatDuration,
-  formatFileSize,
-} from "../utils/format.ts";
+import { formatDuration, formatFileSize } from "../utils/format.ts";
 import {
   bold,
   box,
@@ -762,6 +759,27 @@ export interface UploadProgress {
   status: string;
 }
 
+/** 複数ターゲット進捗の状態 */
+interface MultiTargetProgressState {
+  targets: Map<
+    number,
+    {
+      host: string;
+      fileIndex: number;
+      totalFiles: number;
+      currentFile: string;
+      status: string;
+    }
+  >;
+  lastLineCount: number;
+}
+
+/** 複数ターゲット進捗表示の状態を保持 */
+const multiTargetState: MultiTargetProgressState = {
+  targets: new Map(),
+  lastLineCount: 0,
+};
+
 /**
  * アップロード進捗を表示
  */
@@ -778,26 +796,103 @@ export function logUploadProgress(progress: UploadProgress): void {
     status,
   } = progress;
 
-  // カーソルを行頭に戻して上書き
-  const targetInfo = totalTargets > 1
-    ? ` [${targetIndex + 1}/${totalTargets}]`
-    : "";
-  const progressPercent = totalFiles > 0
-    ? Math.round((fileIndex / totalFiles) * 100)
-    : 0;
-  const progressBar = createProgressBar(progressPercent, 20);
+  if (totalTargets > 1) {
+    // 複数ターゲットの場合：複数行表示
+    renderMultiTargetProgressCLI(progress);
+  } else {
+    // 単一ターゲットの場合：従来の単一行表示
+    const progressPercent = totalFiles > 0
+      ? Math.round((fileIndex / totalFiles) * 100)
+      : 0;
+    const progressBar = createProgressBar(progressPercent, 20);
 
-  // クリアして表示
-  Deno.stdout.writeSync(new TextEncoder().encode("\r\x1b[K"));
+    // クリアして表示
+    Deno.stdout.writeSync(new TextEncoder().encode("\r\x1b[K"));
 
-  const statusIcon = status === "uploading" ? icons.arrowUp : icons.check;
-  const line = `${info(statusIcon)} ${
-    path(host)
-  }${targetInfo} ${progressBar} ${progressPercent}% (${fileIndex}/${totalFiles}) ${
-    dim(currentFile)
-  }`;
+    const statusIcon = status === "uploading" ? icons.arrowUp : icons.check;
+    const line = `${info(statusIcon)} ${path(host)} ${progressBar} ${progressPercent}% (${fileIndex}/${totalFiles}) ${dim(currentFile)}`;
 
-  Deno.stdout.writeSync(new TextEncoder().encode(line));
+    Deno.stdout.writeSync(new TextEncoder().encode(line));
+  }
+}
+
+/**
+ * 複数ターゲット用の進捗を複数行で表示
+ */
+function renderMultiTargetProgressCLI(progress: UploadProgress): void {
+  const { targetIndex, totalTargets, host, fileIndex, totalFiles, currentFile, status } = progress;
+
+  // 状態を更新
+  multiTargetState.targets.set(targetIndex, {
+    host,
+    fileIndex,
+    totalFiles,
+    currentFile,
+    status,
+  });
+
+  // 前回の表示をクリア
+  clearMultiTargetLines();
+
+  // 各ターゲットの進捗を表示
+  const lines: string[] = [];
+
+  // ホスト名の最大長を取得（パディング用）
+  let maxHostLen = 0;
+  for (const [, target] of multiTargetState.targets) {
+    maxHostLen = Math.max(maxHostLen, target.host.length);
+  }
+
+  // ターゲットインデックス順に表示
+  for (let i = 0; i < totalTargets; i++) {
+    const target = multiTargetState.targets.get(i);
+    if (target) {
+      const percent = target.totalFiles > 0
+        ? Math.round((target.fileIndex / target.totalFiles) * 100)
+        : 0;
+      const progressBar = createProgressBar(percent, 15);
+      const hostPadded = target.host.padEnd(maxHostLen);
+
+      // ステータスアイコン
+      let statusStr: string;
+      if (percent === 100 && target.status === "completed") {
+        statusStr = success(icons.check);
+      } else if (target.status === "failed") {
+        statusStr = error(icons.cross);
+      } else {
+        statusStr = dim(`${percent}%`);
+      }
+
+      lines.push(`  ${path(hostPadded)} ${progressBar} ${statusStr} (${target.fileIndex}/${target.totalFiles})`);
+    } else {
+      // まだ開始していないターゲットは Waiting と表示
+      lines.push(`  ${dim("Waiting...")}`.padEnd(maxHostLen + 40));
+    }
+  }
+
+  // 現在のファイル情報を最下行に表示
+  const currentTarget = multiTargetState.targets.get(targetIndex);
+  if (currentTarget && currentTarget.currentFile) {
+    lines.push(`  ${info(icons.arrowUp)} ${dim(currentTarget.currentFile)}`);
+  }
+
+  // 出力
+  const output = lines.join("\n") + "\n";
+  Deno.stdout.writeSync(new TextEncoder().encode(output));
+  multiTargetState.lastLineCount = lines.length;
+}
+
+/**
+ * 複数行をクリア
+ */
+function clearMultiTargetLines(): void {
+  if (multiTargetState.lastLineCount > 0) {
+    const encoder = new TextEncoder();
+    // カーソルを上に移動して各行をクリア
+    for (let i = 0; i < multiTargetState.lastLineCount; i++) {
+      Deno.stdout.writeSync(encoder.encode("\x1b[A\x1b[K"));
+    }
+  }
 }
 
 /**
@@ -805,7 +900,16 @@ export function logUploadProgress(progress: UploadProgress): void {
  */
 export function clearUploadProgress(): void {
   if (config.level === "quiet") return;
-  Deno.stdout.writeSync(new TextEncoder().encode("\r\x1b[K"));
+
+  // 複数ターゲットの場合
+  if (multiTargetState.lastLineCount > 0) {
+    clearMultiTargetLines();
+    multiTargetState.targets.clear();
+    multiTargetState.lastLineCount = 0;
+  } else {
+    // 単一行の場合
+    Deno.stdout.writeSync(new TextEncoder().encode("\r\x1b[K"));
+  }
 }
 
 /**
@@ -821,7 +925,10 @@ function createProgressBar(percent: number, width: number): string {
 }
 
 // 後方互換性のため、utils/format.ts から再エクスポート
-export { formatDuration, formatFileSize as formatFileSizeExport } from "../utils/format.ts";
+export {
+  formatDuration,
+  formatFileSize as formatFileSizeExport,
+} from "../utils/format.ts";
 
 /** アップロード結果サマリー */
 export interface UploadResultSummary {

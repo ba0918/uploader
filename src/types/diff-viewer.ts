@@ -38,7 +38,7 @@ export interface DiffViewerResult {
   /** ユーザーがアップロードを確認したか */
   confirmed: boolean;
   /** キャンセル理由（キャンセル時のみ） */
-  cancelReason?: "user_cancel" | "connection_closed" | "timeout";
+  cancelReason?: "user_cancel" | "connection_closed" | "timeout" | "no_changes";
   /** 進捗コントローラー（confirm時のみ存在） */
   progressController?: DiffViewerProgressController;
   /** 変更があったファイルのパスリスト（remote diffモード時のみ） */
@@ -90,8 +90,8 @@ export interface WsInitMessage extends WsMessageBase {
   };
 }
 
-/** ファイルリクエストの種類 */
-export type FileRequestType = "git" | "remote" | "both";
+/** ファイルリクエストの種類（リモート差分のみサポート） */
+export type FileRequestType = "remote";
 
 /** ファイル内容リクエストメッセージ */
 export interface WsFileRequestMessage extends WsMessageBase {
@@ -134,6 +134,13 @@ export interface WsConfirmMessage extends WsMessageBase {
 /** キャンセルメッセージ */
 export interface WsCancelMessage extends WsMessageBase {
   type: "cancel";
+}
+
+/** ターゲット切り替えメッセージ */
+export interface WsSwitchTargetMessage extends WsMessageBase {
+  type: "switch_target";
+  /** 新しいターゲットインデックス */
+  targetIndex: number;
 }
 
 /** ディレクトリ展開リクエストメッセージ */
@@ -204,7 +211,8 @@ export type WsClientMessage =
   | WsFileRequestMessage
   | WsExpandDirectoryMessage
   | WsConfirmMessage
-  | WsCancelMessage;
+  | WsCancelMessage
+  | WsSwitchTargetMessage;
 
 /** diff-viewerの状態 */
 export interface DiffViewerState {
@@ -220,6 +228,8 @@ export interface DiffViewerState {
 export interface CuiConfirmResult {
   /** ユーザーがアップロードを確認したか */
   confirmed: boolean;
+  /** 変更がなかった場合true（確認をスキップ） */
+  noChanges?: boolean;
 }
 
 /** ファイルツリーノード */

@@ -7,8 +7,11 @@ import { exists } from "@std/fs";
 import { join } from "@std/path";
 import type {
   Config,
+  PartialTargetConfig,
   ProfileConfig,
   ResolvedProfileConfig,
+  TargetConfig,
+  TargetDefaults,
 } from "../types/mod.ts";
 import { expandEnvVarsInObject, expandTilde } from "./env.ts";
 import {
@@ -109,6 +112,55 @@ export async function loadConfigFile(filePath: string): Promise<Config> {
 }
 
 /**
+ * オブジェクトから undefined の値を持つプロパティを除外
+ */
+function removeUndefinedProps<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined),
+  ) as Partial<T>;
+}
+
+/**
+ * defaults と個別ターゲット設定をマージ
+ * 個別設定が優先される（配列は完全に上書き）
+ */
+function mergeTargetWithDefaults(
+  defaults: TargetDefaults | undefined,
+  target: PartialTargetConfig,
+): TargetConfig {
+  // undefined のプロパティを除外してマージ
+  const cleanDefaults = defaults ? removeUndefinedProps(defaults) : {};
+  const cleanTarget = removeUndefinedProps(target);
+  const merged = { ...cleanDefaults, ...cleanTarget };
+
+  // host と protocol が必須なのでチェック
+  if (!merged.host) {
+    throw new ConfigLoadError(
+      `ターゲット (dest: ${target.dest}) に host が指定されていません。defaults か個別設定で指定してください`,
+    );
+  }
+  if (!merged.protocol) {
+    throw new ConfigLoadError(
+      `ターゲット (dest: ${target.dest}) に protocol が指定されていません。defaults か個別設定で指定してください`,
+    );
+  }
+
+  // デフォルト値を適用
+  return {
+    ...merged,
+    host: merged.host,
+    protocol: merged.protocol,
+    dest: target.dest,
+    sync_mode: merged.sync_mode ?? "update",
+    preserve_permissions: merged.preserve_permissions ?? false,
+    preserve_timestamps: merged.preserve_timestamps ?? false,
+    timeout: merged.timeout ?? 30,
+    retry: merged.retry ?? 3,
+    legacy_mode: merged.legacy_mode ?? false,
+  } as TargetConfig;
+}
+
+/**
  * プロファイルを解決（環境変数展開、デフォルト値適用）
  */
 export function resolveProfile(
@@ -132,12 +184,16 @@ export function resolveProfile(
   // グローバル ignore とマージ
   const globalIgnore = config._global?.ignore || [];
 
-  // ターゲットの key_file を展開
-  const targets = resolved.to.targets.map((target) => ({
-    ...target,
-    key_file: target.key_file ? expandTilde(target.key_file) : undefined,
-    user: target.user || "",
-  }));
+  // defaults を各ターゲットにマージしてから key_file を展開
+  const defaults = resolved.to.defaults;
+  const targets = resolved.to.targets.map((target) => {
+    const merged = mergeTargetWithDefaults(defaults, target);
+    return {
+      ...merged,
+      key_file: merged.key_file ? expandTilde(merged.key_file) : undefined,
+      user: merged.user || "",
+    };
+  });
 
   return {
     from: resolved.from,

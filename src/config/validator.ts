@@ -4,9 +4,12 @@
 
 import type {
   Config,
+  DestinationConfig,
+  PartialTargetConfig,
   ProfileConfig,
   SourceConfig,
   TargetConfig,
+  TargetDefaults,
 } from "../types/mod.ts";
 
 /** 検証エラー */
@@ -169,7 +172,7 @@ function validateSource(value: unknown, path: string): SourceConfig {
 function validateDestination(
   value: unknown,
   path: string,
-): { targets: TargetConfig[] } {
+): DestinationConfig {
   if (typeof value !== "object" || value === null) {
     throw new ConfigValidationError("オブジェクトである必要があります", path);
   }
@@ -190,46 +193,108 @@ function validateDestination(
     );
   }
 
+  // defaults を検証（あれば）
+  const defaults = dest.defaults
+    ? validateTargetDefaults(dest.defaults, `${path}.defaults`)
+    : undefined;
+
   return {
+    defaults,
     targets: dest.targets.map((target, i) =>
-      validateTarget(target, `${path}.targets[${i}]`)
+      validateTarget(target, `${path}.targets[${i}]`, defaults)
     ),
   };
 }
 
 /**
- * ターゲット設定を検証
+ * ターゲットのデフォルト設定を検証
  */
-function validateTarget(value: unknown, path: string): TargetConfig {
+function validateTargetDefaults(
+  value: unknown,
+  path: string,
+): TargetDefaults {
+  if (typeof value !== "object" || value === null) {
+    throw new ConfigValidationError("オブジェクトである必要があります", path);
+  }
+
+  const defaults = value as Record<string, unknown>;
+
+  // protocol の検証（指定されていれば）
+  if (defaults.protocol) {
+    const validProtocols = ["sftp", "scp", "rsync", "local"];
+    if (!validProtocols.includes(defaults.protocol as string)) {
+      throw new ConfigValidationError(
+        `無効な protocol です: ${defaults.protocol} (sftp, scp, rsync, local のいずれか)`,
+        `${path}.protocol`,
+      );
+    }
+  }
+
+  // auth_type の検証（指定されていれば）
+  if (defaults.auth_type) {
+    const validAuthTypes = ["ssh_key", "password"];
+    if (!validAuthTypes.includes(defaults.auth_type as string)) {
+      throw new ConfigValidationError(
+        `無効な auth_type です: ${defaults.auth_type} (ssh_key, password のいずれか)`,
+        `${path}.auth_type`,
+      );
+    }
+  }
+
+  // sync_mode の検証（指定されていれば）
+  if (defaults.sync_mode) {
+    const validSyncModes = ["update", "mirror"];
+    if (!validSyncModes.includes(defaults.sync_mode as string)) {
+      throw new ConfigValidationError(
+        `無効な sync_mode です: ${defaults.sync_mode} (update, mirror のいずれか)`,
+        `${path}.sync_mode`,
+      );
+    }
+  }
+
+  return {
+    host: defaults.host ? String(defaults.host) : undefined,
+    protocol: defaults.protocol as "sftp" | "scp" | "rsync" | "local" | undefined,
+    port: typeof defaults.port === "number" ? defaults.port : undefined,
+    user: defaults.user ? String(defaults.user) : undefined,
+    auth_type: defaults.auth_type as "ssh_key" | "password" | undefined,
+    key_file: defaults.key_file ? String(defaults.key_file) : undefined,
+    password: defaults.password ? String(defaults.password) : undefined,
+    sync_mode: defaults.sync_mode as "update" | "mirror" | undefined,
+    preserve_permissions: typeof defaults.preserve_permissions === "boolean"
+      ? defaults.preserve_permissions
+      : undefined,
+    preserve_timestamps: typeof defaults.preserve_timestamps === "boolean"
+      ? defaults.preserve_timestamps
+      : undefined,
+    timeout: typeof defaults.timeout === "number" ? defaults.timeout : undefined,
+    retry: typeof defaults.retry === "number" ? defaults.retry : undefined,
+    rsync_path: defaults.rsync_path ? String(defaults.rsync_path) : undefined,
+    rsync_options: Array.isArray(defaults.rsync_options)
+      ? defaults.rsync_options.map(String)
+      : undefined,
+    legacy_mode: typeof defaults.legacy_mode === "boolean"
+      ? defaults.legacy_mode
+      : undefined,
+  };
+}
+
+/**
+ * ターゲット設定を検証
+ * defaults がある場合はマージ後の値でバリデーション
+ */
+function validateTarget(
+  value: unknown,
+  path: string,
+  defaults?: TargetDefaults,
+): PartialTargetConfig {
   if (typeof value !== "object" || value === null) {
     throw new ConfigValidationError("オブジェクトである必要があります", path);
   }
 
   const target = value as Record<string, unknown>;
 
-  // 必須フィールド
-  if (!target.host || typeof target.host !== "string") {
-    throw new ConfigValidationError(
-      "host (文字列) は必須です",
-      `${path}.host`,
-    );
-  }
-
-  if (!target.protocol || typeof target.protocol !== "string") {
-    throw new ConfigValidationError(
-      "protocol (文字列) は必須です",
-      `${path}.protocol`,
-    );
-  }
-
-  const validProtocols = ["sftp", "scp", "rsync", "local"];
-  if (!validProtocols.includes(target.protocol)) {
-    throw new ConfigValidationError(
-      `無効な protocol です: ${target.protocol} (sftp, scp, rsync, local のいずれか)`,
-      `${path}.protocol`,
-    );
-  }
-
+  // dest は各ターゲットで必須
   if (!target.dest || typeof target.dest !== "string") {
     throw new ConfigValidationError(
       "dest (文字列) は必須です",
@@ -237,15 +302,47 @@ function validateTarget(value: unknown, path: string): TargetConfig {
     );
   }
 
-  // protocol が local 以外の場合は user が必要
-  if (target.protocol !== "local" && !target.user) {
+  // マージ後の値を計算（バリデーション用）
+  const mergedHost = target.host ?? defaults?.host;
+  const mergedProtocol = target.protocol ?? defaults?.protocol;
+  const mergedUser = target.user ?? defaults?.user;
+
+  // host は defaults か個別設定のどちらかで必須
+  if (!mergedHost || typeof mergedHost !== "string") {
     throw new ConfigValidationError(
-      "sftp/scp/rsync では user は必須です",
+      "host (文字列) は必須です（defaults または個別に指定してください）",
+      `${path}.host`,
+    );
+  }
+
+  // protocol は defaults か個別設定のどちらかで必須
+  if (!mergedProtocol || typeof mergedProtocol !== "string") {
+    throw new ConfigValidationError(
+      "protocol (文字列) は必須です（defaults または個別に指定してください）",
+      `${path}.protocol`,
+    );
+  }
+
+  // 個別に protocol が指定されている場合の検証
+  if (target.protocol) {
+    const validProtocols = ["sftp", "scp", "rsync", "local"];
+    if (!validProtocols.includes(target.protocol as string)) {
+      throw new ConfigValidationError(
+        `無効な protocol です: ${target.protocol} (sftp, scp, rsync, local のいずれか)`,
+        `${path}.protocol`,
+      );
+    }
+  }
+
+  // protocol が local 以外の場合は user が必要（マージ後の値でチェック）
+  if (mergedProtocol !== "local" && !mergedUser) {
+    throw new ConfigValidationError(
+      "sftp/scp/rsync では user は必須です（defaults または個別に指定してください）",
       `${path}.user`,
     );
   }
 
-  // auth_type の検証
+  // auth_type の検証（個別に指定されている場合）
   if (target.auth_type) {
     const validAuthTypes = ["ssh_key", "password"];
     if (!validAuthTypes.includes(target.auth_type as string)) {
@@ -256,7 +353,7 @@ function validateTarget(value: unknown, path: string): TargetConfig {
     }
   }
 
-  // sync_mode の検証
+  // sync_mode の検証（個別に指定されている場合）
   if (target.sync_mode) {
     const validSyncModes = ["update", "mirror"];
     if (!validSyncModes.includes(target.sync_mode as string)) {
@@ -267,25 +364,32 @@ function validateTarget(value: unknown, path: string): TargetConfig {
     }
   }
 
+  // PartialTargetConfig を返す（defaults のマージは loader で行う）
   return {
-    host: target.host,
-    protocol: target.protocol as "sftp" | "scp" | "rsync" | "local",
+    host: target.host ? String(target.host) : undefined,
+    protocol: target.protocol as "sftp" | "scp" | "rsync" | "local" | undefined,
     port: typeof target.port === "number" ? target.port : undefined,
     user: target.user ? String(target.user) : undefined,
     auth_type: target.auth_type as "ssh_key" | "password" | undefined,
     key_file: target.key_file ? String(target.key_file) : undefined,
     password: target.password ? String(target.password) : undefined,
-    dest: target.dest,
-    sync_mode: (target.sync_mode as "update" | "mirror") || "update",
-    preserve_permissions: target.preserve_permissions === true,
-    preserve_timestamps: target.preserve_timestamps === true,
-    timeout: typeof target.timeout === "number" ? target.timeout : 30,
-    retry: typeof target.retry === "number" ? target.retry : 3,
+    dest: target.dest as string,
+    sync_mode: target.sync_mode as "update" | "mirror" | undefined,
+    preserve_permissions: typeof target.preserve_permissions === "boolean"
+      ? target.preserve_permissions
+      : undefined,
+    preserve_timestamps: typeof target.preserve_timestamps === "boolean"
+      ? target.preserve_timestamps
+      : undefined,
+    timeout: typeof target.timeout === "number" ? target.timeout : undefined,
+    retry: typeof target.retry === "number" ? target.retry : undefined,
     rsync_path: target.rsync_path ? String(target.rsync_path) : undefined,
     rsync_options: Array.isArray(target.rsync_options)
       ? target.rsync_options.map(String)
       : undefined,
-    legacy_mode: target.legacy_mode === true,
+    legacy_mode: typeof target.legacy_mode === "boolean"
+      ? target.legacy_mode
+      : undefined,
   };
 }
 

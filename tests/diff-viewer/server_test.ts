@@ -56,7 +56,7 @@ describe("startDiffViewerServer", () => {
       openBrowser: false,
       base: "main",
       target: "feature",
-      diffMode: "git",
+      diffMode: "remote",
     });
 
     // サーバが起動するまで少し待つ
@@ -99,7 +99,7 @@ describe("startDiffViewerServer", () => {
       openBrowser: false,
       base: "main",
       target: "feature",
-      diffMode: "git",
+      diffMode: "remote",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -130,7 +130,7 @@ describe("startDiffViewerServer", () => {
       openBrowser: false,
       base: "main",
       target: "feature",
-      diffMode: "git",
+      diffMode: "remote",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -177,7 +177,7 @@ describe("startDiffViewerServer", () => {
       openBrowser: false,
       base: "main",
       target: "feature",
-      diffMode: "git",
+      diffMode: "remote",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -211,7 +211,7 @@ describe("startDiffViewerServer", () => {
       openBrowser: false,
       base: "main",
       target: "feature",
-      diffMode: "git",
+      diffMode: "remote",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -274,7 +274,7 @@ describe("startDiffViewerServer", () => {
       openBrowser: false,
       base: "main",
       target: "feature",
-      diffMode: "git",
+      diffMode: "remote",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -331,7 +331,7 @@ describe("startDiffViewerServer", () => {
       openBrowser: false,
       base: "main",
       target: "feature",
-      diffMode: "git",
+      diffMode: "remote",
     });
 
     await new Promise((resolve) => setTimeout(resolve, 100));

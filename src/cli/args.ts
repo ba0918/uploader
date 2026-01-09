@@ -4,7 +4,7 @@
 
 import { parseArgs as stdParseArgs } from "@std/cli/parse-args";
 import type { CliArgs, DiffMode, DiffOption } from "../types/mod.ts";
-import { showVersion } from "../ui/mod.ts";
+import { logWarning, showVersion } from "../ui/mod.ts";
 
 const HELP_TEXT = `
 Usage: uploader [options] <profile>
@@ -16,10 +16,7 @@ Arguments:
 
 Options:
   -c, --config <path>      設定ファイルのパス
-  -d, --diff[=mode]        アップロード前にdiff viewerで確認
-                           mode: git (gitモードのデフォルト)
-                                 remote (fileモードのデフォルト)
-                                 both (両方表示)
+  -d, --diff               アップロード前にdiff viewerで確認（リモートとの差分を表示）
   -n, --dry-run            dry-run（実際のアップロードは行わない）
       --delete             リモートの余分なファイルを削除（mirror同期）
   -b, --base <branch>      比較元ブランチ（gitモード用）
@@ -31,20 +28,21 @@ Options:
   -s, --strict             ファイル転送エラーで即座に終了
   -l, --log-file <path>    ログファイルのパス
       --concurrency <num>  リモートステータスチェックの同時実行数 (default: 10)
+      --parallel           複数ターゲットへ並列にアップロード
+  -L, --list               プロファイル一覧を表示
   -V, --version            バージョン表示
   -h, --help               このヘルプを表示
 
 Examples:
+  uploader --list                         プロファイル一覧を表示
   uploader development                    基本的な使い方
   uploader --diff staging                 diff確認してからアップロード
-  uploader --diff=remote staging          リモートとの差分を確認
-  uploader --diff=both development        git差分とリモート差分の両方を確認
   uploader --dry-run production           dry-run モード
   uploader --base=main --target=feature/xxx development  ブランチを指定
 `.trim();
 
 /** 有効なdiffモード */
-const VALID_DIFF_MODES: readonly DiffMode[] = ["git", "remote", "both"];
+const VALID_DIFF_MODES: readonly DiffMode[] = ["remote"];
 
 /**
  * ヘルプを表示
@@ -56,10 +54,8 @@ export function showHelp(): void {
 /**
  * diffオプションの値をパース
  *
- * - `--diff` (値なし) → "auto" (後でモードに応じて決定)
- * - `--diff=git` → "git"
+ * - `--diff` (値なし) → "auto" (remoteモードを使用)
  * - `--diff=remote` → "remote"
- * - `--diff=both` → "both"
  * - なし → false
  */
 function parseDiffOption(value: boolean | string | undefined): DiffOption {
@@ -67,7 +63,7 @@ function parseDiffOption(value: boolean | string | undefined): DiffOption {
     return false;
   }
   if (value === true) {
-    // --diff（値なし）の場合は "auto"
+    // --diff（値なし）の場合は "auto"（remoteモードに解決される）
     return "auto";
   }
   // 文字列の場合、有効なモードかチェック
@@ -75,17 +71,62 @@ function parseDiffOption(value: boolean | string | undefined): DiffOption {
   if (VALID_DIFF_MODES.includes(mode as DiffMode)) {
     return mode as DiffMode;
   }
-  // 無効な値は "auto" として扱う
-  console.warn(`Warning: Invalid --diff mode "${value}". Using default mode.`);
+  // 無効な値は警告を出して "auto" として扱う
+  logWarning(`Invalid --diff mode "${value}". Using default mode.`);
   return "auto";
+}
+
+/**
+ * --diff オプションを前処理して抽出
+ *
+ * `--diff` を string として定義すると、`--diff profile` で profile が
+ * diff の値として解釈されてしまう。これを防ぐため、`--diff=value` 形式
+ * のみ値を取り、`--diff` 単体は boolean として扱う。
+ *
+ * @returns [処理済みargs, diffValue]
+ */
+function preprocessDiffOption(
+  args: string[],
+): [string[], boolean | string | undefined] {
+  const result: string[] = [];
+  let diffValue: boolean | string | undefined = undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    // --diff=value 形式
+    if (arg.startsWith("--diff=")) {
+      diffValue = arg.slice(7); // "--diff=" の長さは7
+      continue;
+    }
+
+    // -d=value 形式
+    if (arg.startsWith("-d=")) {
+      diffValue = arg.slice(3); // "-d=" の長さは3
+      continue;
+    }
+
+    // --diff 単体（値なし）
+    if (arg === "--diff" || arg === "-d") {
+      diffValue = true;
+      continue;
+    }
+
+    result.push(arg);
+  }
+
+  return [result, diffValue];
 }
 
 /**
  * CLI引数をパース
  */
 export function parseArgs(args: string[]): CliArgs | null {
-  const parsed = stdParseArgs(args, {
-    string: ["config", "base", "target", "log-file", "diff"],
+  // diffオプションを先に抽出（後続の引数を誤って取り込むのを防ぐ）
+  const [preprocessedArgs, diffValue] = preprocessDiffOption(args);
+
+  const parsed = stdParseArgs(preprocessedArgs, {
+    string: ["config", "base", "target", "log-file"],
     boolean: [
       "dry-run",
       "delete",
@@ -93,8 +134,10 @@ export function parseArgs(args: string[]): CliArgs | null {
       "quiet",
       "no-browser",
       "strict",
+      "parallel",
       "version",
       "help",
+      "list",
     ],
     default: {
       "dry-run": false,
@@ -103,12 +146,12 @@ export function parseArgs(args: string[]): CliArgs | null {
       quiet: false,
       "no-browser": false,
       strict: false,
+      parallel: false,
       port: 3000,
       concurrency: 10,
     },
     alias: {
       c: "config",
-      d: "diff",
       n: "dry-run",
       b: "base",
       t: "target",
@@ -117,6 +160,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       p: "port",
       s: "strict",
       l: "log-file",
+      L: "list",
       V: "version",
       h: "help",
     },
@@ -156,16 +200,7 @@ export function parseArgs(args: string[]): CliArgs | null {
     }
   }
 
-  // diffオプションをパース
-  // -d フラグ（値なし）の場合、argsに "-d" が含まれているかチェック
-  let diffValue: boolean | string | undefined = parsed.diff;
-  if (
-    diffValue === undefined &&
-    (args.includes("-d") || args.includes("--diff"))
-  ) {
-    // 値なしのフラグとして使われた場合
-    diffValue = true;
-  }
+  // diffオプションをパース（前処理で抽出済み）
   const diffOption = parseDiffOption(diffValue);
 
   return {
@@ -183,5 +218,7 @@ export function parseArgs(args: string[]): CliArgs | null {
     strict: parsed.strict,
     logFile: parsed["log-file"],
     concurrency,
+    parallel: parsed.parallel,
+    list: parsed.list,
   };
 }

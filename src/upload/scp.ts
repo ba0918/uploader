@@ -7,7 +7,7 @@
 import { dirname, join } from "@std/path";
 import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { SshBaseUploader, type SshBaseOptions } from "./ssh-base.ts";
+import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
  * SCP接続オプション

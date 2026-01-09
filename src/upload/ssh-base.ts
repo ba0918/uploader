@@ -241,7 +241,9 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
-    const mkdirCmd = useSudo ? `sudo mkdir -p "${fullPath}"` : `mkdir -p "${fullPath}"`;
+    const mkdirCmd = useSudo
+      ? `sudo mkdir -p "${fullPath}"`
+      : `mkdir -p "${fullPath}"`;
 
     const args = this.buildSshArgs();
     args.push(`${this.options.user}@${this.options.host}`, mkdirCmd);
@@ -268,7 +270,9 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
-    const rmCmd = useSudo ? `sudo rm -rf "${fullPath}"` : `rm -rf "${fullPath}"`;
+    const rmCmd = useSudo
+      ? `sudo rm -rf "${fullPath}"`
+      : `rm -rf "${fullPath}"`;
 
     const args = this.buildSshArgs();
     args.push(`${this.options.user}@${this.options.host}`, rmCmd);
@@ -292,7 +296,10 @@ export abstract class SshBaseUploader implements Uploader {
    * @param remotePath リモートパス（dest相対）
    * @param useSudo sudoを使用するか（rsync用）
    */
-  async readFile(remotePath: string, useSudo = false): Promise<RemoteFileContent | null> {
+  async readFile(
+    remotePath: string,
+    useSudo = false,
+  ): Promise<RemoteFileContent | null> {
     if (!this.connected) {
       throw new UploadError("Not connected", "CONNECTION_ERROR");
     }

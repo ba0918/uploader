@@ -15,6 +15,25 @@ Git差分またはローカルファイルをSFTP/SCPでリモートサーバに
 ## Requirements
 
 - [Deno](https://deno.land/) 1.40+
+- [Git](https://git-scm.com/) （gitモード使用時）
+
+### プラットフォーム別の注意事項
+
+#### Linux / macOS
+
+sftp, scp, rsync は標準でインストールされているか、簡単に導入可能です。
+
+#### Windows
+
+このツールは内部で `sftp`, `scp`, `rsync` コマンドを使用します。
+
+| プロトコル | 必要な準備 |
+| ---------- | ---------- |
+| sftp / scp | OpenSSHの有効化（設定 → アプリ → オプション機能 → OpenSSHクライアント） |
+| rsync | Git Bash / cwRsync / WSL のいずれかをインストール |
+| local | 追加設定不要 |
+
+> **Tip**: rsyncを使わない場合は、OpenSSHの有効化のみで動作します。
 
 ## Installation
 
@@ -59,6 +78,9 @@ uploader development
 ## Usage
 
 ```sh
+# プロファイル一覧を表示
+uploader --list
+
 # 基本的な使い方
 uploader <profile>
 
@@ -89,7 +111,7 @@ uploader --log-file=upload.log <profile>
 | オプション          | 説明                                                      |
 | ------------------- | --------------------------------------------------------- |
 | `--config <path>`   | 設定ファイルのパスを指定                                  |
-| `--diff[=mode]`     | アップロード前にdiff viewerを開く (mode: git/remote/both) |
+| `--diff`            | アップロード前にdiff viewerを開く（リモートとの差分表示） |
 | `--dry-run`         | 実際のアップロードを行わずシミュレーション                |
 | `--delete`          | リモートにのみ存在するファイルを削除                      |
 | `--base <branch>`   | Git比較元ブランチ                                         |
@@ -100,6 +122,7 @@ uploader --log-file=upload.log <profile>
 | `--no-browser`      | diff viewer起動時にブラウザを開かない                     |
 | `--strict`          | ファイル転送エラー時に即座に終了                          |
 | `--log-file <path>` | ログをファイルに出力                                      |
+| `--list`            | 設定ファイルのプロファイル一覧を表示                      |
 | `--version`         | バージョン表示                                            |
 | `--help`            | ヘルプ表示                                                |
 
@@ -188,7 +211,8 @@ password: "${DEPLOY_PASSWORD}" # 必ず環境変数を使用
 
 ### プロトコル
 
-> **推奨**: 大規模プロジェクト（数千ファイル以上）では **rsync** を強く推奨します。
+> **推奨**: 大規模プロジェクト（数千ファイル以上）では **rsync**
+> を強く推奨します。
 > 差分検出・一括転送が最適化されており、SFTP/SCPと比べて大幅に高速です。
 
 #### SFTP
@@ -232,6 +256,44 @@ rsync_options:
 protocol: "local"
 dest: "/path/to/local/dest"
 ```
+
+### ターゲットのデフォルト設定
+
+複数ターゲットで共通の設定がある場合、`defaults` を使って冗長性を減らせます。
+
+```yaml
+staging:
+  from:
+    type: "file"
+    src:
+      - "dist/"
+
+  to:
+    defaults:
+      host: "localhost"
+      port: 2222
+      protocol: "rsync"
+      user: "deploy"
+      password: "${DEPLOY_PASSWORD}"
+      rsync_path: "sudo rsync"
+      rsync_options:
+        - "--compress"
+      sync_mode: "update"
+    targets:
+      - dest: "/var/www/app1/"
+      - dest: "/var/www/app2/"
+      - dest: "/var/www/app3/"
+        port: 3333         # 個別設定で上書き
+        sync_mode: "mirror"
+```
+
+**マージルール:**
+
+- 各ターゲットは `defaults` の設定を継承
+- 個別に指定した設定が優先（上書き）
+- 配列（`rsync_options` 等）は完全に置き換え（マージではない）
+- `dest` は各ターゲットで必須（defaults には含められない）
+- `host` と `protocol` は defaults か個別設定のどちらかで必須
 
 ### ターゲット設定リファレンス
 
@@ -297,25 +359,20 @@ key_file: "${SSH_KEY_PATH}"
 ## Diff Viewer
 
 `--diff` オプションでブラウザベースの差分確認UIを起動できます。
+ローカルファイルとリモートサーバー上のファイルを比較し、実際に変更があるファイルのみを表示します。
 
 ```sh
-# Gitモード: git diff（デフォルト）
 uploader --diff development
-
-# ローカル vs リモート比較
-uploader --diff=remote development
-
-# 両方（タブ切り替え）
-uploader --diff=both development
 ```
 
 ### 機能
 
-- ディレクトリツリー表示（追加:緑、変更:黄、削除:赤）
+- ローカル vs リモートの差分比較
+- ディレクトリツリー表示（追加:緑、変更:黄、変更なし:灰）
 - Side-by-side / Unified 表示切替
 - シンタックスハイライト
-- リモートファイルとの差分比較
-- 確認ダイアログ付きアップロード
+- 複数ターゲット対応（ターゲット切り替え可能）
+- 確認後にアップロード実行
 
 ## Exit Codes
 
