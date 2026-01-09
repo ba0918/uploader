@@ -9,20 +9,23 @@ import type {
   DiffFile,
   GitDiffResult,
   ResolvedTargetConfig,
-  RsyncDiffResult,
   UploadFile,
 } from "../types/mod.ts";
-import { createUploader } from "../upload/mod.ts";
 import {
   cyan,
   dim,
   green,
   logSection,
   logSectionClose,
-  logVerbose,
   red,
   yellow,
 } from "../ui/mod.ts";
+import {
+  collectChangedFiles,
+  getRemoteDiffs,
+  hasRemoteChanges,
+  type TargetDiffInfo,
+} from "./remote-diff.ts";
 
 /** ブラウザ起動用コマンド実行インターフェース */
 export interface BrowserCommandRunner {
@@ -117,74 +120,6 @@ export interface CuiConfirmOptions {
   checksum?: boolean;
 }
 
-/** ターゲットごとの差分結果 */
-interface TargetDiffInfo {
-  target: ResolvedTargetConfig;
-  diff: RsyncDiffResult | null;
-  error?: string;
-  unsupported?: boolean;
-}
-
-/**
- * 各ターゲットのremote差分を取得
- */
-async function getTargetDiffs(
-  targets: ResolvedTargetConfig[],
-  uploadFiles: UploadFile[],
-  localDir: string,
-  checksum?: boolean,
-): Promise<TargetDiffInfo[]> {
-  const results: TargetDiffInfo[] = [];
-  // ディレクトリは除外（ディレクトリを含めるとrsyncがディレクトリ内の全ファイルを比較してしまい、
-  // ignore設定で除外されたファイルまで差分として検出されてしまう）
-  const filePaths = uploadFiles
-    .filter((f) => !f.isDirectory)
-    .map((f) => f.relativePath);
-
-  // デバッグ: CUIモードでの引数を表示
-  logVerbose(
-    `[CUI getTargetDiffs] localDir: ${localDir}, files: ${filePaths.length}, checksum: ${checksum ?? false}`,
-  );
-  // デバッグ: 最初の5件のファイルパスを表示
-  logVerbose(
-    `[CUI getTargetDiffs] First 5 file paths: ${filePaths.slice(0, 5).join(", ")}`,
-  );
-
-  for (const target of targets) {
-    // rsync以外のプロトコルはgetDiff未サポート
-    if (target.protocol !== "rsync") {
-      results.push({
-        target,
-        diff: null,
-        unsupported: true,
-      });
-      continue;
-    }
-
-    try {
-      const uploader = createUploader(target);
-      await uploader.connect();
-      try {
-        if (uploader.getDiff) {
-          const diff = await uploader.getDiff(localDir, filePaths, { checksum });
-          results.push({ target, diff });
-        } else {
-          results.push({ target, diff: null, unsupported: true });
-        }
-      } finally {
-        await uploader.disconnect();
-      }
-    } catch (error) {
-      results.push({
-        target,
-        diff: null,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  return results;
-}
 
 /**
  * ターゲットごとの差分サマリーを表示
@@ -243,26 +178,21 @@ export async function cuiConfirm(
 
   if (shouldGetRemoteDiffs) {
     console.log(dim("  Checking remote differences..."));
-    targetDiffs = await getTargetDiffs(targets, uploadFiles, localDir, checksum);
+    targetDiffs = await getRemoteDiffs(targets, uploadFiles, localDir, {
+      checksum,
+    });
     // 進捗表示をクリア
     console.log("\x1b[1A\x1b[2K");
   }
 
   // 全体の変更があるかチェック
-  const hasRemoteChanges = targetDiffs.some((info) => {
-    if (info.diff) {
-      return info.diff.added > 0 || info.diff.modified > 0 ||
-        info.diff.deleted > 0;
-    }
-    // エラーや未サポートの場合は変更ありとして扱う（安全側に倒す）
-    return info.error !== undefined || info.unsupported;
-  });
+  const remoteHasChanges = hasRemoteChanges(targetDiffs);
   const hasGitChanges = diffResult.files.length > 0;
 
   // remoteモード: 全ターゲットの差分が0なら変更なし
   const hasAnyChanges = targetDiffs.length === 0
     ? hasGitChanges
-    : hasRemoteChanges;
+    : remoteHasChanges;
 
   // 差分サマリーを表示
   logSection("Changes detected (CUI mode)");
@@ -339,15 +269,7 @@ export async function cuiConfirm(
   }
 
   // 変更ファイル一覧を収集（全ターゲットの差分を統合）
-  const changedFilesSet = new Set<string>();
-  for (const info of targetDiffs) {
-    if (info.diff) {
-      for (const entry of info.diff.entries) {
-        changedFilesSet.add(entry.path);
-      }
-    }
-  }
-  const changedFiles = Array.from(changedFilesSet);
+  const changedFiles = collectChangedFiles(targetDiffs);
 
   // 確認プロンプト
   const answer = await promptYesNo(

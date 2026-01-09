@@ -32,6 +32,11 @@ import {
   getDirectChildren,
   shouldUseLazyLoading,
 } from "../utils/mod.ts";
+import {
+  extractFilePaths,
+  rsyncDiffToFiles,
+  rsyncDiffToSummary,
+} from "./remote-diff.ts";
 
 /**
  * デバッグログを出力（verboseモード時のみ）
@@ -388,11 +393,7 @@ async function tryRsyncGetDiff(
     }
 
     // uploadFilesの相対パスリストを取得（ディレクトリは除外）
-    // 注: ディレクトリを含めるとrsyncがディレクトリ内の全ファイルを比較してしまい、
-    // ignore設定で除外されたファイルまで差分として検出されてしまう
-    const filePaths = options.uploadFiles
-      .filter((f) => !f.isDirectory)
-      .map((f) => f.relativePath);
+    const filePaths = extractFilePaths(options.uploadFiles);
 
     debugLog(
       `[RsyncDiff] Running rsync getDiff() on ${options.localDir} for ${filePaths.length} files (checksum: ${options.checksum ?? false})...`,
@@ -439,13 +440,9 @@ function filterFilesByRsyncDiff(
     total: number;
   };
 } {
-  // rsyncの差分結果から直接DiffFileを生成
-  // 注: diffResult.filesでフィルタリングすると、ignore設定で除外されたファイルや
-  // ディレクトリ展開で検出されたファイルが漏れてしまうため、rsync結果をそのまま使用
-  const filteredFiles: DiffFile[] = rsyncDiff.entries.map((entry) => ({
-    path: entry.path,
-    status: entry.changeType,
-  }));
+  // 共通モジュールを使用してrsync結果をDiffFileとサマリーに変換
+  const filteredFiles = rsyncDiffToFiles(rsyncDiff);
+  const summary = rsyncDiffToSummary(rsyncDiff);
 
   // デバッグ: 結果を表示
   debugLog(
@@ -456,15 +453,6 @@ function filterFilesByRsyncDiff(
       `[filterFilesByRsyncDiff] Filtered paths: ${filteredFiles.map((f) => f.path).join(", ")}`,
     );
   }
-
-  // サマリー
-  const summary = {
-    added: rsyncDiff.added,
-    modified: rsyncDiff.modified,
-    deleted: rsyncDiff.deleted,
-    renamed: 0,
-    total: filteredFiles.length,
-  };
 
   return { files: filteredFiles, summary };
 }
