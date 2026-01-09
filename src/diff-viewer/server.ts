@@ -21,7 +21,6 @@ import type {
   WsFileResponseMessage,
   WsInitMessage,
 } from "../types/mod.ts";
-import { getFileDiffContents } from "../git/file-reader.ts";
 import { getHtmlContent } from "./static/html.ts";
 import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
@@ -378,8 +377,8 @@ async function sendInitMessage(
     dest: t.dest,
   }));
 
-  // remoteモードの場合、rsync getDiff()による最適化を試みる
-  if (options.diffMode === "remote" && options.localDir) {
+  // rsync getDiff()による最適化を試みる
+  if (options.localDir) {
     const rsyncDiff = await tryRsyncGetDiff(state);
 
     if (rsyncDiff) {
@@ -430,8 +429,8 @@ async function sendInitMessage(
     // ルートレベルのツリー構造を構築
     const tree = buildRootLevelTree(diffResult.files);
 
-    // remoteモードの場合、ルートレベルのファイルのみステータスをチェック
-    if (options.diffMode === "remote") {
+    // targetsがある場合のみルートレベルのファイルのステータスをチェック
+    if (options.targets && options.targets.length > 0) {
       const concurrency = options.concurrency ?? 10;
       const rootFiles = tree.filter((node) => node.type === "file");
 
@@ -499,9 +498,9 @@ async function sendInitMessage(
     total: diffResult.files.length,
   };
 
-  // remoteモードのみ（bothは除く）の場合、全ファイルのremoteStatusをチェックして差分があるファイルのみを返す
-  // bothモードの場合はgitの差分をそのまま使用し、remote statusはファイル選択時に取得する
-  if (options.diffMode === "remote") {
+  // targetsがある場合のみremote diffチェックを実行
+  if (options.targets && options.targets.length > 0) {
+    // 全ファイルのremoteStatusをチェックして差分があるファイルのみを返す
     const concurrency = options.concurrency ?? 10;
     debugLog(
       `[RemoteDiff] Checking remote status for ${files.length} files (concurrency: ${concurrency})...`,
@@ -598,9 +597,8 @@ async function handleWebSocketMessage(
 ): Promise<void> {
   switch (message.type) {
     case "file_request": {
-      // リクエストタイプを取得（デフォルト: モードに応じたデフォルト）
-      const requestType = message.requestType ??
-        (state.options.diffMode === "git" ? "git" : "remote");
+      // リクエストタイプを取得（常にremote）
+      const requestType: "remote" = "remote";
 
       await handleFileRequest(socket, message.path, requestType, state);
       break;
@@ -678,11 +676,9 @@ async function handleSwitchTarget(
   // ターゲットインデックスを更新
   state.currentTargetIndex = targetIndex;
 
-  // remoteモードの場合、新しいターゲットでの差分情報を再送信
-  if (state.options.diffMode === "remote" || state.options.diffMode === "both") {
-    debugLog(`[SwitchTarget] Re-sending init message for new target`);
-    await sendInitMessage(socket, state);
-  }
+  // 新しいターゲットでの差分情報を再送信
+  debugLog(`[SwitchTarget] Re-sending init message for new target`);
+  await sendInitMessage(socket, state);
 }
 
 /**
@@ -701,42 +697,21 @@ async function handleFileRequest(
   };
 
   try {
-    if (requestType === "git" || requestType === "both") {
-      // Git diff内容を取得
-      const { base: baseContent, target: targetContent } =
-        await getFileDiffContents(
-          state.options.base,
-          state.options.target,
-          path,
-        );
-      response.base = baseContent;
-      response.target = targetContent;
-    }
-
-    if (requestType === "remote" || requestType === "both") {
-      // ローカルファイルとリモートファイルを取得
-      const { local, remote, remoteStatus } = await getLocalAndRemoteContents(
-        path,
-        state,
-      );
-      response.local = local;
-      response.remote = remote;
-      response.remoteStatus = remoteStatus;
-    }
+    // ローカルファイルとリモートファイルを取得
+    const { local, remote, remoteStatus } = await getLocalAndRemoteContents(
+      path,
+      state,
+    );
+    response.local = local;
+    response.remote = remote;
+    response.remoteStatus = remoteStatus;
   } catch (error) {
     debugError(`Error fetching file contents for ${path}:`, error);
     // エラーでも空の内容を返す
-    if (requestType === "git" || requestType === "both") {
-      response.base = response.base ?? { path, content: "", isBinary: false };
-      response.target = response.target ??
-        { path, content: "", isBinary: false };
-    }
-    if (requestType === "remote" || requestType === "both") {
-      response.local = response.local ?? { path, content: "", isBinary: false };
-      response.remote = response.remote ??
-        { path, content: "", isBinary: false };
-      response.remoteStatus = { exists: false, hasChanges: true };
-    }
+    response.local = response.local ?? { path, content: "", isBinary: false };
+    response.remote = response.remote ??
+      { path, content: "", isBinary: false };
+    response.remoteStatus = { exists: false, hasChanges: true };
   }
 
   socket.send(JSON.stringify(response));
@@ -966,8 +941,8 @@ async function handleExpandDirectory(
   // 指定ディレクトリの直下の子ノードを取得
   const children = getDirectChildren(diffResult.files, dirPath);
 
-  // remoteモードの場合、ファイルのステータスをチェック
-  if (options.diffMode === "remote") {
+  // targetsがある場合のみファイルのステータスをチェック
+  if (options.targets && options.targets.length > 0) {
     const concurrency = options.concurrency ?? 10;
     const fileNodes = children.filter((node) => node.type === "file");
 
@@ -993,16 +968,6 @@ async function handleExpandDirectory(
         },
         concurrency,
       );
-    }
-  } else {
-    // gitモードの場合、diffResultからステータスを取得
-    for (const node of children) {
-      if (node.type === "file") {
-        const file = diffResult.files.find((f) => f.path === node.path);
-        if (file) {
-          node.status = file.status;
-        }
-      }
     }
   }
 

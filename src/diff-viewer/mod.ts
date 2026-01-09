@@ -86,7 +86,6 @@ export async function startDiffViewer(
 
     const cuiResult = await cuiConfirm(diffResult, {
       targets: options.targets,
-      diffMode: options.diffMode,
       uploadFiles: options.uploadFiles,
       localDir: options.localDir,
     });

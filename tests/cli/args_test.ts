@@ -52,24 +52,37 @@ describe("parseArgs", () => {
       assertEquals(result?.diff, "auto");
     });
 
-    it("--diff=gitでgitモードを指定できる", () => {
-      const result = parseArgs(["--diff=git", "profile"]);
-      assertEquals(result?.diff, "git");
-    });
-
     it("--diff=remoteでremoteモードを指定できる", () => {
       const result = parseArgs(["--diff=remote", "profile"]);
       assertEquals(result?.diff, "remote");
     });
 
-    it("--diff=bothでbothモードを指定できる", () => {
-      const result = parseArgs(["--diff=both", "profile"]);
-      assertEquals(result?.diff, "both");
+    it("無効なモードは警告を出してautoを返す", () => {
+      const result = parseArgs(["--diff=invalid", "profile"]);
+      assertEquals(result?.diff, "auto");
     });
 
     it("デフォルトはfalse", () => {
       const result = parseArgs(["profile"]);
       assertEquals(result?.diff, false);
+    });
+
+    it("--diff profileでプロファイルを誤って取り込まない", () => {
+      const result = parseArgs(["--diff", "test_profile"]);
+      assertEquals(result?.diff, "auto");
+      assertEquals(result?.profile, "test_profile");
+    });
+
+    it("-d profileでプロファイルを誤って取り込まない", () => {
+      const result = parseArgs(["-d", "my_profile"]);
+      assertEquals(result?.diff, "auto");
+      assertEquals(result?.profile, "my_profile");
+    });
+
+    it("-d=remote形式をパースできる", () => {
+      const result = parseArgs(["-d=remote", "profile"]);
+      assertEquals(result?.diff, "remote");
+      assertEquals(result?.profile, "profile");
     });
   });
 
@@ -271,6 +284,29 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("listオプション", () => {
+    it("--listオプションをパースできる", () => {
+      const result = parseArgs(["--list"]);
+      assertEquals(result?.list, true);
+    });
+
+    it("-Lショートオプションをパースできる", () => {
+      const result = parseArgs(["-L"]);
+      assertEquals(result?.list, true);
+    });
+
+    it("デフォルトはfalse", () => {
+      const result = parseArgs(["profile"]);
+      assertEquals(result?.list, false);
+    });
+
+    it("--listと--configを同時に指定できる", () => {
+      const result = parseArgs(["--list", "--config", "custom.yaml"]);
+      assertEquals(result?.list, true);
+      assertEquals(result?.config, "custom.yaml");
+    });
+  });
+
   describe("helpオプション", () => {
     it("--helpオプションでnullを返す", () => {
       const result = parseArgs(["--help"]);
@@ -300,7 +336,7 @@ describe("parseArgs", () => {
       const result = parseArgs([
         "--config",
         "custom.yaml",
-        "--diff=git",
+        "--diff=remote",
         "--dry-run",
         "--verbose",
         "--base",
@@ -310,7 +346,7 @@ describe("parseArgs", () => {
         "production",
       ]);
       assertEquals(result?.config, "custom.yaml");
-      assertEquals(result?.diff, "git");
+      assertEquals(result?.diff, "remote");
       assertEquals(result?.dryRun, true);
       assertEquals(result?.verbose, true);
       assertEquals(result?.base, "main");

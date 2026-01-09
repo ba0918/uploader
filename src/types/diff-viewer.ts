@@ -90,8 +90,8 @@ export interface WsInitMessage extends WsMessageBase {
   };
 }
 
-/** ファイルリクエストの種類 */
-export type FileRequestType = "git" | "remote" | "both";
+/** ファイルリクエストの種類（リモート差分のみサポート） */
+export type FileRequestType = "remote";
 
 /** ファイル内容リクエストメッセージ */
 export interface WsFileRequestMessage extends WsMessageBase {

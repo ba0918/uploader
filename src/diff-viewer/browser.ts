@@ -7,7 +7,6 @@
 import type {
   CuiConfirmResult,
   DiffFile,
-  DiffMode,
   GitDiffResult,
   ResolvedTargetConfig,
   RsyncDiffResult,
@@ -112,7 +111,6 @@ export async function openBrowser(
 export interface CuiConfirmOptions {
   promptReader?: PromptReader;
   targets?: ResolvedTargetConfig[];
-  diffMode?: DiffMode;
   uploadFiles?: UploadFile[];
   localDir?: string;
 }
@@ -211,14 +209,12 @@ export async function cuiConfirm(
   diffResult: GitDiffResult,
   options?: CuiConfirmOptions,
 ): Promise<CuiConfirmResult> {
-  const diffMode = options?.diffMode ?? "git";
   const targets = options?.targets ?? [];
   const uploadFiles = options?.uploadFiles ?? [];
   const localDir = options?.localDir ?? "";
 
-  // remoteモードで複数ターゲットがある場合、各ターゲットの差分を取得
+  // 複数ターゲットがある場合、各ターゲットの差分を取得
   const shouldGetRemoteDiffs =
-    (diffMode === "remote" || diffMode === "both") &&
     targets.length > 0 &&
     uploadFiles.length > 0 &&
     localDir;
@@ -242,18 +238,8 @@ export async function cuiConfirm(
   });
   const hasGitChanges = diffResult.files.length > 0;
 
-  // remoteモードでは全ターゲットの差分が0なら変更なし
-  // gitモードではGit差分が0なら変更なし
-  // bothモードでは両方チェック
-  let hasAnyChanges: boolean;
-  if (diffMode === "remote") {
-    hasAnyChanges = targetDiffs.length === 0 ? hasGitChanges : hasRemoteChanges;
-  } else if (diffMode === "git") {
-    hasAnyChanges = hasGitChanges;
-  } else {
-    // bothモード
-    hasAnyChanges = hasGitChanges || hasRemoteChanges;
-  }
+  // remoteモード: 全ターゲットの差分が0なら変更なし
+  const hasAnyChanges = targetDiffs.length === 0 ? hasGitChanges : hasRemoteChanges;
 
   // 差分サマリーを表示
   logSection("Changes detected (CUI mode)");
@@ -271,13 +257,10 @@ export async function cuiConfirm(
     console.log();
   }
 
-  // Gitモードまたは単一ターゲットの場合は従来の表示
-  if (diffMode === "git" || diffMode === "both" || targetDiffs.length === 0) {
-    if (diffMode === "git") {
-      console.log(`   ${dim("Git diff:")}`);
-      console.log();
-    } else if (targetDiffs.length === 0 && targets.length > 0) {
-      // ターゲット情報を表示（remoteモードだが差分取得できなかった場合）
+  // 差分取得できなかった場合（単一ターゲットなど）は従来の表示
+  if (targetDiffs.length === 0) {
+    if (targets.length > 0) {
+      // ターゲット情報を表示
       if (targets.length === 1) {
         const t = targets[0];
         console.log(`   ${dim("Target:")} ${t.host}:${t.dest}`);

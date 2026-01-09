@@ -78,6 +78,9 @@ uploader development
 ## Usage
 
 ```sh
+# プロファイル一覧を表示
+uploader --list
+
 # 基本的な使い方
 uploader <profile>
 
@@ -108,7 +111,7 @@ uploader --log-file=upload.log <profile>
 | オプション          | 説明                                                      |
 | ------------------- | --------------------------------------------------------- |
 | `--config <path>`   | 設定ファイルのパスを指定                                  |
-| `--diff[=mode]`     | アップロード前にdiff viewerを開く (mode: git/remote/both) |
+| `--diff`            | アップロード前にdiff viewerを開く（リモートとの差分表示） |
 | `--dry-run`         | 実際のアップロードを行わずシミュレーション                |
 | `--delete`          | リモートにのみ存在するファイルを削除                      |
 | `--base <branch>`   | Git比較元ブランチ                                         |
@@ -119,6 +122,7 @@ uploader --log-file=upload.log <profile>
 | `--no-browser`      | diff viewer起動時にブラウザを開かない                     |
 | `--strict`          | ファイル転送エラー時に即座に終了                          |
 | `--log-file <path>` | ログをファイルに出力                                      |
+| `--list`            | 設定ファイルのプロファイル一覧を表示                      |
 | `--version`         | バージョン表示                                            |
 | `--help`            | ヘルプ表示                                                |
 
@@ -355,25 +359,20 @@ key_file: "${SSH_KEY_PATH}"
 ## Diff Viewer
 
 `--diff` オプションでブラウザベースの差分確認UIを起動できます。
+ローカルファイルとリモートサーバー上のファイルを比較し、実際に変更があるファイルのみを表示します。
 
 ```sh
-# Gitモード: git diff（デフォルト）
 uploader --diff development
-
-# ローカル vs リモート比較
-uploader --diff=remote development
-
-# 両方（タブ切り替え）
-uploader --diff=both development
 ```
 
 ### 機能
 
-- ディレクトリツリー表示（追加:緑、変更:黄、削除:赤）
+- ローカル vs リモートの差分比較
+- ディレクトリツリー表示（追加:緑、変更:黄、変更なし:灰）
 - Side-by-side / Unified 表示切替
 - シンタックスハイライト
-- リモートファイルとの差分比較
-- 確認ダイアログ付きアップロード
+- 複数ターゲット対応（ターゲット切り替え可能）
+- 確認後にアップロード実行
 
 ## Exit Codes
 

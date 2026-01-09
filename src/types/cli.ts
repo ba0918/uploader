@@ -5,11 +5,11 @@
 /** ログレベル */
 export type LogLevel = "verbose" | "normal" | "quiet";
 
-/** diff表示モードの種類 */
-export type DiffMode = "git" | "remote" | "both";
+/** diff表示モードの種類（リモート差分のみサポート） */
+export type DiffMode = "remote";
 
-/** diff指定の種類（auto = モードに応じてデフォルト値を使用） */
-export type DiffOption = false | DiffMode | "auto";
+/** diff指定の種類（auto = remoteモードを使用） */
+export type DiffOption = false | "remote" | "auto";
 
 /** CLI オプション */
 export interface CliOptions {

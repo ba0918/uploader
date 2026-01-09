@@ -35,37 +35,18 @@ import { UploadError } from "./src/types/mod.ts";
  * diffオプションを実際のモードに解決
  *
  * @param diffOption CLIから渡されたdiffオプション
- * @param sourceType ソースの種類（git/file）
- * @returns 解決されたDiffMode、またはfalse（diff無効時）、またはエラーメッセージ
+ * @returns 解決されたDiffMode（"remote"）、またはfalse（diff無効時）
  */
 function resolveDiffMode(
   diffOption: DiffOption,
-  sourceType: "git" | "file",
-): { mode: DiffMode | false } | { error: string } {
+): { mode: DiffMode | false } {
   // diff無効
   if (diffOption === false) {
     return { mode: false };
   }
 
-  // auto: モードに応じたデフォルト値
-  if (diffOption === "auto") {
-    return { mode: sourceType === "git" ? "git" : "remote" };
-  }
-
-  // fileモードで--diff=gitはエラー
-  if (sourceType === "file" && diffOption === "git") {
-    return {
-      error:
-        "Error: --diff=git is not supported for file mode. Use --diff=remote instead.",
-    };
-  }
-
-  // fileモードで--diff=bothはremoteにフォールバック（git diffは存在しないため）
-  if (sourceType === "file" && diffOption === "both") {
-    return { mode: "remote" };
-  }
-
-  return { mode: diffOption };
+  // auto または remote → remoteモード
+  return { mode: "remote" };
 }
 import {
   clearUploadProgress,
@@ -281,16 +262,8 @@ async function main(): Promise<number> {
     let diffViewerController: DiffViewerProgressController | undefined;
 
     if (args.diff !== false) {
-      // diffオプションを解決
-      const diffModeResult = resolveDiffMode(args.diff, profile.from.type);
-
-      if ("error" in diffModeResult) {
-        // fileモードで--diff=gitはエラー
-        logError(diffModeResult.error);
-        return EXIT_CODES.GENERAL_ERROR;
-      }
-
-      const diffMode = diffModeResult.mode;
+      // diffオプションを解決（常にremoteモード）
+      const { mode: diffMode } = resolveDiffMode(args.diff);
 
       if (diffMode !== false) {
         // diff viewerに渡すGitDiffResultを準備

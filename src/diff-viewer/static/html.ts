@@ -1035,11 +1035,11 @@ export function getHtmlContent(): string {
       files: [],
       selectedFile: null,
       viewMode: 'side-by-side', // 'side-by-side' | 'unified'
-      fileContents: new Map(), // path -> { git?: {base, target}, remote?: {local, remote} }
+      fileContents: new Map(), // path -> { remote: {local, remote} }
       base: '',
       target: '',
-      diffMode: 'git', // 'git' | 'remote' | 'both'
-      currentDiffTab: 'git', // 'git' | 'remote'
+      diffMode: 'remote', // remoteモードのみサポート
+      currentDiffTab: 'remote', // remoteモードのみ
       remoteTargets: [], // [{host, dest}]
       currentTargetIndex: 0, // 現在選択中のターゲットインデックス
       // 遅延読み込み対応
@@ -1461,7 +1461,7 @@ export function getHtmlContent(): string {
       state.base = data.base;
       state.target = data.target;
       state.files = data.files;
-      state.diffMode = data.diffMode || 'git';
+      state.diffMode = 'remote'; // remoteモードのみサポート
       state.remoteTargets = data.remoteTargets || [];
       // 遅延読み込み設定を反映
       state.lazyLoading = data.lazyLoading || false;
@@ -1475,12 +1475,8 @@ export function getHtmlContent(): string {
         elements.diffContainer.innerHTML = '<div class="diff-placeholder">Select a file to view diff</div>';
       }
 
-      // 初期タブを設定
-      if (state.diffMode === 'remote') {
-        state.currentDiffTab = 'remote';
-      } else {
-        state.currentDiffTab = 'git';
-      }
+      // 初期タブを設定（常にremote）
+      state.currentDiffTab = 'remote';
 
       // UIを更新
       elements.baseBranch.textContent = data.base;
@@ -1562,18 +1558,16 @@ export function getHtmlContent(): string {
 
     // タブの表示/非表示を更新
     function updateTabVisibility() {
-      const showGitTab = state.diffMode === 'git' || state.diffMode === 'both';
-      const showRemoteTab = state.diffMode === 'remote' || state.diffMode === 'both';
+      // gitタブは常に非表示、remoteタブは常に表示
+      elements.tabGitDiff.classList.add('hidden');
+      elements.tabRemoteDiff.classList.remove('hidden');
 
-      elements.tabGitDiff.classList.toggle('hidden', !showGitTab);
-      elements.tabRemoteDiff.classList.toggle('hidden', !showRemoteTab);
-
-      // タブのアクティブ状態を更新
-      elements.tabGitDiff.classList.toggle('active', state.currentDiffTab === 'git');
-      elements.tabRemoteDiff.classList.toggle('active', state.currentDiffTab === 'remote');
+      // タブのアクティブ状態を更新（常にremote）
+      elements.tabGitDiff.classList.remove('active');
+      elements.tabRemoteDiff.classList.add('active');
 
       // リモートターゲットバッジを更新（現在選択中のターゲットを表示）
-      if (showRemoteTab && state.remoteTargets.length > 0) {
+      if (state.remoteTargets.length > 0) {
         const target = state.remoteTargets[state.currentTargetIndex] || state.remoteTargets[0];
         elements.remoteTargetBadge.textContent = target.host;
         elements.remoteTargetBadge.classList.remove('hidden');
@@ -1581,11 +1575,9 @@ export function getHtmlContent(): string {
         elements.remoteTargetBadge.classList.add('hidden');
       }
 
-      // branch-info表示を調整（remoteモードの場合）
+      // branch-info表示を調整（remoteモード）
       const branchInfo = document.querySelector('.branch-info');
-      if (state.diffMode === 'remote') {
-        branchInfo.innerHTML = '<span>Local</span> &rarr; <span>Remote</span>';
-      }
+      branchInfo.innerHTML = '<span>Local</span> &rarr; <span>Remote</span>';
     }
 
     // タブ切り替え
@@ -1795,7 +1787,8 @@ export function getHtmlContent(): string {
           itemDiv.style.paddingLeft = (8 + indent) + 'px';
 
           // remoteモードの場合はremoteStatusを優先
-          const displayStatus = (state.diffMode === 'remote' || state.diffMode === 'both') && fileInState?.remoteStatus
+          // remoteモードのステータス表示
+          const displayStatus = fileInState?.remoteStatus
             ? fileInState.remoteStatus
             : (node.status || 'U');
 
@@ -1885,8 +1878,8 @@ export function getHtmlContent(): string {
         itemDiv.className = 'tree-item' + (state.selectedFile?.path === file.path ? ' selected' : '');
         itemDiv.style.paddingLeft = (8 + indent) + 'px';
 
-        // remoteモードの場合はremoteStatusを優先、なければstatusを使用
-        const displayStatus = (state.diffMode === 'remote' || state.diffMode === 'both') && file.remoteStatus
+        // remoteモードのステータス表示
+        const displayStatus = file.remoteStatus
           ? file.remoteStatus
           : file.status;
 
@@ -1926,16 +1919,9 @@ export function getHtmlContent(): string {
         }
       });
 
-      // キャッシュチェック - 現在のタブに対応するデータがあるか
+      // キャッシュチェック - remoteデータがあるか
       const cached = state.fileContents.get(file.path);
-      const needsGit = (state.currentDiffTab === 'git' || state.diffMode === 'both');
-      const needsRemote = (state.currentDiffTab === 'remote' || state.diffMode === 'both');
-      const hasGit = cached?.git;
-      const hasRemote = cached?.remote;
-
-      if ((needsGit && hasGit && !needsRemote) ||
-          (needsRemote && hasRemote && !needsGit) ||
-          (needsGit && needsRemote && hasGit && hasRemote)) {
+      if (cached?.remote) {
         // キャッシュ済みなら即座に表示
         showSelectedFileDiff();
         return;
@@ -1963,13 +1949,10 @@ export function getHtmlContent(): string {
       if (!file) return;
 
       const cached = state.fileContents.get(file.path);
-      if (!cached) return;
+      if (!cached?.remote) return;
 
-      if (state.currentDiffTab === 'git' && cached.git) {
-        renderDiff(file, cached.git.base, cached.git.target, 'git');
-      } else if (state.currentDiffTab === 'remote' && cached.remote) {
-        renderDiff(file, cached.remote.local, cached.remote.remote, 'remote');
-      }
+      // remoteモードのdiff表示
+      renderDiff(file, cached.remote.local, cached.remote.remote, 'remote');
     }
 
     // ファイル内容レスポンスの処理
@@ -1977,13 +1960,7 @@ export function getHtmlContent(): string {
       // 既存のキャッシュを取得または新規作成
       const cached = state.fileContents.get(message.path) || {};
 
-      // requestTypeに応じてキャッシュを更新
-      if (message.base !== undefined || message.target !== undefined) {
-        cached.git = {
-          base: message.base,
-          target: message.target
-        };
-      }
+      // remoteデータをキャッシュに保存
       if (message.local !== undefined || message.remote !== undefined) {
         cached.remote = {
           local: message.local,
@@ -2010,24 +1987,22 @@ export function getHtmlContent(): string {
       const file = state.files.find(f => f.path === path);
       if (!file) return;
 
-      // Remote Diffモードでのステータス更新
-      if (state.diffMode === 'remote' || state.diffMode === 'both') {
-        if (!remoteStatus.exists) {
-          file.remoteStatus = 'A'; // 新規追加
-        } else if (remoteStatus.hasChanges) {
-          file.remoteStatus = 'M'; // 変更あり
-        } else {
-          file.remoteStatus = 'U'; // 変更なし (Unchanged)
-        }
+      // ステータス更新
+      if (!remoteStatus.exists) {
+        file.remoteStatus = 'A'; // 新規追加
+      } else if (remoteStatus.hasChanges) {
+        file.remoteStatus = 'M'; // 変更あり
+      } else {
+        file.remoteStatus = 'U'; // 変更なし (Unchanged)
+      }
 
-        // ファイルツリーのステータスバッジを更新
-        const node = document.querySelector(\`.tree-node[data-path="\${CSS.escape(path)}"]\`);
-        if (node) {
-          const statusBadge = node.querySelector('.tree-status');
-          if (statusBadge && state.currentDiffTab === 'remote') {
-            statusBadge.className = 'tree-status status-' + file.remoteStatus;
-            statusBadge.textContent = file.remoteStatus;
-          }
+      // ファイルツリーのステータスバッジを更新
+      const node = document.querySelector(\`.tree-node[data-path="\${CSS.escape(path)}"]\`);
+      if (node) {
+        const statusBadge = node.querySelector('.tree-status');
+        if (statusBadge) {
+          statusBadge.className = 'tree-status status-' + file.remoteStatus;
+          statusBadge.textContent = file.remoteStatus;
         }
       }
     }
