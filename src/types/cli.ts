@@ -59,6 +59,8 @@ export interface CliOptions {
 /** CLI 引数（プロファイル名含む） */
 export interface CliArgs extends CliOptions {
   profile?: string;
+  /** プロファイル一覧を表示 */
+  list: boolean;
 }
 
 /** 実行コンテキスト */

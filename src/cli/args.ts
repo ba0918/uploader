@@ -32,10 +32,12 @@ Options:
   -l, --log-file <path>    ログファイルのパス
       --concurrency <num>  リモートステータスチェックの同時実行数 (default: 10)
       --parallel           複数ターゲットへ並列にアップロード
+  -L, --list               プロファイル一覧を表示
   -V, --version            バージョン表示
   -h, --help               このヘルプを表示
 
 Examples:
+  uploader --list                         プロファイル一覧を表示
   uploader development                    基本的な使い方
   uploader --diff staging                 diff確認してからアップロード
   uploader --diff=remote staging          リモートとの差分を確認
@@ -97,6 +99,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       "parallel",
       "version",
       "help",
+      "list",
     ],
     default: {
       "dry-run": false,
@@ -120,6 +123,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       p: "port",
       s: "strict",
       l: "log-file",
+      L: "list",
       V: "version",
       h: "help",
     },
@@ -187,5 +191,6 @@ export function parseArgs(args: string[]): CliArgs | null {
     logFile: parsed["log-file"],
     concurrency,
     parallel: parsed.parallel,
+    list: parsed.list,
   };
 }

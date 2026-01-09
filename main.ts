@@ -4,11 +4,13 @@
  * Git差分またはローカルファイルをSFTP/SCPでリモートサーバにデプロイするCLIツール
  */
 
-import { parseArgs, showHelp } from "./src/cli/mod.ts";
+import { parseArgs, showHelp, showProfileList } from "./src/cli/mod.ts";
 import {
   ConfigLoadError,
   ConfigValidationError,
+  findConfigFile,
   loadAndResolveProfile,
+  loadConfigFile,
 } from "./src/config/mod.ts";
 import { collectFiles, FileCollectError } from "./src/file/mod.ts";
 import { getDiff, GitCommandError } from "./src/git/mod.ts";
@@ -122,6 +124,20 @@ async function main(): Promise<number> {
     // バナー表示（quiet モード以外）
     if (logLevel !== "quiet") {
       showBanner();
+    }
+
+    // プロファイル一覧表示
+    if (args.list) {
+      const configPath = await findConfigFile(args.config);
+      if (!configPath) {
+        logError(
+          "設定ファイルが見つかりません。uploader.yaml を作成するか --config で指定してください",
+        );
+        return EXIT_CODES.CONFIG_ERROR;
+      }
+      const config = await loadConfigFile(configPath);
+      showProfileList(config, configPath);
+      return EXIT_CODES.SUCCESS;
     }
 
     // プロファイル名がない場合はヘルプを表示
