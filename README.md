@@ -157,6 +157,7 @@ uploader --log-file=upload.log <profile>
 2. `./uploader.yaml`
 3. `./uploader.yml`
 4. `~/.config/uploader/config.yaml`
+5. `~/.config/uploader/config.yml`
 
 ### 設定例
 

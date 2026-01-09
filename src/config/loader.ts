@@ -41,12 +41,15 @@ const DEFAULT_CONFIG_PATHS = [
 /**
  * ホームディレクトリの設定ファイルパスを取得
  */
-function getHomeConfigPath(): string | undefined {
+function getHomeConfigPaths(): string[] {
   const home = Deno.env.get("HOME") || Deno.env.get("USERPROFILE");
   if (home) {
-    return join(home, ".config", "uploader", "config.yaml");
+    return [
+      join(home, ".config", "uploader", "config.yaml"),
+      join(home, ".config", "uploader", "config.yml"),
+    ];
   }
-  return undefined;
+  return [];
 }
 
 /**
@@ -77,9 +80,10 @@ export async function findConfigFile(
   }
 
   // ホームディレクトリ
-  const homePath = getHomeConfigPath();
-  if (homePath && await exists(homePath)) {
-    return homePath;
+  for (const homePath of getHomeConfigPaths()) {
+    if (await exists(homePath)) {
+      return homePath;
+    }
   }
 
   return undefined;
