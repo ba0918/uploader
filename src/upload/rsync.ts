@@ -13,7 +13,7 @@ import type {
   UploadFile,
 } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { logVerbose } from "../ui/mod.ts";
+import { logVerbose, logWarning } from "../ui/mod.ts";
 import { parseItemizeChanges } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
@@ -195,7 +195,7 @@ export class RsyncUploader extends SshBaseUploader {
     args.push("--progress"); // 進捗表示
 
     // アーカイブモードの代わりに個別指定（-aは使わない）
-    args.push("-rlKD"); // recursive, links, keep-dirlinks, devices/specials
+    args.push("-rlKDO"); // recursive, links, keep-dirlinks, devices/specials, omit-dir-times
 
     // タイムスタンプ保持
     if (this.options.preserveTimestamps) {
@@ -365,6 +365,7 @@ export class RsyncUploader extends SshBaseUploader {
     args.push("-l"); // symlinks
     args.push("-K"); // keep-dirlinks: リモート側のシンボリックリンクディレクトリを保持
     args.push("-D"); // devices/specials
+    args.push("-O"); // omit-dir-times: ディレクトリのタイムスタンプを更新しない
 
     // タイムスタンプ保持
     if (this.options.preserveTimestamps) {
@@ -398,10 +399,17 @@ export class RsyncUploader extends SshBaseUploader {
     );
 
     const { code, stdout, stderr } = await this.runWithSshpass("rsync", args);
+    const errorMsg = new TextDecoder().decode(stderr);
+    const stdoutMsg = new TextDecoder().decode(stdout);
 
-    if (code !== 0) {
-      const errorMsg = new TextDecoder().decode(stderr);
-      const stdoutMsg = new TextDecoder().decode(stdout);
+    // rsync終了コード:
+    // 0: 成功
+    // 23: 一部ファイル/属性が転送できなかった（ファイル自体は転送済みの場合が多い）
+    // 24: 一部ファイルが転送中に消えた（警告、成功扱い）
+    // その他: エラー
+    const warningCodes = [23, 24];
+    if (code !== 0 && !warningCodes.includes(code)) {
+      logVerbose(`[rsync] Exit code: ${code}, stderr: ${errorMsg}`);
       if (
         errorMsg.includes("Permission denied") ||
         errorMsg.includes("publickey")
@@ -412,6 +420,13 @@ export class RsyncUploader extends SshBaseUploader {
         );
       }
       return { success: false, error: errorMsg || stdoutMsg };
+    }
+
+    if (code === 23) {
+      logWarning(`rsync: 一部の属性を設定できませんでした（ファイル転送は成功）`);
+      logVerbose(`[rsync] Details: ${errorMsg}`);
+    } else if (code === 24) {
+      logWarning(`rsync: 転送中に一部ファイルが消えました`);
     }
 
     return { success: true };
