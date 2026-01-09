@@ -234,6 +234,44 @@ protocol: "local"
 dest: "/path/to/local/dest"
 ```
 
+### ターゲットのデフォルト設定
+
+複数ターゲットで共通の設定がある場合、`defaults` を使って冗長性を減らせます。
+
+```yaml
+staging:
+  from:
+    type: "file"
+    src:
+      - "dist/"
+
+  to:
+    defaults:
+      host: "localhost"
+      port: 2222
+      protocol: "rsync"
+      user: "deploy"
+      password: "${DEPLOY_PASSWORD}"
+      rsync_path: "sudo rsync"
+      rsync_options:
+        - "--compress"
+      sync_mode: "update"
+    targets:
+      - dest: "/var/www/app1/"
+      - dest: "/var/www/app2/"
+      - dest: "/var/www/app3/"
+        port: 3333         # 個別設定で上書き
+        sync_mode: "mirror"
+```
+
+**マージルール:**
+
+- 各ターゲットは `defaults` の設定を継承
+- 個別に指定した設定が優先（上書き）
+- 配列（`rsync_options` 等）は完全に置き換え（マージではない）
+- `dest` は各ターゲットで必須（defaults には含められない）
+- `host` と `protocol` は defaults か個別設定のどちらかで必須
+
 ### ターゲット設定リファレンス
 
 ```yaml

@@ -9,6 +9,7 @@ export type {
   FileSource,
   GitSource,
   GlobalConfig,
+  PartialTargetConfig,
   ProfileConfig,
   Protocol,
   ResolvedProfileConfig,
@@ -17,6 +18,7 @@ export type {
   SourceType,
   SyncMode,
   TargetConfig,
+  TargetDefaults,
 } from "./config.ts";
 
 export type {

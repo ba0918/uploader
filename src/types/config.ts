@@ -59,9 +59,17 @@ export interface TargetConfig {
   legacy_mode?: boolean;
 }
 
+/** ターゲットのデフォルト設定（destは各ターゲットで必須なので除外） */
+export type TargetDefaults = Partial<Omit<TargetConfig, "dest">>;
+
+/** 入力時のターゲット設定（defaultsとマージ前、destのみ必須） */
+export type PartialTargetConfig = Partial<TargetConfig> & { dest: string };
+
 /** 宛先設定 */
 export interface DestinationConfig {
-  targets: TargetConfig[];
+  /** ターゲット共通のデフォルト設定 */
+  defaults?: TargetDefaults;
+  targets: PartialTargetConfig[];
 }
 
 /** プロファイル設定 */
