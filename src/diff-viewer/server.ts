@@ -52,6 +52,9 @@ function debugError(message: string, ...args: unknown[]): void {
 /** 遅延読み込みの閾値（この数を超えたら遅延読み込みを有効化） */
 const LAZY_LOADING_THRESHOLD = 100;
 
+/** デフォルトのアイドルタイムアウト（秒） */
+const DEFAULT_UPLOADER_IDLE_TIMEOUT = 300; // 5分
+
 /** サーバの状態 */
 interface ServerState {
   /** 解決用のPromise resolve関数 */
@@ -76,6 +79,10 @@ interface ServerState {
   rsyncDiffResult: RsyncDiffResult | null;
   /** 現在選択中のターゲットインデックス */
   currentTargetIndex: number;
+  /** Uploaderの最終使用時刻 */
+  uploaderLastUsed: number;
+  /** アイドルチェックタイマー */
+  idleCheckTimer: number | null;
 }
 
 /**
@@ -160,7 +167,12 @@ export function startDiffViewerServer(
       lazyLoading: useLazyLoading,
       rsyncDiffResult: null,
       currentTargetIndex: 0,
+      uploaderLastUsed: 0,
+      idleCheckTimer: null,
     };
+
+    // アイドルチェックタイマーを開始
+    startIdleCheckTimer(state);
 
     const server = Deno.serve(
       {
@@ -175,6 +187,8 @@ export function startDiffViewerServer(
 
     // サーバが終了したときの処理
     server.finished.then(() => {
+      // タイマーをクリア
+      stopIdleCheckTimer(state);
       // 正常終了以外の場合はキャンセル扱い
       if (state.socket === null) {
         resolve({ confirmed: false, cancelReason: "connection_closed" });
@@ -450,7 +464,12 @@ async function sendInitMessage(
               node.status = remoteStatus.hasChanges
                 ? (remoteStatus.exists ? "M" : "A")
                 : "U";
-            } catch {
+            } catch (err) {
+              debugLog(
+                `[LazyLoading] Status check failed for ${node.path}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
               node.status = "A";
             }
           },
@@ -655,13 +674,17 @@ async function handleSwitchTarget(
   // インデックスが有効かチェック
   if (!targets || targetIndex < 0 || targetIndex >= targets.length) {
     debugLog(
-      `[SwitchTarget] Invalid target index: ${targetIndex} (targets: ${targets?.length ?? 0})`,
+      `[SwitchTarget] Invalid target index: ${targetIndex} (targets: ${
+        targets?.length ?? 0
+      })`,
     );
     return;
   }
 
   debugLog(
-    `[SwitchTarget] Switching to target ${targetIndex}: ${targets[targetIndex].host}`,
+    `[SwitchTarget] Switching to target ${targetIndex}: ${
+      targets[targetIndex].host
+    }`,
   );
 
   // 既存のUploader接続を切断
@@ -875,6 +898,7 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
   // 既にUploaderが存在する場合はそれを返す
   if (state.uploader) {
     debugLog("[RemoteDiff] Using cached uploader connection");
+    updateUploaderLastUsed(state);
     return state.uploader;
   }
 
@@ -900,6 +924,7 @@ async function getOrCreateUploader(state: ServerState): Promise<Uploader> {
     await uploader.connect();
     debugLog(`[RemoteDiff] Connected to ${target.host}`);
     state.uploader = uploader;
+    updateUploaderLastUsed(state);
     return uploader;
   } catch (error) {
     // 接続エラーを記録
@@ -919,10 +944,80 @@ async function disconnectUploader(state: ServerState): Promise<void> {
   if (state.uploader) {
     try {
       await state.uploader.disconnect();
-    } catch {
-      // 切断エラーは無視
+    } catch (err) {
+      debugLog(
+        `[RemoteDiff] Uploader disconnect failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
     state.uploader = null;
+  }
+}
+
+/**
+ * Uploaderの最終使用時刻を更新
+ */
+function updateUploaderLastUsed(state: ServerState): void {
+  state.uploaderLastUsed = Date.now();
+}
+
+/**
+ * アイドルチェックタイマーを開始
+ */
+function startIdleCheckTimer(state: ServerState): void {
+  const timeout = state.options.uploaderIdleTimeout ??
+    DEFAULT_UPLOADER_IDLE_TIMEOUT;
+
+  // タイムアウトが0以下なら無効
+  if (timeout <= 0) {
+    debugLog("[IdleCheck] Uploader idle timeout is disabled");
+    return;
+  }
+
+  // 30秒ごとにチェック
+  const checkInterval = 30 * 1000;
+  state.idleCheckTimer = setInterval(async () => {
+    await checkUploaderIdle(state, timeout);
+  }, checkInterval);
+
+  debugLog(`[IdleCheck] Started idle check timer (timeout: ${timeout}s)`);
+}
+
+/**
+ * アイドルチェックタイマーを停止
+ */
+function stopIdleCheckTimer(state: ServerState): void {
+  if (state.idleCheckTimer !== null) {
+    clearInterval(state.idleCheckTimer);
+    state.idleCheckTimer = null;
+    debugLog("[IdleCheck] Stopped idle check timer");
+  }
+}
+
+/**
+ * Uploaderのアイドル状態をチェック
+ */
+async function checkUploaderIdle(
+  state: ServerState,
+  timeoutSeconds: number,
+): Promise<void> {
+  if (!state.uploader || state.uploaderLastUsed === 0) {
+    return;
+  }
+
+  const now = Date.now();
+  const idleMs = now - state.uploaderLastUsed;
+  const timeoutMs = timeoutSeconds * 1000;
+
+  if (idleMs >= timeoutMs) {
+    debugLog(
+      `[IdleCheck] Uploader idle for ${
+        Math.floor(idleMs / 1000)
+      }s, disconnecting...`,
+    );
+    await disconnectUploader(state);
+    debugLog("[IdleCheck] Uploader disconnected due to idle timeout");
   }
 }
 
@@ -962,7 +1057,12 @@ async function handleExpandDirectory(
             node.status = remoteStatus.hasChanges
               ? (remoteStatus.exists ? "M" : "A")
               : "U";
-          } catch {
+          } catch (err) {
+            debugLog(
+              `[LazyLoading] Status check failed for ${node.path}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
             node.status = "A";
           }
         },

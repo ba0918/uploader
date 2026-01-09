@@ -13,6 +13,7 @@ import type {
   UploadFile,
 } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
+import { logVerbose } from "../ui/mod.ts";
 import { parseItemizeChanges } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
@@ -168,8 +169,12 @@ export class RsyncUploader extends SshBaseUploader {
       // 一時ファイルを削除
       try {
         await Deno.remove(tempFile);
-      } catch {
-        // 削除失敗は無視
+      } catch (err) {
+        logVerbose(
+          `Failed to remove temp file ${tempFile}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     }
   }
@@ -336,8 +341,12 @@ export class RsyncUploader extends SshBaseUploader {
       // ステージングディレクトリを削除
       try {
         await Deno.remove(stagingDir, { recursive: true });
-      } catch {
-        // 削除失敗は無視
+      } catch (err) {
+        logVerbose(
+          `Failed to remove staging directory ${stagingDir}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
     }
   }
@@ -491,8 +500,12 @@ export class RsyncUploader extends SshBaseUploader {
       if (filesFromPath) {
         try {
           await Deno.remove(filesFromPath);
-        } catch {
-          // 削除失敗は無視
+        } catch (err) {
+          logVerbose(
+            `Failed to remove temp file ${filesFromPath}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
         }
       }
     }

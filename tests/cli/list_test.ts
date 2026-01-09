@@ -126,7 +126,11 @@ describe("showProfileList", () => {
           from: { type: "file", src: ["dist/", "public/"] },
           to: {
             targets: [
-              { host: "staging.example.com", protocol: "sftp", dest: "/var/www/" },
+              {
+                host: "staging.example.com",
+                protocol: "sftp",
+                dest: "/var/www/",
+              },
             ],
           },
         },
@@ -181,7 +185,11 @@ describe("showProfileList", () => {
           from: { type: "file", src: ["dist/"] },
           to: {
             targets: [
-              { host: "staging.example.com", protocol: "sftp", dest: "/var/www/" },
+              {
+                host: "staging.example.com",
+                protocol: "sftp",
+                dest: "/var/www/",
+              },
             ],
           },
         },

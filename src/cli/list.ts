@@ -30,7 +30,11 @@ function formatProfileDetail(profile: ProfileConfig): string[] {
   // ソース情報
   if (profile.from.type === "git") {
     const target = profile.from.target || "HEAD";
-    lines.push(`  ${dim("type:")} ${green("git")} ${dim(`(${profile.from.base} → ${target})`)}`);
+    lines.push(
+      `  ${dim("type:")} ${green("git")} ${
+        dim(`(${profile.from.base} → ${target})`)
+      }`,
+    );
     if (profile.from.include_untracked) {
       lines.push(`  ${dim("include_untracked:")} ${yellow("true")}`);
     }
@@ -45,26 +49,32 @@ function formatProfileDetail(profile: ProfileConfig): string[] {
     const t = targets[0];
     const host = t.host || profile.to.defaults?.host || "";
     const protocol = t.protocol || profile.to.defaults?.protocol || "";
-    const port = t.port || profile.to.defaults?.port || (protocol === "sftp" || protocol === "scp" ? 22 : undefined);
+    const port = t.port || profile.to.defaults?.port ||
+      (protocol === "sftp" || protocol === "scp" ? 22 : undefined);
     const user = t.user || profile.to.defaults?.user || "";
     const dest = t.dest;
 
     const portStr = port ? `:${port}` : "";
     const userStr = isEnvVar(user) ? user : user;
-    lines.push(`  ${dim("target:")} ${cyan(`${userStr}@${host}${portStr}`)} → ${dest}`);
+    lines.push(
+      `  ${dim("target:")} ${cyan(`${userStr}@${host}${portStr}`)} → ${dest}`,
+    );
     lines.push(`  ${dim("protocol:")} ${protocol}`);
   } else {
     lines.push(`  ${dim("targets:")} ${targets.length} servers`);
     for (const t of targets) {
       const host = t.host || profile.to.defaults?.host || "";
       const protocol = t.protocol || profile.to.defaults?.protocol || "";
-      const port = t.port || profile.to.defaults?.port || (protocol === "sftp" || protocol === "scp" ? 22 : undefined);
+      const port = t.port || profile.to.defaults?.port ||
+        (protocol === "sftp" || protocol === "scp" ? 22 : undefined);
       const user = t.user || profile.to.defaults?.user || "";
       const dest = t.dest;
 
       const portStr = port ? `:${port}` : "";
       const userStr = isEnvVar(user) ? user : user;
-      lines.push(`    ${dim("-")} ${cyan(`${userStr}@${host}${portStr}`)} → ${dest}`);
+      lines.push(
+        `    ${dim("-")} ${cyan(`${userStr}@${host}${portStr}`)} → ${dest}`,
+      );
     }
   }
 

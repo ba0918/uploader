@@ -31,6 +31,8 @@ export interface DiffViewerOptions {
   concurrency?: number;
   /** ローカルディレクトリパス（fileモード時、rsync diff用） */
   localDir?: string;
+  /** Uploader接続のアイドルタイムアウト（秒、デフォルト: 300 = 5分、0で無効） */
+  uploaderIdleTimeout?: number;
 }
 
 /** diff-viewerの起動結果 */

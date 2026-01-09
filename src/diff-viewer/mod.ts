@@ -94,8 +94,8 @@ export async function startDiffViewer(
       cancelReason: cuiResult.confirmed
         ? undefined
         : cuiResult.noChanges
-          ? "no_changes"
-          : "user_cancel",
+        ? "no_changes"
+        : "user_cancel",
     };
   }
 }

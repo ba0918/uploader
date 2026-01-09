@@ -179,7 +179,9 @@ function displayTargetDiffSummary(info: TargetDiffInfo, index: number): void {
 
   if (unsupported) {
     console.log(
-      `   ${dim(`[${index + 1}]`)} ${label} ${dim(`(${target.protocol} - diff not supported)`)}`,
+      `   ${dim(`[${index + 1}]`)} ${label} ${
+        dim(`(${target.protocol} - diff not supported)`)
+      }`,
     );
     return;
   }
@@ -197,7 +199,9 @@ function displayTargetDiffSummary(info: TargetDiffInfo, index: number): void {
       `   ${dim(`[${index + 1}]`)} ${label}`,
     );
     console.log(
-      `       ${green("+")} ${diff.added}  ${yellow("~")} ${diff.modified}  ${red("-")} ${diff.deleted}  ${dim(`(${total} total)`)}`,
+      `       ${green("+")} ${diff.added}  ${yellow("~")} ${diff.modified}  ${
+        red("-")
+      } ${diff.deleted}  ${dim(`(${total} total)`)}`,
     );
   }
 }
@@ -214,8 +218,7 @@ export async function cuiConfirm(
   const localDir = options?.localDir ?? "";
 
   // 複数ターゲットがある場合、各ターゲットの差分を取得
-  const shouldGetRemoteDiffs =
-    targets.length > 0 &&
+  const shouldGetRemoteDiffs = targets.length > 0 &&
     uploadFiles.length > 0 &&
     localDir;
 
@@ -231,7 +234,8 @@ export async function cuiConfirm(
   // 全体の変更があるかチェック
   const hasRemoteChanges = targetDiffs.some((info) => {
     if (info.diff) {
-      return info.diff.added > 0 || info.diff.modified > 0 || info.diff.deleted > 0;
+      return info.diff.added > 0 || info.diff.modified > 0 ||
+        info.diff.deleted > 0;
     }
     // エラーや未サポートの場合は変更ありとして扱う（安全側に倒す）
     return info.error !== undefined || info.unsupported;
@@ -239,7 +243,9 @@ export async function cuiConfirm(
   const hasGitChanges = diffResult.files.length > 0;
 
   // remoteモード: 全ターゲットの差分が0なら変更なし
-  const hasAnyChanges = targetDiffs.length === 0 ? hasGitChanges : hasRemoteChanges;
+  const hasAnyChanges = targetDiffs.length === 0
+    ? hasGitChanges
+    : hasRemoteChanges;
 
   // 差分サマリーを表示
   logSection("Changes detected (CUI mode)");

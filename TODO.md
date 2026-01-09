@@ -72,7 +72,9 @@
 ### Phase 10.5: 複数ターゲット対応のUI改善 ✅ 完了
 
 **問題**:
-1. diff viewerで複数ターゲットがある場合、最初のターゲット（targets[0]）との差分しか表示されない
+
+1. diff
+   viewerで複数ターゲットがある場合、最初のターゲット（targets[0]）との差分しか表示されない
 2. 並列アップロード時の進捗表示がどのホストの進捗か不明確
 
 **対応内容**:
@@ -87,13 +89,28 @@
   - [x] diff viewer（ブラウザ）: ホストごとに進捗行を分けて表示
   - [x] CLI: 複数行表示でホストごとの進捗を表示（src/ui/logger.ts）
 
----
+### Phase 10.6: 将来の改善項目対応 ✅ 完了
 
-## 将来の改善（優先度: 低）
+**対応内容**:
 
-- [ ] snake_case/camelCase の統一（設定↔アップローダー間）
-- [ ] 空catchブロックでのverboseログ追加
-- [ ] Uploader接続のタイムアウト設定追加（diff-viewer長時間接続対策）
+- [x] 空catchブロックでのverboseログ追加（9箇所）
+  - src/ui/logger.ts: ログファイル書き込み/クローズ失敗時
+  - src/upload/rsync.ts: 一時ファイル削除失敗時（3箇所）
+  - src/upload/scp.ts: 一時ファイル削除失敗時
+  - src/upload/ssh-base.ts: sshpassチェック失敗時、一時ディレクトリ削除失敗時
+  - src/diff-viewer/server.ts:
+    ステータスチェック失敗時（2箇所）、Uploader切断失敗時
+- [x] Uploader接続のアイドルタイムアウト設定追加（diff-viewer対応）
+  - `DiffViewerOptions.uploaderIdleTimeout` オプション追加（デフォルト: 5分）
+  - 30秒ごとにアイドルチェックを実行
+  - アイドル状態が続いた場合は自動切断
+- [x] --verbose / --log-file 時のログ情報量を増加
+  - main.ts: 設定読み込み、Git差分取得、ファイル収集、アップロード前後の詳細ログ
+  - src/upload/mod.ts: 接続、削除、アップロード処理の詳細ログ
+- [x] snake_case/camelCase 統一の確認
+  - 設定ファイル（YAML）: snake_case（YAMLの慣例）
+  - アップローダーオプション: camelCase（TypeScriptの慣例）
+  - 変換は upload/mod.ts の createUploader() で一貫して行われており問題なし
 
 ---
 

@@ -94,8 +94,15 @@ async function writeToLogFile(message: string): Promise<void> {
   try {
     const encoder = new TextEncoder();
     await logFileHandle.write(encoder.encode(message));
-  } catch {
-    // 書き込み失敗は無視
+  } catch (err) {
+    // 書き込み失敗は無視するが、verboseモードならコンソールに出力
+    if (config.level === "verbose") {
+      console.error(
+        `[VERBOSE] Log file write failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 }
 
@@ -148,8 +155,15 @@ export async function closeLogger(): Promise<void> {
       const timestamp = new Date().toISOString();
       await writeToLogFile(`\n=== uploader log ended at ${timestamp} ===\n`);
       logFileHandle.close();
-    } catch {
-      // クローズ失敗は無視
+    } catch (err) {
+      // クローズ失敗は無視するが、verboseモードならコンソールに出力
+      if (config.level === "verbose") {
+        console.error(
+          `[VERBOSE] Log file close failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
     logFileHandle = null;
   }
@@ -810,7 +824,11 @@ export function logUploadProgress(progress: UploadProgress): void {
     Deno.stdout.writeSync(new TextEncoder().encode("\r\x1b[K"));
 
     const statusIcon = status === "uploading" ? icons.arrowUp : icons.check;
-    const line = `${info(statusIcon)} ${path(host)} ${progressBar} ${progressPercent}% (${fileIndex}/${totalFiles}) ${dim(currentFile)}`;
+    const line = `${info(statusIcon)} ${
+      path(host)
+    } ${progressBar} ${progressPercent}% (${fileIndex}/${totalFiles}) ${
+      dim(currentFile)
+    }`;
 
     Deno.stdout.writeSync(new TextEncoder().encode(line));
   }
@@ -820,7 +838,15 @@ export function logUploadProgress(progress: UploadProgress): void {
  * 複数ターゲット用の進捗を複数行で表示
  */
 function renderMultiTargetProgressCLI(progress: UploadProgress): void {
-  const { targetIndex, totalTargets, host, fileIndex, totalFiles, currentFile, status } = progress;
+  const {
+    targetIndex,
+    totalTargets,
+    host,
+    fileIndex,
+    totalFiles,
+    currentFile,
+    status,
+  } = progress;
 
   // 状態を更新
   multiTargetState.targets.set(targetIndex, {
@@ -863,7 +889,11 @@ function renderMultiTargetProgressCLI(progress: UploadProgress): void {
         statusStr = dim(`${percent}%`);
       }
 
-      lines.push(`  ${path(hostPadded)} ${progressBar} ${statusStr} (${target.fileIndex}/${target.totalFiles})`);
+      lines.push(
+        `  ${
+          path(hostPadded)
+        } ${progressBar} ${statusStr} (${target.fileIndex}/${target.totalFiles})`,
+      );
     } else {
       // まだ開始していないターゲットは Waiting と表示
       lines.push(`  ${dim("Waiting...")}`.padEnd(maxHostLen + 40));
