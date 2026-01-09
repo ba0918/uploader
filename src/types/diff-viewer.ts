@@ -259,6 +259,8 @@ export interface CuiConfirmResult {
   confirmed: boolean;
   /** 変更がなかった場合true（確認をスキップ） */
   noChanges?: boolean;
+  /** 変更があったファイルのパス一覧（remote diff結果） */
+  changedFiles?: string[];
 }
 
 /** ファイルツリーノード */

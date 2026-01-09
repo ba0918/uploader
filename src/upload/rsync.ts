@@ -493,7 +493,25 @@ export class RsyncUploader extends SshBaseUploader {
         `${this.options.user}@${this.options.host}:${this.options.dest}/`,
       );
 
+      // デバッグ: rsync引数をログ出力
+      logVerbose(
+        `[RsyncUploader.getDiff] Command: rsync ${args.join(" ")}`,
+      );
+      logVerbose(
+        `[RsyncUploader.getDiff] Target: ${this.options.user}@${this.options.host}:${this.options.dest}/`,
+      );
+      logVerbose(
+        `[RsyncUploader.getDiff] LocalDir: ${srcDir}, Files: ${files?.length ?? "all"}`,
+      );
+
       const { code, stdout, stderr } = await this.runWithSshpass("rsync", args);
+
+      // デバッグ: rsync出力をログ
+      const stdoutText = new TextDecoder().decode(stdout);
+      const stderrText = new TextDecoder().decode(stderr);
+      logVerbose(
+        `[RsyncUploader.getDiff] Exit code: ${code}, stdout lines: ${stdoutText.split("\n").length}, stderr: ${stderrText.length > 0 ? stderrText.substring(0, 200) : "(empty)"}`,
+      );
 
       if (code !== 0) {
         const errorMsg = new TextDecoder().decode(stderr);

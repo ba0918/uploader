@@ -97,6 +97,7 @@ export async function startDiffViewer(
         : cuiResult.noChanges
         ? "no_changes"
         : "user_cancel",
+      changedFiles: cuiResult.changedFiles,
     };
   }
 }

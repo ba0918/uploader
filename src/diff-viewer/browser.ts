@@ -19,6 +19,7 @@ import {
   green,
   logSection,
   logSectionClose,
+  logVerbose,
   red,
   yellow,
 } from "../ui/mod.ts";
@@ -134,7 +135,20 @@ async function getTargetDiffs(
   checksum?: boolean,
 ): Promise<TargetDiffInfo[]> {
   const results: TargetDiffInfo[] = [];
-  const filePaths = uploadFiles.map((f) => f.relativePath);
+  // ディレクトリは除外（ディレクトリを含めるとrsyncがディレクトリ内の全ファイルを比較してしまい、
+  // ignore設定で除外されたファイルまで差分として検出されてしまう）
+  const filePaths = uploadFiles
+    .filter((f) => !f.isDirectory)
+    .map((f) => f.relativePath);
+
+  // デバッグ: CUIモードでの引数を表示
+  logVerbose(
+    `[CUI getTargetDiffs] localDir: ${localDir}, files: ${filePaths.length}, checksum: ${checksum ?? false}`,
+  );
+  // デバッグ: 最初の5件のファイルパスを表示
+  logVerbose(
+    `[CUI getTargetDiffs] First 5 file paths: ${filePaths.slice(0, 5).join(", ")}`,
+  );
 
   for (const target of targets) {
     // rsync以外のプロトコルはgetDiff未サポート
@@ -324,13 +338,24 @@ export async function cuiConfirm(
     return { confirmed: false, noChanges: true };
   }
 
+  // 変更ファイル一覧を収集（全ターゲットの差分を統合）
+  const changedFilesSet = new Set<string>();
+  for (const info of targetDiffs) {
+    if (info.diff) {
+      for (const entry of info.diff.entries) {
+        changedFilesSet.add(entry.path);
+      }
+    }
+  }
+  const changedFiles = Array.from(changedFilesSet);
+
   // 確認プロンプト
   const answer = await promptYesNo(
     "Proceed with upload?",
     options?.promptReader ?? defaultPromptReader,
   );
 
-  return { confirmed: answer };
+  return { confirmed: answer, changedFiles };
 }
 
 /**

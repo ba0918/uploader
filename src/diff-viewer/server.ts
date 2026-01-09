@@ -388,12 +388,18 @@ async function tryRsyncGetDiff(
     }
 
     // uploadFilesの相対パスリストを取得（ディレクトリは除外）
+    // 注: ディレクトリを含めるとrsyncがディレクトリ内の全ファイルを比較してしまい、
+    // ignore設定で除外されたファイルまで差分として検出されてしまう
     const filePaths = options.uploadFiles
       .filter((f) => !f.isDirectory)
       .map((f) => f.relativePath);
 
     debugLog(
       `[RsyncDiff] Running rsync getDiff() on ${options.localDir} for ${filePaths.length} files (checksum: ${options.checksum ?? false})...`,
+    );
+    // デバッグ: 最初の5件のファイルパスを表示
+    debugLog(
+      `[RsyncDiff] First 5 file paths: ${filePaths.slice(0, 5).join(", ")}`,
     );
 
     // rsync dry-runで差分を取得（比較対象をuploadFilesに限定）
@@ -421,7 +427,7 @@ async function tryRsyncGetDiff(
  * rsync getDiff()の結果を使ってファイル一覧をフィルタリング
  */
 function filterFilesByRsyncDiff(
-  files: DiffFile[],
+  _files: DiffFile[],
   rsyncDiff: RsyncDiffResult,
 ): {
   files: DiffFile[];
@@ -433,27 +439,25 @@ function filterFilesByRsyncDiff(
     total: number;
   };
 } {
-  // rsync差分結果のパスをSetに変換（高速検索用）
-  const changedPaths = new Set(rsyncDiff.entries.map((e) => e.path));
-  const changeTypeMap = new Map(
-    rsyncDiff.entries.map((e) => [e.path, e.changeType]),
+  // rsyncの差分結果から直接DiffFileを生成
+  // 注: diffResult.filesでフィルタリングすると、ignore設定で除外されたファイルや
+  // ディレクトリ展開で検出されたファイルが漏れてしまうため、rsync結果をそのまま使用
+  const filteredFiles: DiffFile[] = rsyncDiff.entries.map((entry) => ({
+    path: entry.path,
+    status: entry.changeType,
+  }));
+
+  // デバッグ: 結果を表示
+  debugLog(
+    `[filterFilesByRsyncDiff] rsyncDiff.entries=${rsyncDiff.entries.length} -> filteredFiles=${filteredFiles.length}`,
   );
-
-  // 変更があるファイルのみをフィルタリング
-  const filteredFiles: DiffFile[] = [];
-
-  for (const file of files) {
-    if (changedPaths.has(file.path)) {
-      // rsyncの差分タイプをDiffFileのstatusにマッピング
-      const rsyncChangeType = changeTypeMap.get(file.path);
-      filteredFiles.push({
-        ...file,
-        status: rsyncChangeType ?? file.status,
-      });
-    }
+  if (filteredFiles.length > 0 && filteredFiles.length <= 5) {
+    debugLog(
+      `[filterFilesByRsyncDiff] Filtered paths: ${filteredFiles.map((f) => f.path).join(", ")}`,
+    );
   }
 
-  // サマリーを再計算
+  // サマリー
   const summary = {
     added: rsyncDiff.added,
     modified: rsyncDiff.modified,
