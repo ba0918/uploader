@@ -33,12 +33,8 @@ jobs:
           deno-version: v2.x
 
       - name: Build
-        run: |
-          deno compile \
-            --allow-read --allow-write --allow-net --allow-run --allow-env \
-            --target ${{ matrix.target }} \
-            --output ${{ matrix.artifact }} \
-            main.ts
+        shell: bash
+        run: deno compile --allow-read --allow-write --allow-net --allow-run --allow-env --target ${{ matrix.target }} --output ${{ matrix.artifact }} main.ts
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
