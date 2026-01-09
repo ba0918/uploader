@@ -12,7 +12,7 @@ import type {
   UploadOptions,
   UploadResult,
 } from "../types/mod.ts";
-import { UploadError } from "../types/mod.ts";
+import { hasBulkUpload, UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/logger.ts";
 import { LocalUploader } from "./local.ts";
 import { SftpUploader } from "./sftp.ts";
@@ -249,7 +249,7 @@ async function uploadToTargetWithoutInit(
     }
 
     // bulkUploadが利用可能な場合は一括アップロード
-    if (uploader.bulkUpload && filesToUpload.length > 0) {
+    if (hasBulkUpload(uploader) && filesToUpload.length > 0) {
       logVerbose(
         `[${host}] Using bulk upload for ${filesToUpload.length} file(s)`,
       );

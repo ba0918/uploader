@@ -23,15 +23,22 @@ import type {
   WsInitMessage,
   WsUploadStateMessage,
 } from "../types/mod.ts";
+import { hasDiff } from "../types/mod.ts";
 import { getHtmlContent } from "./static/html.ts";
 import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
 import {
   batchAsync,
+  BINARY_CHECK,
   buildRootLevelTree,
   getDirectChildren,
   shouldUseLazyLoading,
 } from "../utils/mod.ts";
+import {
+  extractFilePaths,
+  rsyncDiffToFiles,
+  rsyncDiffToSummary,
+} from "./remote-diff.ts";
 
 /**
  * デバッグログを出力（verboseモード時のみ）
@@ -380,7 +387,7 @@ async function tryRsyncGetDiff(
     const uploader = await getOrCreateUploader(state);
 
     // getDiff()がサポートされているか確認
-    if (!uploader.getDiff) {
+    if (!hasDiff(uploader)) {
       debugLog(
         "[RsyncDiff] Uploader does not support getDiff(), falling back to readFile()",
       );
@@ -388,12 +395,14 @@ async function tryRsyncGetDiff(
     }
 
     // uploadFilesの相対パスリストを取得（ディレクトリは除外）
-    const filePaths = options.uploadFiles
-      .filter((f) => !f.isDirectory)
-      .map((f) => f.relativePath);
+    const filePaths = extractFilePaths(options.uploadFiles);
 
     debugLog(
       `[RsyncDiff] Running rsync getDiff() on ${options.localDir} for ${filePaths.length} files (checksum: ${options.checksum ?? false})...`,
+    );
+    // デバッグ: 最初の5件のファイルパスを表示
+    debugLog(
+      `[RsyncDiff] First 5 file paths: ${filePaths.slice(0, 5).join(", ")}`,
     );
 
     // rsync dry-runで差分を取得（比較対象をuploadFilesに限定）
@@ -421,7 +430,7 @@ async function tryRsyncGetDiff(
  * rsync getDiff()の結果を使ってファイル一覧をフィルタリング
  */
 function filterFilesByRsyncDiff(
-  files: DiffFile[],
+  _files: DiffFile[],
   rsyncDiff: RsyncDiffResult,
 ): {
   files: DiffFile[];
@@ -433,34 +442,19 @@ function filterFilesByRsyncDiff(
     total: number;
   };
 } {
-  // rsync差分結果のパスをSetに変換（高速検索用）
-  const changedPaths = new Set(rsyncDiff.entries.map((e) => e.path));
-  const changeTypeMap = new Map(
-    rsyncDiff.entries.map((e) => [e.path, e.changeType]),
+  // 共通モジュールを使用してrsync結果をDiffFileとサマリーに変換
+  const filteredFiles = rsyncDiffToFiles(rsyncDiff);
+  const summary = rsyncDiffToSummary(rsyncDiff);
+
+  // デバッグ: 結果を表示
+  debugLog(
+    `[filterFilesByRsyncDiff] rsyncDiff.entries=${rsyncDiff.entries.length} -> filteredFiles=${filteredFiles.length}`,
   );
-
-  // 変更があるファイルのみをフィルタリング
-  const filteredFiles: DiffFile[] = [];
-
-  for (const file of files) {
-    if (changedPaths.has(file.path)) {
-      // rsyncの差分タイプをDiffFileのstatusにマッピング
-      const rsyncChangeType = changeTypeMap.get(file.path);
-      filteredFiles.push({
-        ...file,
-        status: rsyncChangeType ?? file.status,
-      });
-    }
+  if (filteredFiles.length > 0 && filteredFiles.length <= 5) {
+    debugLog(
+      `[filterFilesByRsyncDiff] Filtered paths: ${filteredFiles.map((f) => f.path).join(", ")}`,
+    );
   }
-
-  // サマリーを再計算
-  const summary = {
-    added: rsyncDiff.added,
-    modified: rsyncDiff.modified,
-    deleted: rsyncDiff.deleted,
-    renamed: 0,
-    total: filteredFiles.length,
-  };
 
   return { files: filteredFiles, summary };
 }
@@ -1251,8 +1245,8 @@ async function handleExpandDirectory(
  * バイナリコンテンツかどうかを判定
  */
 function isBinaryContent(content: Uint8Array): boolean {
-  // 最初の8192バイトをチェック
-  const checkLength = Math.min(content.length, 8192);
+  // 最初の一定バイト数をチェック
+  const checkLength = Math.min(content.length, BINARY_CHECK.CHECK_LENGTH);
   for (let i = 0; i < checkLength; i++) {
     // NULLバイトがあればバイナリ
     if (content[i] === 0) {

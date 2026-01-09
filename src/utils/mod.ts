@@ -11,3 +11,26 @@ export {
   getDirectChildren,
   shouldUseLazyLoading,
 } from "./tree.ts";
+export {
+  buildSshArgs,
+  buildSshCommand,
+  LEGACY_ALGORITHMS,
+  LEGACY_ALGORITHMS_SSH2,
+  type BuildSshArgsOptions,
+  type SshConnectionOptions,
+} from "./ssh-config.ts";
+export {
+  getErrorMessage,
+  toError,
+  withRetry,
+  type RetryOptions,
+} from "./retry.ts";
+export { ensureParentDir, getParentDir } from "./directory.ts";
+export { escapeShellArg } from "./shell.ts";
+export {
+  ERROR_MESSAGES,
+  isConnectionRefusedError,
+  isSftpAuthError,
+  isSshAuthError,
+} from "./error.ts";
+export { BINARY_CHECK, FILE_TRANSFER } from "./constants.ts";

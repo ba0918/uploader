@@ -14,7 +14,12 @@ import type {
 } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose, logWarning } from "../ui/mod.ts";
-import { parseItemizeChanges } from "../utils/mod.ts";
+import {
+  buildSshCommand,
+  isConnectionRefusedError,
+  isSshAuthError,
+  parseItemizeChanges,
+} from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -78,111 +83,27 @@ export class RsyncUploader extends SshBaseUploader {
   /**
    * rsync用のSSH接続オプションを構築
    */
-  private buildSshCommand(): string {
-    const parts: string[] = ["ssh"];
-
-    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
-    if (!this.options.password) {
-      parts.push("-o", "BatchMode=yes");
-    }
-
-    parts.push("-o", "StrictHostKeyChecking=accept-new");
-    parts.push("-o", `ConnectTimeout=${this.options.timeout ?? 30}`);
-    parts.push("-p", String(this.options.port));
-
-    if (this.options.keyFile) {
-      parts.push("-i", this.options.keyFile);
-    }
-
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
-    if (this.options.legacyMode) {
-      parts.push(
-        "-o",
-        "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
-      );
-      parts.push("-o", "HostKeyAlgorithms=+ssh-rsa");
-      parts.push("-o", "PubkeyAcceptedAlgorithms=+ssh-rsa");
-    }
-
-    return parts.join(" ");
+  private buildSshCommandInternal(): string {
+    return buildSshCommand({
+      password: this.options.password,
+      keyFile: this.options.keyFile,
+      port: this.options.port,
+      timeout: this.options.timeout,
+      legacyMode: this.options.legacyMode,
+    });
   }
 
   /**
-   * ファイルアップロード
+   * 一時ディレクトリのプレフィックス
    */
-  async upload(
-    file: UploadFile,
-    remotePath: string,
-    onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void> {
-    if (!this.isConnected()) {
-      throw new UploadError("Not connected", "CONNECTION_ERROR");
-    }
-
-    // ディレクトリの場合は作成のみ
-    if (file.isDirectory) {
-      await this.mkdir(remotePath);
-      onProgress?.(0, 0);
-      return;
-    }
-
-    // 親ディレクトリを確保
-    const parentDir = dirname(remotePath);
-    if (parentDir && parentDir !== ".") {
-      await this.mkdir(parentDir);
-    }
-
-    const destPath = join(this.options.dest, remotePath);
-
-    if (file.content) {
-      // Gitモードの場合: 一時ファイルに書き込んでからアップロード
-      await this.uploadBuffer(file.content, destPath, file.size, onProgress);
-    } else if (file.sourcePath) {
-      // ファイルモードの場合: 直接アップロード
-      await this.uploadFile(file.sourcePath, destPath, file.size, onProgress);
-    } else {
-      throw new UploadError(
-        "No source for file upload",
-        "TRANSFER_ERROR",
-      );
-    }
-  }
-
-  /**
-   * バッファをファイルとしてアップロード
-   */
-  private async uploadBuffer(
-    buffer: Uint8Array,
-    destPath: string,
-    size: number,
-    onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void> {
-    const tempDir = await this.getOrCreateTempDir("uploader_rsync_");
-
-    // 一時ファイルに書き込み
-    const tempFile = join(tempDir, crypto.randomUUID());
-    await Deno.writeFile(tempFile, buffer);
-
-    try {
-      await this.uploadFile(tempFile, destPath, size, onProgress);
-    } finally {
-      // 一時ファイルを削除
-      try {
-        await Deno.remove(tempFile);
-      } catch (err) {
-        logVerbose(
-          `Failed to remove temp file ${tempFile}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
+  protected get tempDirPrefix(): string {
+    return "uploader_rsync_";
   }
 
   /**
    * ファイルをアップロード
    */
-  private async uploadFile(
+  protected async uploadFileFromPath(
     srcPath: string,
     destPath: string,
     size: number,
@@ -208,7 +129,7 @@ export class RsyncUploader extends SshBaseUploader {
     }
 
     // SSH経由で接続
-    args.push("-e", this.buildSshCommand());
+    args.push("-e", this.buildSshCommandInternal());
 
     // リモート側のrsyncパス（sudo対応）
     if (this.options.rsyncPath) {
@@ -231,10 +152,7 @@ export class RsyncUploader extends SshBaseUploader {
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",
@@ -378,7 +296,7 @@ export class RsyncUploader extends SshBaseUploader {
     }
 
     // SSH経由で接続
-    args.push("-e", this.buildSshCommand());
+    args.push("-e", this.buildSshCommandInternal());
 
     // リモート側のrsyncパス（sudo対応）
     if (this.options.rsyncPath) {
@@ -410,10 +328,7 @@ export class RsyncUploader extends SshBaseUploader {
     const warningCodes = [23, 24];
     if (code !== 0 && !warningCodes.includes(code)) {
       logVerbose(`[rsync] Exit code: ${code}, stderr: ${errorMsg}`);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",
@@ -477,7 +392,7 @@ export class RsyncUploader extends SshBaseUploader {
       }
 
       // SSH経由で接続
-      args.push("-e", this.buildSshCommand());
+      args.push("-e", this.buildSshCommandInternal());
 
       // リモート側のrsyncパス（sudo対応）
       if (this.options.rsyncPath) {
@@ -493,21 +408,36 @@ export class RsyncUploader extends SshBaseUploader {
         `${this.options.user}@${this.options.host}:${this.options.dest}/`,
       );
 
+      // デバッグ: rsync引数をログ出力
+      logVerbose(
+        `[RsyncUploader.getDiff] Command: rsync ${args.join(" ")}`,
+      );
+      logVerbose(
+        `[RsyncUploader.getDiff] Target: ${this.options.user}@${this.options.host}:${this.options.dest}/`,
+      );
+      logVerbose(
+        `[RsyncUploader.getDiff] LocalDir: ${srcDir}, Files: ${files?.length ?? "all"}`,
+      );
+
       const { code, stdout, stderr } = await this.runWithSshpass("rsync", args);
+
+      // デバッグ: rsync出力をログ
+      const stdoutText = new TextDecoder().decode(stdout);
+      const stderrText = new TextDecoder().decode(stderr);
+      logVerbose(
+        `[RsyncUploader.getDiff] Exit code: ${code}, stdout lines: ${stdoutText.split("\n").length}, stderr: ${stderrText.length > 0 ? stderrText.substring(0, 200) : "(empty)"}`,
+      );
 
       if (code !== 0) {
         const errorMsg = new TextDecoder().decode(stderr);
         // 接続/認証エラーの場合は例外をスロー
-        if (
-          errorMsg.includes("Permission denied") ||
-          errorMsg.includes("publickey")
-        ) {
+        if (isSshAuthError(errorMsg)) {
           throw new UploadError(
             `Authentication failed: ${this.options.host}`,
             "AUTH_ERROR",
           );
         }
-        if (errorMsg.includes("Connection refused")) {
+        if (isConnectionRefusedError(errorMsg)) {
           throw new UploadError(
             `Connection refused: ${this.options.host}`,
             "CONNECTION_ERROR",

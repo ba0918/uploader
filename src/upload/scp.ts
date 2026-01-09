@@ -4,10 +4,8 @@
  * 外部scpコマンドを使用して転送を行う
  */
 
-import { dirname, join } from "@std/path";
-import type { UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
-import { logVerbose } from "../ui/mod.ts";
+import { buildSshArgs, isSshAuthError } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
 
 /**
@@ -27,118 +25,33 @@ export class ScpUploader extends SshBaseUploader {
   }
 
   /**
-   * ファイルアップロード
+   * 一時ディレクトリのプレフィックス
    */
-  async upload(
-    file: UploadFile,
-    remotePath: string,
-    onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void> {
-    if (!this.isConnected()) {
-      throw new UploadError("Not connected", "CONNECTION_ERROR");
-    }
-
-    // ディレクトリの場合は作成のみ
-    if (file.isDirectory) {
-      await this.mkdir(remotePath);
-      onProgress?.(0, 0);
-      return;
-    }
-
-    // 親ディレクトリを確保
-    const parentDir = dirname(remotePath);
-    if (parentDir && parentDir !== ".") {
-      await this.mkdir(parentDir);
-    }
-
-    const destPath = join(this.options.dest, remotePath);
-
-    if (file.content) {
-      // Gitモードの場合: 一時ファイルに書き込んでからアップロード
-      await this.uploadBuffer(file.content, destPath, file.size, onProgress);
-    } else if (file.sourcePath) {
-      // ファイルモードの場合: 直接アップロード
-      await this.uploadFile(file.sourcePath, destPath, file.size, onProgress);
-    } else {
-      throw new UploadError(
-        "No source for file upload",
-        "TRANSFER_ERROR",
-      );
-    }
-  }
-
-  /**
-   * バッファをファイルとしてアップロード
-   */
-  private async uploadBuffer(
-    buffer: Uint8Array,
-    destPath: string,
-    size: number,
-    onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void> {
-    const tempDir = await this.getOrCreateTempDir("uploader_");
-
-    // 一時ファイルに書き込み
-    const tempFile = join(tempDir, crypto.randomUUID());
-    await Deno.writeFile(tempFile, buffer);
-
-    try {
-      await this.uploadFile(tempFile, destPath, size, onProgress);
-    } finally {
-      // 一時ファイルを削除
-      try {
-        await Deno.remove(tempFile);
-      } catch (err) {
-        logVerbose(
-          `Failed to remove temp file ${tempFile}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
+  protected get tempDirPrefix(): string {
+    return "uploader_scp_";
   }
 
   /**
    * ファイルをアップロード
    */
-  private async uploadFile(
+  protected async uploadFileFromPath(
     srcPath: string,
     destPath: string,
     size: number,
     onProgress?: (transferred: number, total: number) => void,
   ): Promise<void> {
-    const args: string[] = [];
-
-    // SCP引数を構築
-    if (this.options.keyFile) {
-      args.push("-i", this.options.keyFile);
-    }
-
-    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
-    if (!this.options.password) {
-      args.push("-o", "BatchMode=yes");
-    }
-
-    args.push(
-      "-o",
-      "StrictHostKeyChecking=accept-new",
-      "-o",
-      `ConnectTimeout=${this.options.timeout ?? 30}`,
-      "-P",
-      String(this.options.port),
+    // SCP引数を構築（共通モジュールを使用）
+    // SCPはポートオプションが -P（大文字）で、keyFileを先頭に配置
+    const args = buildSshArgs(
+      {
+        password: this.options.password,
+        keyFile: this.options.keyFile,
+        port: this.options.port,
+        timeout: this.options.timeout,
+        legacyMode: this.options.legacyMode,
+      },
+      { portFlag: "-P", keyFileFirst: true },
     );
-
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
-    if (this.options.legacyMode) {
-      args.push(
-        "-o",
-        "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
-        "-o",
-        "HostKeyAlgorithms=+ssh-rsa",
-        "-o",
-        "PubkeyAcceptedAlgorithms=+ssh-rsa",
-      );
-    }
 
     if (this.options.preserveTimestamps) {
       args.push("-p");
@@ -153,10 +66,7 @@ export class ScpUploader extends SshBaseUploader {
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",

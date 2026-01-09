@@ -32,10 +32,10 @@ deno lint
 deno check main.ts
 
 # Test
-deno test
+deno task test
 
 # Run single test
-deno test path/to/test.ts
+deno test --allow-read --allow-write --allow-net --allow-env --allow-run path/to/test.ts
 ```
 
 ## Architecture

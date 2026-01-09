@@ -549,9 +549,12 @@ test:
     it("複雑な設定もYAML経由で正しく処理される", () => {
       const yaml = `
 _global:
-  ignore:
-    - "*.log"
-    - "node_modules/"
+  ignore_groups:
+    common:
+      - "*.log"
+      - "node_modules/"
+  default_ignore:
+    - "common"
 
 production:
   from:

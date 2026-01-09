@@ -2,12 +2,22 @@
  * SSHベースアップローダーの共通基底クラス
  *
  * SCP/Rsyncで共通するSSH接続処理を抽象化
+ * テンプレートメソッドパターンでupload()の共通フローを実装
  */
 
 import { join } from "@std/path";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
+import {
+  buildSshArgs,
+  ensureParentDir,
+  ERROR_MESSAGES,
+  escapeShellArg,
+  isSshAuthError,
+  toError,
+  withRetry,
+} from "../utils/mod.ts";
 
 /**
  * SSHベースアップローダーの共通オプション
@@ -117,40 +127,14 @@ export abstract class SshBaseUploader implements Uploader {
   /**
    * SSH共通引数を構築
    */
-  protected buildSshArgs(): string[] {
-    const args: string[] = [];
-
-    // パスワード認証時はBatchModeを使わない（sshpassと互換性がない）
-    if (!this.options.password) {
-      args.push("-o", "BatchMode=yes");
-    }
-
-    args.push(
-      "-o",
-      "StrictHostKeyChecking=accept-new",
-      "-o",
-      `ConnectTimeout=${this.options.timeout ?? 30}`,
-      "-p",
-      String(this.options.port),
-    );
-
-    if (this.options.keyFile) {
-      args.push("-i", this.options.keyFile);
-    }
-
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを有効化
-    if (this.options.legacyMode) {
-      args.push(
-        "-o",
-        "KexAlgorithms=+diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
-        "-o",
-        "HostKeyAlgorithms=+ssh-rsa,ssh-dss",
-        "-o",
-        "PubkeyAcceptedAlgorithms=+ssh-rsa",
-      );
-    }
-
-    return args;
+  protected buildSshArgsInternal(): string[] {
+    return buildSshArgs({
+      password: this.options.password,
+      keyFile: this.options.keyFile,
+      port: this.options.port,
+      timeout: this.options.timeout,
+      legacyMode: this.options.legacyMode,
+    });
   }
 
   /**
@@ -168,17 +152,14 @@ export abstract class SshBaseUploader implements Uploader {
       }
     }
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, "echo", "ok");
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
 
     if (code !== 0) {
       const errorMsg = new TextDecoder().decode(stderr);
-      if (
-        errorMsg.includes("Permission denied") ||
-        errorMsg.includes("publickey")
-      ) {
+      if (isSshAuthError(errorMsg)) {
         throw new UploadError(
           `Authentication failed: ${this.options.host}`,
           "AUTH_ERROR",
@@ -196,28 +177,22 @@ export abstract class SshBaseUploader implements Uploader {
    */
   async connect(): Promise<void> {
     const maxRetries = this.options.retry ?? 3;
-    let lastError: Error | undefined;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await this.testConnection();
-        this.connected = true;
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < maxRetries) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * Math.pow(2, attempt - 1))
-          );
-        }
-      }
+    try {
+      await withRetry(
+        async () => {
+          await this.testConnection();
+          this.connected = true;
+        },
+        { maxRetries },
+      );
+    } catch (error) {
+      throw new UploadError(
+        `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
+        "CONNECTION_ERROR",
+        toError(error),
+      );
     }
-
-    throw new UploadError(
-      `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
-      "CONNECTION_ERROR",
-      lastError,
-    );
   }
 
   /**
@@ -251,11 +226,12 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
+    const escapedPath = escapeShellArg(fullPath);
     const mkdirCmd = useSudo
-      ? `sudo mkdir -p "${fullPath}"`
-      : `mkdir -p "${fullPath}"`;
+      ? `sudo mkdir -p ${escapedPath}`
+      : `mkdir -p ${escapedPath}`;
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, mkdirCmd);
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
@@ -280,11 +256,12 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
+    const escapedPath = escapeShellArg(fullPath);
     const rmCmd = useSudo
-      ? `sudo rm -rf "${fullPath}"`
-      : `rm -rf "${fullPath}"`;
+      ? `sudo rm -rf ${escapedPath}`
+      : `rm -rf ${escapedPath}`;
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, rmCmd);
 
     const { code, stderr } = await this.runWithSshpass("ssh", args);
@@ -315,9 +292,10 @@ export abstract class SshBaseUploader implements Uploader {
     }
 
     const fullPath = join(this.options.dest, remotePath);
-    const catCmd = useSudo ? `sudo cat "${fullPath}"` : `cat "${fullPath}"`;
+    const escapedPath = escapeShellArg(fullPath);
+    const catCmd = useSudo ? `sudo cat ${escapedPath}` : `cat ${escapedPath}`;
 
-    const args = this.buildSshArgs();
+    const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, catCmd);
 
     const { code, stdout, stderr } = await this.runWithSshpass("ssh", args);
@@ -362,11 +340,107 @@ export abstract class SshBaseUploader implements Uploader {
   }
 
   /**
-   * ファイルアップロード（サブクラスで実装）
+   * 一時ディレクトリのプレフィックス（サブクラスで実装）
    */
-  abstract upload(
+  protected abstract get tempDirPrefix(): string;
+
+  /**
+   * ローカルファイルパスからリモートへアップロード（サブクラスで実装）
+   */
+  protected abstract uploadFileFromPath(
+    srcPath: string,
+    destPath: string,
+    size: number,
+    onProgress?: (transferred: number, total: number) => void,
+  ): Promise<void>;
+
+  /**
+   * バッファから一時ファイルを作成してアップロード
+   *
+   * @param buffer アップロードするデータ
+   * @param destPath リモートの宛先パス
+   * @param size ファイルサイズ
+   * @param onProgress 進捗コールバック
+   */
+  protected async uploadBuffer(
+    buffer: Uint8Array,
+    destPath: string,
+    size: number,
+    onProgress?: (transferred: number, total: number) => void,
+  ): Promise<void> {
+    const tempDir = await this.getOrCreateTempDir(this.tempDirPrefix);
+
+    // 一時ファイルに書き込み
+    const tempFile = join(tempDir, crypto.randomUUID());
+    await Deno.writeFile(tempFile, buffer);
+
+    try {
+      await this.uploadFileFromPath(tempFile, destPath, size, onProgress);
+    } finally {
+      // 一時ファイルを削除
+      try {
+        await Deno.remove(tempFile);
+      } catch (err) {
+        logVerbose(
+          `Failed to remove temp file ${tempFile}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
+
+  /**
+   * ファイルアップロード（テンプレートメソッド）
+   *
+   * 共通のアップロードフローを実装:
+   * 1. 接続確認
+   * 2. ディレクトリの場合は作成のみ
+   * 3. 親ディレクトリを確保
+   * 4. コンテンツまたはファイルパスからアップロード
+   */
+  async upload(
     file: UploadFile,
     remotePath: string,
     onProgress?: (transferred: number, total: number) => void,
-  ): Promise<void>;
+  ): Promise<void> {
+    if (!this.isConnected()) {
+      throw new UploadError("Not connected", "CONNECTION_ERROR");
+    }
+
+    // ディレクトリの場合は作成のみ
+    if (file.isDirectory) {
+      await this.mkdir(remotePath);
+      onProgress?.(0, 0);
+      return;
+    }
+
+    // 親ディレクトリを確保
+    await ensureParentDir(remotePath, (path) => this.mkdir(path));
+
+    const destPath = join(this.options.dest, remotePath);
+
+    if (file.content) {
+      // Gitモードの場合: 一時ファイルに書き込んでからアップロード
+      await this.uploadBuffer(
+        file.content,
+        destPath,
+        file.size,
+        onProgress,
+      );
+    } else if (file.sourcePath) {
+      // ファイルモードの場合: 直接アップロード
+      await this.uploadFileFromPath(
+        file.sourcePath,
+        destPath,
+        file.size,
+        onProgress,
+      );
+    } else {
+      throw new UploadError(
+        ERROR_MESSAGES.NO_SOURCE_FOR_FILE_UPLOAD,
+        "TRANSFER_ERROR",
+      );
+    }
+  }
 }

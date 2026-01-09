@@ -3,11 +3,19 @@
  */
 
 import { Client, type SFTPWrapper } from "ssh2";
-import { dirname } from "@std/path";
 import { join as posixJoin } from "@std/path/posix";
 import { Buffer } from "node:buffer";
 import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
+import {
+  ensureParentDir,
+  ERROR_MESSAGES,
+  FILE_TRANSFER,
+  isSftpAuthError,
+  LEGACY_ALGORITHMS_SSH2,
+  toError,
+  withRetry,
+} from "../utils/mod.ts";
 
 /**
  * SFTP接続オプション
@@ -57,28 +65,19 @@ export class SftpUploader implements Uploader {
    */
   async connect(): Promise<void> {
     const maxRetries = this.options.retry ?? 3;
-    let lastError: Error | undefined;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        await this.tryConnect();
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < maxRetries) {
-          // 指数バックオフでリトライ
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * Math.pow(2, attempt - 1))
-          );
-        }
-      }
+    try {
+      await withRetry(
+        () => this.tryConnect(),
+        { maxRetries },
+      );
+    } catch (error) {
+      throw new UploadError(
+        `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
+        "CONNECTION_ERROR",
+        toError(error),
+      );
     }
-
-    throw new UploadError(
-      `Failed to connect to ${this.options.host} after ${maxRetries} attempts`,
-      "CONNECTION_ERROR",
-      lastError,
-    );
   }
 
   /**
@@ -121,11 +120,7 @@ export class SftpUploader implements Uploader {
 
       client.on("error", (err: Error) => {
         clearTimeout(timeout);
-        if (
-          err.message.includes("authentication") ||
-          err.message.includes("publickey") ||
-          err.message.includes("password")
-        ) {
+        if (isSftpAuthError(err.message)) {
           reject(
             new UploadError(
               `Authentication failed: ${this.options.host}`,
@@ -168,48 +163,12 @@ export class SftpUploader implements Uploader {
       ],
     };
 
-    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを追加
+    // レガシーモード: 古いSSHサーバー向けのアルゴリズムを追加（共通モジュールを使用）
     if (this.options.legacyMode) {
-      // 鍵交換アルゴリズム（古いサーバー向け）
-      algorithms.kex = [
-        // モダンなアルゴリズム
-        "ecdh-sha2-nistp256",
-        "ecdh-sha2-nistp384",
-        "ecdh-sha2-nistp521",
-        "diffie-hellman-group-exchange-sha256",
-        "diffie-hellman-group14-sha256",
-        // レガシーアルゴリズム
-        "diffie-hellman-group-exchange-sha1",
-        "diffie-hellman-group14-sha1",
-        "diffie-hellman-group1-sha1",
-      ];
-      // ホスト鍵アルゴリズム（古いサーバーはssh-rsaのみ対応の場合がある）
-      // ssh-rsaを優先的に配置
-      algorithms.serverHostKey = [
-        "ssh-rsa", // レガシー（SHA-1ベース）- 古いサーバー向け
-        "ssh-dss", // レガシー（DSA）
-        "rsa-sha2-512",
-        "rsa-sha2-256",
-        "ecdsa-sha2-nistp256",
-        "ecdsa-sha2-nistp384",
-        "ecdsa-sha2-nistp521",
-      ];
-      // 暗号アルゴリズム（CBC対応追加）
-      algorithms.cipher = [
-        "aes128-ctr",
-        "aes192-ctr",
-        "aes256-ctr",
-        "aes128-cbc", // レガシー
-        "aes256-cbc", // レガシー
-        "3des-cbc", // レガシー
-      ];
-      // HMACアルゴリズム（古いサーバー向け）
-      algorithms.hmac = [
-        "hmac-sha2-256",
-        "hmac-sha2-512",
-        "hmac-sha1", // レガシー
-        "hmac-md5", // レガシー
-      ];
+      algorithms.kex = [...LEGACY_ALGORITHMS_SSH2.kex];
+      algorithms.serverHostKey = [...LEGACY_ALGORITHMS_SSH2.serverHostKey];
+      algorithms.cipher = [...LEGACY_ALGORITHMS_SSH2.cipher];
+      algorithms.hmac = [...LEGACY_ALGORITHMS_SSH2.hmac];
     }
 
     const config: Record<string, unknown> = {
@@ -355,10 +314,7 @@ export class SftpUploader implements Uploader {
     }
 
     // 親ディレクトリを確保
-    const parentDir = dirname(remotePath);
-    if (parentDir && parentDir !== ".") {
-      await this.mkdir(parentDir);
-    }
+    await ensureParentDir(remotePath, (path) => this.mkdir(path));
 
     if (file.content) {
       // Gitモードの場合: バイト配列から書き込み
@@ -368,7 +324,7 @@ export class SftpUploader implements Uploader {
       await this.uploadFile(file.sourcePath, destPath, file.size, onProgress);
     } else {
       throw new UploadError(
-        "No source for file upload",
+        ERROR_MESSAGES.NO_SOURCE_FOR_FILE_UPLOAD,
         "TRANSFER_ERROR",
       );
     }
@@ -424,7 +380,6 @@ export class SftpUploader implements Uploader {
         return;
       }
 
-      const CHUNK_SIZE = 64 * 1024;
       const writeStream = this.sftp.createWriteStream(destPath);
 
       let transferred = 0;
@@ -447,7 +402,7 @@ export class SftpUploader implements Uploader {
       (async () => {
         try {
           const srcFile = await Deno.open(srcPath, { read: true });
-          const readBuffer = new Uint8Array(CHUNK_SIZE);
+          const readBuffer = new Uint8Array(FILE_TRANSFER.CHUNK_SIZE);
 
           try {
             while (true) {

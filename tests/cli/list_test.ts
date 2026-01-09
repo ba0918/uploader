@@ -218,7 +218,9 @@ describe("showProfileList", () => {
     it("_globalはプロファイルとして表示されない", () => {
       const config: Config = {
         _global: {
-          ignore: ["*.log", "node_modules/"],
+          ignore_groups: {
+            common: ["*.log", "node_modules/"],
+          },
         },
         development: {
           from: { type: "git", base: "origin/main" },
