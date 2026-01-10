@@ -4,11 +4,7 @@
  * RsyncUploaderのテスト（単体テスト）
  */
 
-import {
-  assertEquals,
-  assertRejects,
-  assertStringIncludes,
-} from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import { join } from "@std/path";
 import type { CommandResult } from "../../src/upload/ssh-base.ts";
@@ -528,7 +524,11 @@ describe("RsyncUploader", () => {
 
       await assertRejects(
         () =>
-          uploader.uploadFileFromPath("/tmp/test.txt", "/var/www/test.txt", 100),
+          uploader.uploadFileFromPath(
+            "/tmp/test.txt",
+            "/var/www/test.txt",
+            100,
+          ),
         UploadError,
         "Not connected",
       );
@@ -1068,12 +1068,17 @@ describe("RsyncUploader", () => {
         ).uploadFileFromPath.bind(uploader);
 
         let progressCalled = false;
-        await uploadFileFromPath(srcPath, "/var/www/test.txt", 12, (transferred, total) => {
-          progressCalled = true;
-          if (transferred === total) {
-            assertEquals(transferred, 12);
-          }
-        });
+        await uploadFileFromPath(
+          srcPath,
+          "/var/www/test.txt",
+          12,
+          (transferred, total) => {
+            progressCalled = true;
+            if (transferred === total) {
+              assertEquals(transferred, 12);
+            }
+          },
+        );
 
         assertEquals(progressCalled, true);
       } finally {

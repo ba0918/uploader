@@ -364,8 +364,10 @@ async function main(): Promise<number> {
         if (viewerResult.changedFilesByTarget) {
           // ターゲット別のファイルリストを作成
           filesByTarget = new Map<number, UploadFile[]>();
-          for (const [targetIndex, changedFiles] of viewerResult
-            .changedFilesByTarget) {
+          for (
+            const [targetIndex, changedFiles] of viewerResult
+              .changedFilesByTarget
+          ) {
             const changedSet = new Set(changedFiles);
             const filteredFiles = uploadFiles.filter(
               (f) => changedSet.has(f.relativePath),

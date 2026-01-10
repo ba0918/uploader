@@ -329,7 +329,12 @@ describe("ScpUploader", () => {
       // connectを呼ばない
 
       await assertRejects(
-        () => uploader.uploadFileFromPath("/tmp/test.txt", "/var/www/test.txt", 100),
+        () =>
+          uploader.uploadFileFromPath(
+            "/tmp/test.txt",
+            "/var/www/test.txt",
+            100,
+          ),
         UploadError,
         "Not connected",
       );
@@ -703,12 +708,17 @@ describe("ScpUploader", () => {
         ).uploadFileFromPath.bind(uploader);
 
         let progressCalled = false;
-        await uploadFileFromPath(srcPath, "/var/www/test.txt", 12, (transferred, total) => {
-          progressCalled = true;
-          if (transferred === total) {
-            assertEquals(transferred, 12);
-          }
-        });
+        await uploadFileFromPath(
+          srcPath,
+          "/var/www/test.txt",
+          12,
+          (transferred, total) => {
+            progressCalled = true;
+            if (transferred === total) {
+              assertEquals(transferred, 12);
+            }
+          },
+        );
 
         assertEquals(progressCalled, true);
       } finally {

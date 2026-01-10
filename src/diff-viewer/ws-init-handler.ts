@@ -28,11 +28,7 @@ import {
   startBackgroundDiffCheck,
 } from "./ws-target-checker.ts";
 import type { ServerState } from "./ws-handler.ts";
-import {
-  debugError,
-  debugLog,
-  sendErrorMessage,
-} from "./ws-utils.ts";
+import { debugError, debugLog, sendErrorMessage } from "./ws-utils.ts";
 
 /**
  * 現在のターゲットの変更ファイルリストを保存

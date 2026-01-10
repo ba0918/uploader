@@ -146,17 +146,17 @@ staging:
       timeout: 30
       retry: 3
       ignore:
-        use: [common, template]  # グループを選択
+        use: [common, template] # グループを選択
     targets:
       - dest: "/var/www/staging-a/"
         # ignore未指定 → defaults.ignoreを使用
       - dest: "/var/www/staging-b/"
         ignore:
-          use: [common, property]  # defaults.ignoreを上書き
-          add: ["special_b/"]      # 追加パターン
+          use: [common, property] # defaults.ignoreを上書き
+          add: ["special_b/"] # 追加パターン
       - dest: "/var/www/staging-c/"
         ignore:
-          use: []  # 何も除外しない（明示的）
+          use: [] # 何も除外しない（明示的）
 
 # ===========================================
 # プロファイル: local（ローカルコピー）

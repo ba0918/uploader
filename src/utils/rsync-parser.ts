@@ -47,7 +47,9 @@ export function parseItemizeLine(
   // flags: 9文字のフラグ（変更内容を示す）
   // 各フラグは小文字（ソースが新しい）と大文字（更新が必要）の両方がある
   // 例: >f+++++++++ new.txt, >f.st...... modified.txt, <f..T...... timestamp.txt
-  const match = line.match(/^([<>.ch])([fdLDS])([cCsSpPtToOgGuUaAxX.+]{9})\s+(.+)$/);
+  const match = line.match(
+    /^([<>.ch])([fdLDS])([cCsSpPtToOgGuUaAxX.+]{9})\s+(.+)$/,
+  );
   if (!match) {
     return null;
   }

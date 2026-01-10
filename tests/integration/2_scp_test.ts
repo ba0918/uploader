@@ -384,7 +384,11 @@ Deno.test({
     await t.step("upload large file", async () => {
       const tempDir = await createTempDir("scp-large");
       const largeContent = "x".repeat(1024 * 512); // 512KB
-      const localPath = await createTestFile(tempDir, "large.txt", largeContent);
+      const localPath = await createTestFile(
+        tempDir,
+        "large.txt",
+        largeContent,
+      );
 
       const file: UploadFile = {
         relativePath: `scp-large-${testId}/large.txt`,

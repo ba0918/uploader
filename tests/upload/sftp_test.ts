@@ -4,15 +4,12 @@
  * SftpUploaderのテスト（単体テスト）
  */
 
-import {
-  assertEquals,
-  assertRejects,
-} from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import { join } from "@std/path";
 import { UploadError } from "../../src/types/mod.ts";
 import type { UploadFile } from "../../src/types/mod.ts";
-import { SftpUploader, type SftpOptions } from "../../src/upload/sftp.ts";
+import { type SftpOptions, SftpUploader } from "../../src/upload/sftp.ts";
 
 /** テスト用の一時ディレクトリを作成 */
 async function createTempDir(): Promise<string> {
@@ -113,7 +110,9 @@ class MockableSftpUploader {
     await Promise.resolve();
   }
 
-  readFile(remotePath: string): Promise<{ content: Uint8Array; size: number } | null> {
+  readFile(
+    remotePath: string,
+  ): Promise<{ content: Uint8Array; size: number } | null> {
     if (!this.connected) {
       return Promise.reject(
         new UploadError("Not connected", "CONNECTION_ERROR"),
@@ -502,7 +501,10 @@ describe("SftpUploader", () => {
       // 削除
       await uploader.delete("to_delete.txt");
 
-      assertEquals(uploader.deletedPaths.includes("/var/www/to_delete.txt"), true);
+      assertEquals(
+        uploader.deletedPaths.includes("/var/www/to_delete.txt"),
+        true,
+      );
     });
 
     it("未接続状態ではエラー", async () => {

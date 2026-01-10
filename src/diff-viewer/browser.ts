@@ -120,7 +120,6 @@ export interface CuiConfirmOptions {
   checksum?: boolean;
 }
 
-
 /**
  * ターゲットごとの差分サマリーを表示
  */

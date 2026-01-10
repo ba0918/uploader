@@ -4,11 +4,7 @@
  * ローカル/リモートファイルの読み込みとUploader管理
  */
 
-import type {
-  DiffViewerOptions,
-  FileContent,
-  Uploader,
-} from "../types/mod.ts";
+import type { DiffViewerOptions, FileContent, Uploader } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
 import { BINARY_CHECK } from "../utils/mod.ts";

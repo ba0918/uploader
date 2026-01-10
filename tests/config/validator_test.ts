@@ -557,7 +557,11 @@ describe("エラーパス検証", () => {
             test: {
               from: "not-object",
               to: {
-                targets: [{ host: "example.com", protocol: "local", dest: "/" }],
+                targets: [{
+                  host: "example.com",
+                  protocol: "local",
+                  dest: "/",
+                }],
               },
             },
           }),
@@ -573,7 +577,11 @@ describe("エラーパス検証", () => {
             test: {
               from: {},
               to: {
-                targets: [{ host: "example.com", protocol: "local", dest: "/" }],
+                targets: [{
+                  host: "example.com",
+                  protocol: "local",
+                  dest: "/",
+                }],
               },
             },
           }),

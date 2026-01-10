@@ -4,10 +4,7 @@
  * デバッグログ、メッセージ送信などの共通機能
  */
 
-import type {
-  UploadButtonState,
-  WsUploadStateMessage,
-} from "../types/mod.ts";
+import type { UploadButtonState, WsUploadStateMessage } from "../types/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
 
 /**

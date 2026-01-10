@@ -17,7 +17,10 @@ import { validateConfig } from "../../src/config/validator.ts";
 /** テスト用の有効なConfig */
 function createValidConfig(
   overrides?: Partial<{
-    _global: { ignore_groups?: Record<string, string[]>; default_ignore?: string[] };
+    _global: {
+      ignore_groups?: Record<string, string[]>;
+      default_ignore?: string[];
+    };
     development: ProfileConfig;
     production: ProfileConfig;
   }>,
@@ -1008,7 +1011,12 @@ describe("ignore 解決ロジック", () => {
       // defaults.ignoreがprofile.ignoreに反映される
       // default_ignoreの["common", "template"]ではなく、
       // defaults.ignoreの["common"] + addの[".ai-docs/", "dev-tools/"]が使われる
-      assertEquals(resolved.ignore, ["*.log", ".git/", ".ai-docs/", "dev-tools/"]);
+      assertEquals(resolved.ignore, [
+        "*.log",
+        ".git/",
+        ".ai-docs/",
+        "dev-tools/",
+      ]);
       // "template/"は含まれない
       assertEquals(resolved.ignore.includes("template/"), false);
     });
@@ -1213,13 +1221,25 @@ describe("ignore 解決ロジック", () => {
       const resolved = resolveProfile(config, "test");
 
       // ターゲット[0]: defaults.ignoreをそのまま使用
-      assertEquals(resolved.to.targets[0].ignore, ["BASE-PATTERN", "DEFAULTS-ADD"]);
+      assertEquals(resolved.to.targets[0].ignore, [
+        "BASE-PATTERN",
+        "DEFAULTS-ADD",
+      ]);
 
       // ターゲット[1]: target.ignoreで完全に上書き
       // defaults.ignoreの内容（BASE-PATTERN, DEFAULTS-ADD）は含まれない
-      assertEquals(resolved.to.targets[1].ignore, ["EXTRA-PATTERN", "TARGET-ADD"]);
-      assertEquals(resolved.to.targets[1].ignore.includes("BASE-PATTERN"), false);
-      assertEquals(resolved.to.targets[1].ignore.includes("DEFAULTS-ADD"), false);
+      assertEquals(resolved.to.targets[1].ignore, [
+        "EXTRA-PATTERN",
+        "TARGET-ADD",
+      ]);
+      assertEquals(
+        resolved.to.targets[1].ignore.includes("BASE-PATTERN"),
+        false,
+      );
+      assertEquals(
+        resolved.to.targets[1].ignore.includes("DEFAULTS-ADD"),
+        false,
+      );
     });
 
     it("addはグループのパターンに追加するものであり、親レベルとのマージではない", () => {
@@ -1252,8 +1272,14 @@ describe("ignore 解決ロジック", () => {
 
       // target.ignoreで上書き: BASE-PATTERN + TARGET-ADD
       // DEFAULTS-ADDは含まれない（マージではなく上書き）
-      assertEquals(resolved.to.targets[0].ignore, ["BASE-PATTERN", "TARGET-ADD"]);
-      assertEquals(resolved.to.targets[0].ignore.includes("DEFAULTS-ADD"), false);
+      assertEquals(resolved.to.targets[0].ignore, [
+        "BASE-PATTERN",
+        "TARGET-ADD",
+      ]);
+      assertEquals(
+        resolved.to.targets[0].ignore.includes("DEFAULTS-ADD"),
+        false,
+      );
     });
   });
 });

@@ -52,7 +52,10 @@ describe("escapeShellArg", () => {
   });
 
   it("複数のシングルクォートをエスケープする", () => {
-    assertEquals(escapeShellArg("it's John's file"), "'it'\\''s John'\\''s file'");
+    assertEquals(
+      escapeShellArg("it's John's file"),
+      "'it'\\''s John'\\''s file'",
+    );
   });
 
   it("特殊文字の組み合わせをエスケープする", () => {

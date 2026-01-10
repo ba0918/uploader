@@ -316,7 +316,11 @@ Deno.test({
       // 大きなファイル（1MB以上）でdrainイベントをトリガー
       const tempDir = await createTempDir("sftp-large");
       const largeContent = "x".repeat(1024 * 1024 * 2); // 2MB
-      const localPath = await createTestFile(tempDir, "large.txt", largeContent);
+      const localPath = await createTestFile(
+        tempDir,
+        "large.txt",
+        largeContent,
+      );
 
       const file: UploadFile = {
         relativePath: `large-${testId}/large.txt`,
