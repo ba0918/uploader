@@ -8,7 +8,6 @@ import {
   type BrowserCommandRunner,
   getBrowserCommand,
   openBrowser,
-  parseYesNo,
   type PromptReader,
   promptYesNo,
 } from "../../src/diff-viewer/browser.ts";
@@ -145,55 +144,6 @@ describe("openBrowser", () => {
       assertEquals(result, false);
       assertEquals(runner.calls.length, 2);
     });
-  });
-});
-
-describe("parseYesNo", () => {
-  it("'y'はtrueを返す", () => {
-    assertEquals(parseYesNo("y"), true);
-  });
-
-  it("'Y'はtrueを返す", () => {
-    assertEquals(parseYesNo("Y"), true);
-  });
-
-  it("'yes'はtrueを返す", () => {
-    assertEquals(parseYesNo("yes"), true);
-  });
-
-  it("'YES'はtrueを返す", () => {
-    assertEquals(parseYesNo("YES"), true);
-  });
-
-  it("'Yes'はtrueを返す", () => {
-    assertEquals(parseYesNo("Yes"), true);
-  });
-
-  it("'n'はfalseを返す", () => {
-    assertEquals(parseYesNo("n"), false);
-  });
-
-  it("'no'はfalseを返す", () => {
-    assertEquals(parseYesNo("no"), false);
-  });
-
-  it("空文字はfalseを返す", () => {
-    assertEquals(parseYesNo(""), false);
-  });
-
-  it("nullはfalseを返す", () => {
-    assertEquals(parseYesNo(null), false);
-  });
-
-  it("前後の空白を無視する", () => {
-    assertEquals(parseYesNo("  y  "), true);
-    assertEquals(parseYesNo("  yes  "), true);
-  });
-
-  it("その他の入力はfalseを返す", () => {
-    assertEquals(parseYesNo("maybe"), false);
-    assertEquals(parseYesNo("yep"), false);
-    assertEquals(parseYesNo("nope"), false);
   });
 });
 

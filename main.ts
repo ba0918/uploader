@@ -382,15 +382,6 @@ async function main(): Promise<number> {
           logInfo(
             `Filtered to target-specific files (max ${maxFiles} files per target)`,
           );
-        } else if (viewerResult.changedFiles) {
-          // 後方互換: changedFilesがある場合は全ターゲットに同じフィルタを適用
-          const changedSet = new Set(viewerResult.changedFiles);
-          uploadFiles = uploadFiles.filter(
-            (f) => changedSet.has(f.relativePath),
-          );
-          logInfo(
-            `Filtered to ${uploadFiles.length} changed files (remote diff)`,
-          );
         }
       }
     }

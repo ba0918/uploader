@@ -140,20 +140,25 @@ export async function getRemoteDiffs(
 }
 
 /**
- * TargetDiffInfo配列から変更ファイル一覧を抽出
+ * TargetDiffInfo配列からターゲットごとの変更ファイルマップを抽出
  */
-export function collectChangedFiles(targetDiffs: TargetDiffInfo[]): string[] {
-  const changedFilesSet = new Set<string>();
+export function collectChangedFilesByTarget(
+  targetDiffs: TargetDiffInfo[],
+): Map<number, string[]> {
+  const result = new Map<number, string[]>();
 
-  for (const info of targetDiffs) {
+  for (let i = 0; i < targetDiffs.length; i++) {
+    const info = targetDiffs[i];
     if (info.diff) {
-      for (const entry of info.diff.entries) {
-        changedFilesSet.add(entry.path);
-      }
+      const files = info.diff.entries.map((entry) => entry.path);
+      result.set(i, files);
+    } else if (info.unsupported || info.error) {
+      // 未サポートまたはエラーの場合は空配列（全ファイルをアップロード対象とする）
+      // この場合、main.ts側でfilesByTargetに登録されないため、全ファイルが対象になる
     }
   }
 
-  return Array.from(changedFilesSet);
+  return result;
 }
 
 /**

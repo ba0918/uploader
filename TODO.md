@@ -137,6 +137,46 @@
 
 ---
 
+## リファクタリング: デッドコード削除と後方互換処理の整理（完了）
+
+**目的**: 未使用コードの削除と deprecated フィールドの廃止による保守性向上
+
+### 高優先度
+
+- [x] `formatDuration()` 重複削除 (`upload/progress.ts`)
+  - `utils/format.ts` と完全に同じ実装が存在していたため削除
+  - テストは `utils/format.ts` からインポートするよう修正
+
+- [x] `rsyncDiffResult` deprecated フィールド削除 (`ws-handler.ts`)
+  - `diffCacheByTarget` に移行済み
+  - 型定義・初期化・リセット処理から削除
+
+### 中優先度
+
+- [x] CUIモードの `changedFilesByTarget` 対応
+  - `remote-diff.ts` に `collectChangedFilesByTarget()` を追加
+  - `CuiConfirmResult` 型を更新
+  - `browser.ts` の `cuiConfirm()` を修正
+  - `mod.ts` を `changedFilesByTarget` を使うように変更
+  - `main.ts` の後方互換分岐を削除
+  - `DiffViewerResult` から deprecated な `changedFiles` を削除
+
+- [x] `isDiffViewerSupported()` 削除 (`diff-viewer/mod.ts`)
+  - 常に `true` を返すだけの無意味な関数を削除
+  - テストも削除
+
+- [x] `parseYesNo()` 削除 (`browser.ts`)
+  - テスト以外で使われていなかったため関数自体を削除
+  - テストも削除
+
+### 低優先度
+
+- [x] `getServerUrl()` エクスポート削除 (`diff-viewer/mod.ts`)
+  - 外部から使われていないためエクスポートを削除
+  - 内部インポートは維持
+
+---
+
 ## 保留中 (Phase 9.4: diff viewer 仮想スクロール)
 
 **目的**: 大量ファイル表示時のブラウザパフォーマンス改善

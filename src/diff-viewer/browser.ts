@@ -21,7 +21,7 @@ import {
   yellow,
 } from "../ui/mod.ts";
 import {
-  collectChangedFiles,
+  collectChangedFilesByTarget,
   getRemoteDiffs,
   hasRemoteChanges,
   type TargetDiffInfo,
@@ -268,8 +268,8 @@ export async function cuiConfirm(
     return { confirmed: false, noChanges: true };
   }
 
-  // 変更ファイル一覧を収集（全ターゲットの差分を統合）
-  const changedFiles = collectChangedFiles(targetDiffs);
+  // ターゲットごとの変更ファイルを収集
+  const changedFilesByTarget = collectChangedFilesByTarget(targetDiffs);
 
   // 確認プロンプト
   const answer = await promptYesNo(
@@ -277,7 +277,7 @@ export async function cuiConfirm(
     options?.promptReader ?? defaultPromptReader,
   );
 
-  return { confirmed: answer, changedFiles };
+  return { confirmed: answer, changedFilesByTarget };
 }
 
 /**
@@ -315,15 +315,4 @@ export async function promptYesNo(
   }
 
   return input === "y" || input === "yes";
-}
-
-/**
- * 入力文字列をYes/Noとして解析
- */
-export function parseYesNo(input: string | null): boolean {
-  if (input === null) {
-    return false;
-  }
-  const normalized = input.trim().toLowerCase();
-  return normalized === "y" || normalized === "yes";
 }

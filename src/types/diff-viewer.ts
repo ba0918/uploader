@@ -45,8 +45,6 @@ export interface DiffViewerResult {
   cancelReason?: "user_cancel" | "connection_closed" | "timeout" | "no_changes";
   /** 進捗コントローラー（confirm時のみ存在） */
   progressController?: DiffViewerProgressController;
-  /** 変更があったファイルのパスリスト（remote diffモード時のみ）@deprecated changedFilesByTarget を使用 */
-  changedFiles?: string[];
   /** ターゲットインデックスごとの変更ファイルリスト（remote diffモード時のみ） */
   changedFilesByTarget?: Map<number, string[]>;
 }
@@ -299,8 +297,8 @@ export interface CuiConfirmResult {
   confirmed: boolean;
   /** 変更がなかった場合true（確認をスキップ） */
   noChanges?: boolean;
-  /** 変更があったファイルのパス一覧（remote diff結果） */
-  changedFiles?: string[];
+  /** ターゲットインデックスごとの変更ファイルリスト（remote diffモード時のみ） */
+  changedFilesByTarget?: Map<number, string[]>;
 }
 
 /** ファイルツリーノード */
