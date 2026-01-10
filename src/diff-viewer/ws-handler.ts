@@ -106,8 +106,6 @@ export interface ServerState extends UploaderState {
   allTargetsChecked: boolean;
   /** 遅延読み込みモードが有効か */
   lazyLoading: boolean;
-  /** rsync getDiff()の結果（キャッシュ、rsyncプロトコル時のみ）@deprecated diffCacheByTargetを使用 */
-  rsyncDiffResult: RsyncDiffResult | null;
   /** アイドルチェックタイマー */
   idleCheckTimer: number | null;
   /** 全ファイルの差分チェックが完了したか */
@@ -142,7 +140,6 @@ export function createServerState(
     diffCacheByTarget: new Map(),
     allTargetsChecked: false,
     lazyLoading: useLazyLoading,
-    rsyncDiffResult: null,
     currentTargetIndex: 0,
     uploaderLastUsed: 0,
     idleCheckTimer: null,
@@ -1081,7 +1078,6 @@ async function handleSwitchTarget(
     // キャッシュがない場合は従来の処理（Uploader接続を切断してリセット）
     await disconnectUploader(state);
     state.connectionError = null;
-    state.rsyncDiffResult = null;
     state.diffCheckCompleted = false;
     state.hasChangesToUpload = false;
   }
