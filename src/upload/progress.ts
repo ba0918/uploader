@@ -226,18 +226,6 @@ export class TransferProgressManager {
 }
 
 /**
- * 時間を mm:ss 形式にフォーマット
- */
-export function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes.toString().padStart(2, "0")}:${
-    remainingSeconds.toString().padStart(2, "0")
-  }`;
-}
-
-/**
  * ファイルサイズを人間が読みやすい形式にフォーマット
  */
 export function formatSize(bytes: number): string {

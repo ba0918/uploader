@@ -20,7 +20,7 @@ import {
 } from "../ui/mod.ts";
 
 export { cuiConfirm, openBrowser } from "./browser.ts";
-export { getServerUrl, startDiffViewerServer } from "./server.ts";
+export { startDiffViewerServer } from "./server.ts";
 
 /**
  * diff viewerを起動して結果を返す
@@ -97,15 +97,7 @@ export async function startDiffViewer(
         : cuiResult.noChanges
         ? "no_changes"
         : "user_cancel",
-      changedFiles: cuiResult.changedFiles,
+      changedFilesByTarget: cuiResult.changedFilesByTarget,
     };
   }
-}
-
-/**
- * diff viewerがサポートされているかチェック
- */
-export function isDiffViewerSupported(): boolean {
-  // Denoでは常にサポート
-  return true;
 }

@@ -90,6 +90,7 @@ export type {
   DiffViewerState,
   FileRequestType,
   FileTreeNode,
+  TargetDiffSummary,
   UploadButtonDisabledReason,
   UploadButtonState,
   UploadCompleteData,
@@ -104,8 +105,10 @@ export type {
   WsFileRequestMessage,
   WsFileResponseMessage,
   WsInitMessage,
+  WsLoadingProgressMessage,
   WsMessageBase,
   WsProgressMessage,
   WsServerMessage,
+  WsSwitchTargetMessage,
   WsUploadStateMessage,
 } from "./diff-viewer.ts";

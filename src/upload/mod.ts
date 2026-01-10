@@ -405,11 +405,16 @@ export async function uploadToTargets(
       progressManager.initTarget(target);
     }
 
-    const uploadPromises = targets.map(async (target) => {
+    const uploadPromises = targets.map(async (target, index) => {
+      // filesByTargetが設定されている場合、Mapに登録されていないターゲットは空配列
+      // 設定されていない場合は従来通りfilesを使用
+      const targetFiles = options.filesByTarget
+        ? (options.filesByTarget.get(index) ?? [])
+        : files;
       try {
         await uploadToTargetWithoutInit(
           target,
-          files,
+          targetFiles,
           options,
           progressManager,
         );
@@ -431,9 +436,15 @@ export async function uploadToTargets(
     }
   } else {
     // 順次アップロード
-    for (const target of targets) {
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
+      // filesByTargetが設定されている場合、Mapに登録されていないターゲットは空配列
+      // 設定されていない場合は従来通りfilesを使用
+      const targetFiles = options.filesByTarget
+        ? (options.filesByTarget.get(i) ?? [])
+        : files;
       try {
-        await uploadToTarget(target, files, options, progressManager);
+        await uploadToTarget(target, targetFiles, options, progressManager);
       } catch {
         // エラーは記録済みなので、strictモード以外は続行
         if (options.strict) {

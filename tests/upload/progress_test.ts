@@ -6,10 +6,10 @@ import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
   calculateSpeed,
-  formatDuration,
   formatSize,
   TransferProgressManager,
 } from "../../src/upload/progress.ts";
+import { formatDuration } from "../../src/utils/format.ts";
 import type { ResolvedTargetConfig } from "../../src/types/config.ts";
 import type { TransferProgressEvent } from "../../src/types/mod.ts";
 
