@@ -12,6 +12,7 @@ import type {
   FileRequestType,
   GitDiffResult,
   RsyncDiffResult,
+  TargetDiffSummary,
   TransferProgressEvent,
   UploadButtonState,
   UploadResult,
@@ -19,9 +20,11 @@ import type {
   WsDirectoryContentsMessage,
   WsFileResponseMessage,
   WsInitMessage,
+  WsLoadingProgressMessage,
   WsUploadStateMessage,
 } from "../types/mod.ts";
 import { hasDiff } from "../types/mod.ts";
+import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
 import {
   batchAsync,
@@ -33,7 +36,6 @@ import {
   checkUploaderIdle,
   disconnectUploader,
   getLocalAndRemoteContents,
-  getOrCreateUploader,
   type UploaderState,
 } from "./file-content.ts";
 import {
@@ -47,6 +49,9 @@ const LAZY_LOADING_THRESHOLD = 100;
 
 /** デフォルトのアイドルタイムアウト（秒） */
 const DEFAULT_UPLOADER_IDLE_TIMEOUT = 300; // 5分
+
+/** デフォルトの同時ターゲットチェック数 */
+const DEFAULT_TARGET_CHECK_CONCURRENCY = 3;
 
 /**
  * デバッグログを出力（verboseモード時のみ）
@@ -66,6 +71,23 @@ function debugError(message: string, ...args: unknown[]): void {
   }
 }
 
+/** ターゲットごとの差分サマリー（キャッシュ用） */
+export interface CachedTargetDiff {
+  /** rsync diff結果 */
+  rsyncDiff: RsyncDiffResult | null;
+  /** 変更ファイルリスト */
+  changedFiles: string[];
+  /** 差分サマリー */
+  summary: {
+    added: number;
+    modified: number;
+    deleted: number;
+    total: number;
+  };
+  /** エラー（発生時のみ） */
+  error?: string;
+}
+
 /** サーバの状態 */
 export interface ServerState extends UploaderState {
   /** 解決用のPromise resolve関数 */
@@ -76,11 +98,15 @@ export interface ServerState extends UploaderState {
   socket: WebSocket | null;
   /** Git diff結果 */
   diffResult: GitDiffResult;
-  /** 変更があったファイルのパスリスト（remote diffモード時のみ） */
-  changedFiles: string[] | null;
+  /** ターゲットインデックスごとの変更ファイルリスト（remote diffモード時のみ） */
+  changedFilesByTarget: Map<number, string[]>;
+  /** ターゲットインデックスごとの差分キャッシュ */
+  diffCacheByTarget: Map<number, CachedTargetDiff>;
+  /** 全ターゲットのチェックが完了したか */
+  allTargetsChecked: boolean;
   /** 遅延読み込みモードが有効か */
   lazyLoading: boolean;
-  /** rsync getDiff()の結果（キャッシュ、rsyncプロトコル時のみ） */
+  /** rsync getDiff()の結果（キャッシュ、rsyncプロトコル時のみ）@deprecated diffCacheByTargetを使用 */
   rsyncDiffResult: RsyncDiffResult | null;
   /** アイドルチェックタイマー */
   idleCheckTimer: number | null;
@@ -112,7 +138,9 @@ export function createServerState(
     options,
     uploader: null,
     connectionError: null,
-    changedFiles: null,
+    changedFilesByTarget: new Map(),
+    diffCacheByTarget: new Map(),
+    allTargetsChecked: false,
     lazyLoading: useLazyLoading,
     rsyncDiffResult: null,
     currentTargetIndex: 0,
@@ -121,6 +149,19 @@ export function createServerState(
     diffCheckCompleted: false,
     hasChangesToUpload: false,
   };
+}
+
+/**
+ * 現在のターゲットの変更ファイルリストを保存
+ */
+function saveChangedFilesForCurrentTarget(
+  state: ServerState,
+  files: DiffFile[],
+): void {
+  state.changedFilesByTarget.set(
+    state.currentTargetIndex,
+    files.map((f) => f.path),
+  );
 }
 
 /**
@@ -154,6 +195,26 @@ export function sendUploadStateMessage(
     data: uploadButtonState,
   };
   sendJsonMessage(socket, message);
+}
+
+/**
+ * 全ターゲットで1つでも変更があるかを判定
+ * アップロードボタンの有効/無効判定に使用
+ */
+export function hasAnyTargetChanges(state: ServerState): boolean {
+  // キャッシュがなければfalse
+  if (!state.allTargetsChecked || state.diffCacheByTarget.size === 0) {
+    return false;
+  }
+
+  // いずれかのターゲットに変更があればtrue
+  for (const cached of state.diffCacheByTarget.values()) {
+    if (!cached.error && cached.summary.total > 0) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -290,75 +351,6 @@ export async function startBackgroundDiffCheck(
   }
 }
 
-/**
- * rsync getDiff()を使って変更ファイル一覧を取得
- */
-async function tryRsyncGetDiff(
-  state: ServerState,
-): Promise<RsyncDiffResult | null> {
-  const { options } = state;
-
-  // localDirがない場合はスキップ
-  if (!options.localDir) {
-    debugLog("[RsyncDiff] No localDir specified, skipping rsync getDiff");
-    return null;
-  }
-
-  // ターゲットがない場合はスキップ
-  if (!options.targets || options.targets.length === 0) {
-    debugLog("[RsyncDiff] No targets specified, skipping rsync getDiff");
-    return null;
-  }
-
-  // uploadFilesがない場合はスキップ
-  if (!options.uploadFiles || options.uploadFiles.length === 0) {
-    debugLog("[RsyncDiff] No uploadFiles specified, skipping rsync getDiff");
-    return null;
-  }
-
-  try {
-    // Uploaderを取得または作成
-    const uploader = await getOrCreateUploader(state);
-
-    // getDiff()がサポートされているか確認
-    if (!hasDiff(uploader)) {
-      debugLog(
-        "[RsyncDiff] Uploader does not support getDiff(), falling back to readFile()",
-      );
-      return null;
-    }
-
-    // uploadFilesの相対パスリストを取得（ディレクトリは除外）
-    const filePaths = extractFilePaths(options.uploadFiles);
-
-    debugLog(
-      `[RsyncDiff] Running rsync getDiff() on ${options.localDir} for ${filePaths.length} files (checksum: ${options.checksum ?? false})...`,
-    );
-    // デバッグ: 最初の5件のファイルパスを表示
-    debugLog(
-      `[RsyncDiff] First 5 file paths: ${filePaths.slice(0, 5).join(", ")}`,
-    );
-
-    // rsync dry-runで差分を取得（比較対象をuploadFilesに限定）
-    const result = await uploader.getDiff(options.localDir, filePaths, {
-      checksum: options.checksum,
-    });
-
-    debugLog(
-      `[RsyncDiff] Found ${result.entries.length} changed files (${result.added} new, ${result.modified} modified, ${result.deleted} deleted)`,
-    );
-
-    state.rsyncDiffResult = result;
-    return result;
-  } catch (error) {
-    debugError(
-      "[RsyncDiff] Failed to get diff via rsync:",
-      error instanceof Error ? error.message : String(error),
-    );
-    // エラーの場合は従来の方式にフォールバック
-    return null;
-  }
-}
 
 /**
  * rsync getDiff()の結果を使ってファイル一覧をフィルタリング
@@ -394,6 +386,205 @@ function filterFilesByRsyncDiff(
 }
 
 /**
+ * 単一ターゲットの差分をチェック
+ */
+async function checkSingleTargetDiff(
+  targetIndex: number,
+  state: ServerState,
+): Promise<CachedTargetDiff> {
+  const { options, diffResult } = state;
+  const target = options.targets?.[targetIndex];
+
+  if (!target) {
+    return {
+      rsyncDiff: null,
+      changedFiles: [],
+      summary: { added: 0, modified: 0, deleted: 0, total: 0 },
+      error: "Target not found",
+    };
+  }
+
+  // localDirがない場合はスキップ
+  if (!options.localDir) {
+    // ファイルモード以外は全ファイルを対象
+    const total = diffResult.added + diffResult.modified + diffResult.deleted +
+      diffResult.renamed;
+    return {
+      rsyncDiff: null,
+      changedFiles: diffResult.files.map((f) => f.path),
+      summary: {
+        added: diffResult.added,
+        modified: diffResult.modified,
+        deleted: diffResult.deleted,
+        total,
+      },
+    };
+  }
+
+  try {
+    // ターゲット用のUploaderを作成
+    const uploader = createUploader(target);
+    await uploader.connect();
+
+    try {
+      // getDiff()がサポートされているか確認
+      if (!hasDiff(uploader)) {
+        debugLog(
+          `[CheckTarget ${targetIndex}] Uploader does not support getDiff()`,
+        );
+        const total = diffResult.added + diffResult.modified +
+          diffResult.deleted + diffResult.renamed;
+        return {
+          rsyncDiff: null,
+          changedFiles: diffResult.files.map((f) => f.path),
+          summary: {
+            added: diffResult.added,
+            modified: diffResult.modified,
+            deleted: diffResult.deleted,
+            total,
+          },
+        };
+      }
+
+      // uploadFilesの相対パスリストを取得
+      const filePaths = options.uploadFiles
+        ? extractFilePaths(options.uploadFiles)
+        : [];
+
+      debugLog(
+        `[CheckTarget ${targetIndex}] Running rsync getDiff() for ${target.host}...`,
+      );
+
+      // rsync dry-runで差分を取得
+      const rsyncDiff = await uploader.getDiff(options.localDir, filePaths, {
+        checksum: options.checksum,
+      });
+
+      debugLog(
+        `[CheckTarget ${targetIndex}] Found ${rsyncDiff.entries.length} changed files`,
+      );
+
+      // 結果を変換
+      const { files, summary } = filterFilesByRsyncDiff(
+        diffResult.files,
+        rsyncDiff,
+      );
+
+      return {
+        rsyncDiff,
+        changedFiles: files.map((f) => f.path),
+        summary: {
+          added: summary.added,
+          modified: summary.modified,
+          deleted: summary.deleted,
+          total: summary.total,
+        },
+      };
+    } finally {
+      await uploader.disconnect();
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    debugError(`[CheckTarget ${targetIndex}] Failed: ${errorMsg}`);
+    return {
+      rsyncDiff: null,
+      changedFiles: [],
+      summary: { added: 0, modified: 0, deleted: 0, total: 0 },
+      error: errorMsg,
+    };
+  }
+}
+
+/**
+ * 全ターゲットの差分を並列チェック
+ */
+export async function checkAllTargetsDiff(
+  socket: WebSocket,
+  state: ServerState,
+): Promise<void> {
+  const { options } = state;
+  const targets = options.targets ?? [];
+
+  if (targets.length === 0) {
+    state.allTargetsChecked = true;
+    return;
+  }
+
+  const concurrency = options.concurrency ?? DEFAULT_TARGET_CHECK_CONCURRENCY;
+  const results: TargetDiffSummary[] = [];
+  const checkingTargets: Set<string> = new Set();
+
+  debugLog(
+    `[CheckAllTargets] Starting check for ${targets.length} targets (concurrency: ${concurrency})`,
+  );
+
+  // 進捗送信関数
+  const sendProgress = () => {
+    const message: WsLoadingProgressMessage = {
+      type: "loading_progress",
+      data: {
+        checkingTargets: Array.from(checkingTargets),
+        completedCount: results.length,
+        totalCount: targets.length,
+        results: [...results],
+      },
+    };
+    sendJsonMessage(socket, message);
+  };
+
+  // 初期進捗を送信
+  sendProgress();
+
+  // 並列でチェック
+  await batchAsync(
+    targets.map((target, index) => ({ target, index })),
+    async ({ target, index }) => {
+      const targetName = `${target.host}:${target.dest}`;
+      checkingTargets.add(targetName);
+      sendProgress();
+
+      const cached = await checkSingleTargetDiff(index, state);
+
+      // キャッシュに保存
+      state.diffCacheByTarget.set(index, cached);
+      state.changedFilesByTarget.set(index, cached.changedFiles);
+
+      // 結果を追加
+      const summary: TargetDiffSummary = {
+        targetIndex: index,
+        host: target.host,
+        dest: target.dest,
+        fileCount: cached.summary.total,
+        added: cached.summary.added,
+        modified: cached.summary.modified,
+        deleted: cached.summary.deleted,
+        completed: true,
+        error: cached.error,
+      };
+      results.push(summary);
+
+      checkingTargets.delete(targetName);
+      sendProgress();
+
+      debugLog(
+        `[CheckAllTargets] Target ${index} (${target.host}) completed: ${cached.summary.total} files`,
+      );
+    },
+    concurrency,
+  );
+
+  state.allTargetsChecked = true;
+
+  // 差分があるかどうかを判定
+  state.hasChangesToUpload = results.some((r) => r.fileCount > 0);
+  state.diffCheckCompleted = true;
+
+  debugLog(
+    `[CheckAllTargets] All targets checked. hasChanges: ${state.hasChangesToUpload}`,
+  );
+}
+
+/**
  * 初期データを送信
  */
 export async function sendInitMessage(
@@ -401,7 +592,7 @@ export async function sendInitMessage(
   state: ServerState,
 ): Promise<void> {
   const { diffResult, options } = state;
-  let { lazyLoading } = state;
+  const { lazyLoading } = state;
 
   // remoteTargets情報を構築
   const remoteTargets = options.targets?.map((t) => ({
@@ -409,43 +600,45 @@ export async function sendInitMessage(
     dest: t.dest,
   }));
 
-  // rsync getDiff()による最適化を試みる
-  if (options.localDir) {
-    const rsyncDiff = await tryRsyncGetDiff(state);
+  // remoteモードかつターゲットがある場合は全ターゲット事前チェック
+  if (options.targets && options.targets.length > 0 && options.localDir) {
+    // 全ターゲットチェックがまだの場合は実行
+    if (!state.allTargetsChecked) {
+      debugLog("[SendInit] Starting all targets diff check...");
+      await checkAllTargetsDiff(socket, state);
+    }
 
-    if (rsyncDiff) {
-      // rsync getDiff()が成功した場合、変更ファイルのみを送信
-      const { files, summary } = filterFilesByRsyncDiff(
-        diffResult.files,
-        rsyncDiff,
+    // 現在のターゲットのキャッシュを取得
+    const cached = state.diffCacheByTarget.get(state.currentTargetIndex);
+    if (cached) {
+      debugLog(
+        `[SendInit] Using cached diff for target ${state.currentTargetIndex}: ${cached.summary.total} files`,
       );
 
-      // 変更があったファイルのパスリストを保存
-      state.changedFiles = files.map((f) => f.path);
+      // キャッシュから結果を構築
+      const files = cached.rsyncDiff
+        ? rsyncDiffToFiles(cached.rsyncDiff)
+        : diffResult.files.filter((f) => cached.changedFiles.includes(f.path));
 
-      // 変更ファイル数が少ない場合は遅延読み込みを無効化
-      if (files.length <= LAZY_LOADING_THRESHOLD) {
-        lazyLoading = false;
-        state.lazyLoading = false;
-      }
+      const summary = {
+        added: cached.summary.added,
+        modified: cached.summary.modified,
+        deleted: cached.summary.deleted,
+        renamed: 0,
+        total: cached.summary.total,
+      };
 
-      // uploadButtonStateを決定
-      const hasChanges = files.length > 0;
+      // uploadButtonStateを決定（全ターゲットで1つでも変更があれば有効）
+      const anyChanges = hasAnyTargetChanges(state);
       state.diffCheckCompleted = true;
-      state.hasChangesToUpload = hasChanges;
+      state.hasChangesToUpload = anyChanges;
 
       let uploadButtonState: UploadButtonState;
-      if (state.connectionError) {
-        uploadButtonState = {
-          disabled: true,
-          reason: "connection_error",
-          message: state.connectionError,
-        };
-      } else if (!hasChanges) {
+      if (!anyChanges) {
         uploadButtonState = {
           disabled: true,
           reason: "no_changes",
-          message: "No changes to upload",
+          message: "No changes to upload on any target",
         };
       } else {
         uploadButtonState = { disabled: false };
@@ -460,17 +653,12 @@ export async function sendInitMessage(
           files,
           summary,
           remoteTargets,
-          lazyLoading: false, // rsync getDiff()使用時は遅延読み込み不要
+          lazyLoading: false,
           uploadButtonState,
         },
       };
 
       socket.send(JSON.stringify(message));
-
-      // 接続エラーがあればクライアントに通知
-      if (state.connectionError) {
-        sendErrorMessage(socket, state.connectionError);
-      }
       return;
     }
   }
@@ -644,14 +832,17 @@ export async function sendInitMessage(
       `[RemoteDiff] Found ${files.length} files with changes (${added} new, ${modified} modified)`,
     );
 
-    // 変更があったファイルのパスリストを保存
-    state.changedFiles = files.map((f) => f.path);
+    // 現在のターゲットの変更ファイルリストを保存
+    saveChangedFilesForCurrentTarget(state, files);
   }
 
-  // uploadButtonStateを決定
-  const hasChanges = files.length > 0;
+  // uploadButtonStateを決定（全ターゲットで1つでも変更があれば有効）
+  // 全ターゲットチェック完了時はキャッシュを参照、未完了時は現在のターゲットのみで判定
+  const anyChanges = state.allTargetsChecked
+    ? hasAnyTargetChanges(state)
+    : files.length > 0;
   state.diffCheckCompleted = true;
-  state.hasChangesToUpload = hasChanges;
+  state.hasChangesToUpload = anyChanges;
 
   let uploadButtonState: UploadButtonState;
   if (state.connectionError) {
@@ -660,11 +851,11 @@ export async function sendInitMessage(
       reason: "connection_error",
       message: state.connectionError,
     };
-  } else if (!hasChanges) {
+  } else if (!anyChanges) {
     uploadButtonState = {
       disabled: true,
       reason: "no_changes",
-      message: "No changes to upload",
+      message: "No changes to upload on any target",
     };
   } else {
     uploadButtonState = { disabled: false };
@@ -718,7 +909,9 @@ export async function handleWebSocketMessage(
       state.resolve({
         confirmed: true,
         progressController,
-        changedFiles: state.changedFiles ?? undefined,
+        changedFilesByTarget: state.changedFilesByTarget.size > 0
+          ? state.changedFilesByTarget
+          : undefined,
       });
       break;
     }
@@ -878,21 +1071,20 @@ async function handleSwitchTarget(
     }`,
   );
 
-  // 既存のUploader接続を切断
-  await disconnectUploader(state);
-
-  // 接続エラーをクリア
-  state.connectionError = null;
-
-  // rsync diffキャッシュをクリア
-  state.rsyncDiffResult = null;
-
-  // 差分チェック状態をリセット
-  state.diffCheckCompleted = false;
-  state.hasChangesToUpload = false;
-
   // ターゲットインデックスを更新
   state.currentTargetIndex = targetIndex;
+
+  // キャッシュがあればそれを使用（sendInitMessage内で処理）
+  if (state.allTargetsChecked && state.diffCacheByTarget.has(targetIndex)) {
+    debugLog(`[SwitchTarget] Using cached diff for target ${targetIndex}`);
+  } else {
+    // キャッシュがない場合は従来の処理（Uploader接続を切断してリセット）
+    await disconnectUploader(state);
+    state.connectionError = null;
+    state.rsyncDiffResult = null;
+    state.diffCheckCompleted = false;
+    state.hasChangesToUpload = false;
+  }
 
   // 新しいターゲットでの差分情報を再送信
   debugLog(`[SwitchTarget] Re-sending init message for new target`);

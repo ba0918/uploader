@@ -29,7 +29,9 @@ export function getScripts(): string {
       // アップロードボタン状態
       uploadDisabled: true, // ボタンが無効化されているか
       uploadDisabledReason: 'checking', // 'no_changes' | 'connection_error' | 'checking' | null
-      uploadDisabledMessage: 'Checking for changes...' // ツールチップに表示するメッセージ
+      uploadDisabledMessage: 'Checking for changes...', // ツールチップに表示するメッセージ
+      // ターゲット差分チェック結果（loading_progressで受信）
+      targetDiffResults: [] // [{targetIndex, host, dest, fileCount, added, modified, deleted, completed, error}]
     };
 
     // DOM要素
@@ -165,129 +167,110 @@ export function getScripts(): string {
       modal.id = 'progress-modal';
       modal.className = 'progress-modal';
 
-      // 複数ターゲットの場合は複数行表示
-      const targetCount = state.remoteTargets.length;
+      // ターゲット行を生成（Confirm画面と統一デザイン）
+      const targetRows = state.remoteTargets.map((target, index) => {
+        // targetDiffResultsから差分情報を取得
+        const diffResult = state.targetDiffResults.find(r => r.targetIndex === index);
+        const fileCount = diffResult?.fileCount ?? 0;
+        const added = diffResult?.added ?? 0;
+        const modified = diffResult?.modified ?? 0;
+        const deleted = diffResult?.deleted ?? 0;
 
-      if (targetCount > 1) {
-        // 複数ターゲット用のHTML
-        const targetRows = state.remoteTargets.map((target, index) => \`
-          <div class="progress-target-row" id="progress-target-\${index}">
+        // 変更種別の内訳
+        const breakdown = [];
+        if (added > 0) breakdown.push('<span class="progress-stat added">+' + added + ' new</span>');
+        if (modified > 0) breakdown.push('<span class="progress-stat modified">~' + modified + ' modified</span>');
+        if (deleted > 0) breakdown.push('<span class="progress-stat deleted">-' + deleted + ' deleted</span>');
+
+        return \`
+          <div class="progress-target-item" id="progress-target-\${index}">
             <div class="progress-target-header">
-              <span class="progress-target-host">\${escapeHtml(target.host)}</span>
-              <span class="progress-target-status" id="progress-status-\${index}">Waiting...</span>
+              <span class="progress-target-host">\${escapeHtml(target.host)}:\${escapeHtml(target.dest)}</span>
+              <span class="progress-target-files">\${fileCount} file(s)</span>
             </div>
+            <div class="progress-target-breakdown">\${breakdown.join(' ') || 'No changes'}</div>
             <div class="progress-bar-container">
               <div class="progress-bar" id="progress-bar-\${index}" style="width: 0%"></div>
             </div>
-            <div class="progress-target-details">
-              <span id="progress-details-\${index}">0 / 0 files</span>
-              <span class="progress-target-file" id="progress-file-\${index}"></span>
+            <div class="progress-target-progress">
+              <span id="progress-details-\${index}">0 / \${fileCount} files</span>
+              <span class="progress-target-status" id="progress-status-\${index}">Waiting...</span>
             </div>
+            <div class="progress-target-file" id="progress-file-\${index}"></div>
           </div>
-        \`).join('');
+        \`;
+      }).join('');
 
-        modal.innerHTML = \`
-          <div class="progress-modal-content progress-multi-target">
-            <div class="progress-header">
-              <div class="spinner"></div>
-              <span class="progress-title">Uploading to \${targetCount} targets...</span>
-            </div>
-            <div class="progress-targets-container">
-              \${targetRows}
-            </div>
+      const targetCount = state.remoteTargets.length;
+      const totalFiles = state.targetDiffResults.reduce((sum, r) => sum + (r.fileCount || 0), 0);
+
+      modal.innerHTML = \`
+        <div class="progress-modal-content progress-modal-wide">
+          <div class="progress-header">
+            <div class="spinner"></div>
+            <span class="progress-title">Uploading \${totalFiles} files to \${targetCount} target(s)...</span>
           </div>
-        \`;
-      } else {
-        // 単一ターゲット用のHTML（従来と同じ）
-        modal.innerHTML = \`
-          <div class="progress-modal-content">
-            <div class="progress-header">
-              <div class="spinner"></div>
-              <span class="progress-title">Uploading...</span>
-            </div>
-            <div class="progress-host" id="progress-host">Preparing...</div>
-            <div class="progress-bar-container">
-              <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
-            </div>
-            <div class="progress-details" id="progress-details">0 / 0 files</div>
-            <div class="progress-file" id="progress-file"></div>
+          <div class="progress-targets-container">
+            \${targetRows}
           </div>
-        \`;
-      }
+        </div>
+      \`;
 
       document.body.appendChild(modal);
     }
 
     // 進捗を更新
     function updateProgress(data) {
-      const targetCount = state.remoteTargets.length;
+      // 統一デザイン: 常に同じ構造で更新
+      const targetIndex = data.targetIndex ?? 0;
+      const bar = document.getElementById('progress-bar-' + targetIndex);
+      const details = document.getElementById('progress-details-' + targetIndex);
+      const file = document.getElementById('progress-file-' + targetIndex);
+      const status = document.getElementById('progress-status-' + targetIndex);
+      const item = document.getElementById('progress-target-' + targetIndex);
 
-      if (targetCount > 1) {
-        // 複数ターゲット用の更新
-        const targetIndex = data.targetIndex ?? 0;
-        const bar = document.getElementById('progress-bar-' + targetIndex);
-        const details = document.getElementById('progress-details-' + targetIndex);
-        const file = document.getElementById('progress-file-' + targetIndex);
-        const status = document.getElementById('progress-status-' + targetIndex);
-        const row = document.getElementById('progress-target-' + targetIndex);
+      if (bar && details) {
+        const percent = data.totalFiles > 0 ? ((data.fileIndex + 1) / data.totalFiles) * 100 : 0;
+        bar.style.width = percent + '%';
+        details.textContent = (data.fileIndex + 1) + ' / ' + data.totalFiles + ' files';
 
-        if (bar && details) {
-          const percent = data.totalFiles > 0 ? ((data.fileIndex + 1) / data.totalFiles) * 100 : 0;
-          bar.style.width = percent + '%';
-          details.textContent = (data.fileIndex + 1) + ' / ' + data.totalFiles + ' files';
+        if (file) {
+          file.textContent = data.currentFile || '';
+        }
 
-          if (file) {
-            file.textContent = data.currentFile || '';
-          }
+        // ターゲット完了は最後のファイルが完了した時
+        const isTargetCompleted = data.fileIndex + 1 === data.totalFiles && data.status === 'completed';
+        const isTargetFailed = data.status === 'failed';
 
-          // ターゲット完了は最後のファイルが完了した時
-          const isTargetCompleted = data.fileIndex + 1 === data.totalFiles && data.status === 'completed';
-          const isTargetFailed = data.status === 'failed';
-
-          if (status) {
-            if (isTargetCompleted) {
-              status.textContent = 'Completed';
-              status.className = 'progress-target-status completed';
-            } else if (isTargetFailed) {
-              status.textContent = 'Failed';
-              status.className = 'progress-target-status failed';
-            } else {
-              status.textContent = 'Uploading...';
-              status.className = 'progress-target-status uploading';
-            }
-          }
-
-          if (row) {
-            if (isTargetCompleted) {
-              row.classList.add('completed');
-            } else if (isTargetFailed) {
-              row.classList.add('failed');
-            }
+        if (status) {
+          if (isTargetCompleted) {
+            status.textContent = 'Completed';
+            status.className = 'progress-target-status completed';
+          } else if (isTargetFailed) {
+            status.textContent = 'Failed';
+            status.className = 'progress-target-status failed';
+          } else {
+            status.textContent = 'Uploading...';
+            status.className = 'progress-target-status uploading';
           }
         }
 
-        // 進捗状態を保存
-        progressState.targets.set(data.host, {
-          fileIndex: data.fileIndex,
-          totalFiles: data.totalFiles,
-          status: data.status,
-          currentFile: data.currentFile
-        });
-      } else {
-        // 単一ターゲット用の更新（従来と同じ）
-        const bar = document.getElementById('progress-bar');
-        const details = document.getElementById('progress-details');
-        const file = document.getElementById('progress-file');
-        const host = document.getElementById('progress-host');
-
-        if (bar && details && file && host) {
-          const percent = data.totalFiles > 0 ? ((data.fileIndex + 1) / data.totalFiles) * 100 : 0;
-          bar.style.width = percent + '%';
-          details.textContent = (data.fileIndex + 1) + ' / ' + data.totalFiles + ' files';
-          file.textContent = data.currentFile;
-          host.textContent = 'Target: ' + data.host;
+        if (item) {
+          if (isTargetCompleted) {
+            item.classList.add('completed');
+          } else if (isTargetFailed) {
+            item.classList.add('failed');
+          }
         }
       }
+
+      // 進捗状態を保存
+      progressState.targets.set(data.host, {
+        fileIndex: data.fileIndex,
+        totalFiles: data.totalFiles,
+        status: data.status,
+        currentFile: data.currentFile
+      });
     }
 
     // 完了表示
@@ -354,16 +337,18 @@ export function getScripts(): string {
       const existing = document.getElementById('confirm-modal');
       if (existing) existing.remove();
 
-      // ファイル数とターゲット情報を取得
-      const fileCount = state.files.length;
-      const targetCount = state.remoteTargets.length;
-      const targetHost = state.remoteTargets.length > 0 ? state.remoteTargets[0].host : 'unknown';
+      // ターゲット詳細のHTMLを生成
+      const targetDetailsHtml = generateTargetDetailsHtml();
+
+      // アップロード対象ファイル総数を計算
+      const totalFiles = state.targetDiffResults.reduce((sum, r) => sum + (r.fileCount || 0), 0);
+      const activeTargets = state.targetDiffResults.filter(r => r.completed && !r.error && r.fileCount > 0).length;
 
       const modal = document.createElement('div');
       modal.id = 'confirm-modal';
       modal.className = 'confirm-modal';
       modal.innerHTML = \`
-        <div class="confirm-modal-content">
+        <div class="confirm-modal-content confirm-modal-wide">
           <div class="confirm-header">
             <span class="confirm-icon">&#8593;</span>
             <span class="confirm-title">Confirm Upload</span>
@@ -371,15 +356,11 @@ export function getScripts(): string {
           <div class="confirm-message">
             Are you sure you want to upload these files to the remote server?
           </div>
-          <div class="confirm-details">
-            <div class="confirm-details-row">
-              <span class="confirm-details-label">Files</span>
-              <span class="confirm-details-value">\${fileCount} file(s)</span>
-            </div>
-            <div class="confirm-details-row">
-              <span class="confirm-details-label">Target</span>
-              <span class="confirm-details-value">\${escapeHtml(targetHost)}\${targetCount > 1 ? ' (+' + (targetCount - 1) + ' more)' : ''}</span>
-            </div>
+          <div class="confirm-summary">
+            <span class="confirm-summary-item"><strong>\${totalFiles}</strong> files to <strong>\${activeTargets}</strong> target(s)</span>
+          </div>
+          <div class="confirm-target-list">
+            \${targetDetailsHtml}
           </div>
           <div class="confirm-actions">
             <button class="btn btn-secondary" id="confirm-cancel-btn">Cancel</button>
@@ -389,6 +370,64 @@ export function getScripts(): string {
       \`;
       document.body.appendChild(modal);
 
+      // イベントリスナーを設定
+      setupConfirmModalEvents(modal);
+    }
+
+    // ターゲット詳細のHTMLを生成（remoteTargetsの順番で表示）
+    function generateTargetDetailsHtml() {
+      // remoteTargetsをベースにループし、対応するtargetDiffResultsを検索
+      return state.remoteTargets.map((target, index) => {
+        const r = state.targetDiffResults.find(result => result.targetIndex === index);
+
+        // 結果がない場合（まだチェックされていない）
+        if (!r) {
+          return \`
+            <div class="confirm-target-item no-changes">
+              <div class="confirm-target-host">\${escapeHtml(target.host)}:\${escapeHtml(target.dest)}</div>
+              <div class="confirm-target-files">Not checked</div>
+            </div>
+          \`;
+        }
+
+        // エラーの場合
+        if (r.error) {
+          return \`
+            <div class="confirm-target-item error">
+              <div class="confirm-target-host">\${escapeHtml(r.host)}:\${escapeHtml(r.dest)}</div>
+              <div class="confirm-target-error">\${escapeHtml(r.error)}</div>
+            </div>
+          \`;
+        }
+
+        // 変更なしの場合
+        if (r.fileCount === 0) {
+          return \`
+            <div class="confirm-target-item no-changes">
+              <div class="confirm-target-host">\${escapeHtml(r.host)}:\${escapeHtml(r.dest)}</div>
+              <div class="confirm-target-files">No changes</div>
+            </div>
+          \`;
+        }
+
+        // 変更ありの場合
+        const details = [];
+        if (r.added > 0) details.push('<span class="confirm-stat added">+' + r.added + ' new</span>');
+        if (r.modified > 0) details.push('<span class="confirm-stat modified">~' + r.modified + ' modified</span>');
+        if (r.deleted > 0) details.push('<span class="confirm-stat deleted">-' + r.deleted + ' deleted</span>');
+
+        return \`
+          <div class="confirm-target-item">
+            <div class="confirm-target-host">\${escapeHtml(r.host)}:\${escapeHtml(r.dest)}</div>
+            <div class="confirm-target-files">\${r.fileCount} file(s)</div>
+            <div class="confirm-target-breakdown">\${details.join(' ')}</div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    // 確認モーダルにイベントリスナーを設定
+    function setupConfirmModalEvents(modal) {
       // イベントリスナー
       document.getElementById('confirm-cancel-btn').addEventListener('click', () => {
         modal.remove();
@@ -476,7 +515,66 @@ export function getScripts(): string {
             message.data.message
           );
           break;
+        case 'loading_progress':
+          // ターゲット差分チェック進捗を表示
+          handleLoadingProgress(message.data);
+          break;
       }
+    }
+
+    // ローディング進捗を表示
+    function handleLoadingProgress(data) {
+      const { checkingTargets, completedCount, totalCount, results } = data;
+      const loadingOverlay = elements.loadingOverlay;
+
+      // ターゲット差分結果を状態に保存（Confirm画面で使用）
+      if (results && results.length > 0) {
+        state.targetDiffResults = results;
+      }
+
+      if (!loadingOverlay || loadingOverlay.classList.contains('hidden')) {
+        return;
+      }
+
+      // 進捗コンテンツを生成
+      const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+      // チェック中のターゲット表示
+      const checkingText = checkingTargets.length > 0
+        ? 'Checking: ' + checkingTargets.join(', ')
+        : 'Preparing...';
+
+      // 完了したターゲットのサマリー
+      let summaryHtml = '';
+      if (results && results.length > 0) {
+        summaryHtml = '<div class="loading-results">' +
+          results.map(r => {
+            const statusClass = r.error ? 'error' : (r.completed ? 'completed' : 'pending');
+            const statusIcon = r.error ? '&#10060;' : (r.completed ? '&#10004;' : '&#8987;');
+            const details = r.error
+              ? escapeHtml(r.error)
+              : (r.completed ? r.fileCount + ' files (' + r.added + ' new, ' + r.modified + ' modified, ' + r.deleted + ' deleted)' : 'Waiting...');
+            return '<div class="loading-result-item ' + statusClass + '">' +
+              '<span class="loading-result-icon">' + statusIcon + '</span>' +
+              '<span class="loading-result-host">' + escapeHtml(r.host) + '</span>' +
+              '<span class="loading-result-details">' + details + '</span>' +
+            '</div>';
+          }).join('') +
+        '</div>';
+      }
+
+      loadingOverlay.innerHTML = \`
+        <div class="loading-progress-container">
+          <div class="loading-spinner"></div>
+          <div class="loading-title">Checking remote targets...</div>
+          <div class="loading-progress-bar">
+            <div class="loading-progress-fill" style="width: \${percent}%"></div>
+          </div>
+          <div class="loading-progress-text">\${completedCount} / \${totalCount} targets (\${percent}%)</div>
+          <div class="loading-checking-text">\${escapeHtml(checkingText)}</div>
+          \${summaryHtml}
+        </div>
+      \`;
     }
 
     // 初期化データの処理
@@ -578,27 +676,8 @@ export function getScripts(): string {
     function switchTarget(newIndex) {
       state.currentTargetIndex = newIndex;
 
-      // ローディングオーバーレイを表示
-      elements.loadingOverlay.classList.remove('hidden');
-
-      // ボタンを「確認中」状態に更新
-      updateUploadButtonState(true, 'checking', 'Checking for changes...');
-
-      // ローディング表示（サーバーからinitメッセージが来るまで）
-      elements.diffContainer.innerHTML = \`
-        <div class="loading">
-          <div class="spinner"></div>
-          Switching target...
-        </div>
-      \`;
-
-      // ファイルツリーもローディング状態を表示
-      elements.fileTree.innerHTML = \`
-        <div class="loading" style="padding: 20px;">
-          <div class="spinner"></div>
-          Loading...
-        </div>
-      \`;
+      // キャッシュがある場合は一瞬で完了するため、ローディングオーバーレイは表示しない
+      // ボタン状態もサーバーから返ってくる状態をそのまま使う
 
       // サーバーにターゲット変更を通知（サーバーからinitメッセージが再送信される）
       state.ws.send(JSON.stringify({
