@@ -953,104 +953,6 @@ export function getStyles(): string {
       gap: 10px;
     }
 
-    /* ターゲット詳細表示用の拡張スタイル */
-    .confirm-modal-wide {
-      max-width: 600px;
-      min-width: 500px;
-    }
-
-    .confirm-summary {
-      text-align: center;
-      margin-bottom: 16px;
-      padding: 10px;
-      background: rgba(86, 156, 214, 0.1);
-      border-radius: 4px;
-      font-size: 14px;
-    }
-
-    .confirm-summary-item strong {
-      color: var(--accent-blue);
-    }
-
-    .confirm-target-list {
-      background: var(--bg-tertiary);
-      border-radius: 6px;
-      padding: 8px;
-      margin-bottom: 20px;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-
-    .confirm-target-item {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      margin-bottom: 4px;
-      background: var(--bg-secondary);
-      border-radius: 4px;
-      border-left: 3px solid var(--accent-blue);
-    }
-
-    .confirm-target-item:last-child {
-      margin-bottom: 0;
-    }
-
-    .confirm-target-item.no-changes {
-      border-left-color: var(--text-secondary);
-      opacity: 0.7;
-    }
-
-    .confirm-target-item.error {
-      border-left-color: var(--color-deleted);
-    }
-
-    .confirm-target-host {
-      font-weight: 500;
-      color: var(--text-primary);
-      flex: 1;
-      min-width: 150px;
-    }
-
-    .confirm-target-files {
-      font-size: 13px;
-      color: var(--text-secondary);
-      min-width: 80px;
-      text-align: right;
-    }
-
-    .confirm-target-breakdown {
-      width: 100%;
-      font-size: 12px;
-      margin-top: 4px;
-      padding-top: 6px;
-      border-top: 1px solid var(--border-color);
-    }
-
-    .confirm-stat {
-      margin-right: 12px;
-    }
-
-    .confirm-stat.added {
-      color: var(--color-added);
-    }
-
-    .confirm-stat.modified {
-      color: var(--color-modified);
-    }
-
-    .confirm-stat.deleted {
-      color: var(--color-deleted);
-    }
-
-    .confirm-target-error {
-      width: 100%;
-      font-size: 12px;
-      color: var(--color-deleted);
-      margin-top: 4px;
-    }
-
     /* 初期ローディングオーバーレイ */
     .loading-overlay {
       position: fixed;
@@ -1094,8 +996,8 @@ export function getStyles(): string {
       line-height: 1.5;
     }
 
-    /* 進捗モーダル（ワイド版） */
-    .progress-modal-wide {
+    /* 複数ターゲット進捗表示 */
+    .progress-multi-target {
       width: 600px;
       text-align: left;
     }
@@ -1103,29 +1005,21 @@ export function getStyles(): string {
     .progress-targets-container {
       max-height: 400px;
       overflow-y: auto;
-      padding: 8px;
-      background: var(--bg-tertiary);
-      border-radius: 6px;
     }
 
-    /* 進捗ターゲットアイテム（Confirm画面と統一デザイン） */
-    .progress-target-item {
+    .progress-target-row {
       padding: 12px;
       margin-bottom: 8px;
-      background: var(--bg-secondary);
+      background: var(--bg-tertiary);
       border-radius: 6px;
-      border-left: 3px solid var(--accent-blue);
+      border-left: 3px solid var(--border-color);
     }
 
-    .progress-target-item:last-child {
-      margin-bottom: 0;
-    }
-
-    .progress-target-item.completed {
+    .progress-target-row.completed {
       border-left-color: var(--color-added);
     }
 
-    .progress-target-item.failed {
+    .progress-target-row.failed {
       border-left-color: var(--color-deleted);
     }
 
@@ -1133,7 +1027,7 @@ export function getStyles(): string {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
 
     .progress-target-host {
@@ -1141,46 +1035,11 @@ export function getStyles(): string {
       color: var(--text-primary);
     }
 
-    .progress-target-files {
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
-
-    .progress-target-breakdown {
-      font-size: 12px;
-      margin-bottom: 10px;
-    }
-
-    .progress-stat {
-      margin-right: 12px;
-    }
-
-    .progress-stat.added {
-      color: var(--color-added);
-    }
-
-    .progress-stat.modified {
-      color: var(--color-modified);
-    }
-
-    .progress-stat.deleted {
-      color: var(--color-deleted);
-    }
-
-    .progress-target-progress {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 12px;
-      color: var(--text-secondary);
-      margin-top: 8px;
-    }
-
     .progress-target-status {
       font-size: 12px;
       padding: 2px 8px;
       border-radius: 4px;
-      background: var(--bg-tertiary);
+      background: var(--bg-secondary);
       color: var(--text-secondary);
     }
 
@@ -1199,133 +1058,19 @@ export function getStyles(): string {
       background: rgba(244, 71, 71, 0.2);
     }
 
-    .progress-target-file {
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin-top: 6px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-style: italic;
-    }
-
-    /* ローディング進捗表示（ターゲット差分チェック用） */
-    .loading-progress-container {
+    .progress-target-details {
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      padding: 32px;
-      max-width: 600px;
-      width: 100%;
-    }
-
-    .loading-spinner {
-      width: 48px;
-      height: 48px;
-      border: 4px solid var(--border-color);
-      border-top-color: var(--accent-blue);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    .loading-title {
-      font-size: 18px;
-      color: var(--text-primary);
-      font-weight: 500;
-    }
-
-    .loading-progress-bar {
-      width: 100%;
-      height: 6px;
-      background: var(--bg-tertiary);
-      border-radius: 3px;
-      overflow: hidden;
-    }
-
-    .loading-progress-fill {
-      height: 100%;
-      background: var(--accent-blue);
-      transition: width 0.3s ease;
-      border-radius: 3px;
-    }
-
-    .loading-progress-text {
-      font-size: 14px;
-      color: var(--text-secondary);
-    }
-
-    .loading-checking-text {
-      font-size: 13px;
-      color: var(--text-secondary);
-      font-style: italic;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .loading-results {
-      width: 100%;
-      margin-top: 8px;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-
-    .loading-result-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      margin-bottom: 4px;
-      background: var(--bg-tertiary);
-      border-radius: 6px;
-      border-left: 3px solid var(--border-color);
-    }
-
-    .loading-result-item.completed {
-      border-left-color: var(--color-added);
-    }
-
-    .loading-result-item.error {
-      border-left-color: var(--color-deleted);
-    }
-
-    .loading-result-item.pending {
-      border-left-color: var(--text-secondary);
-      opacity: 0.7;
-    }
-
-    .loading-result-icon {
-      font-size: 14px;
-      flex-shrink: 0;
-    }
-
-    .loading-result-item.completed .loading-result-icon {
-      color: var(--color-added);
-    }
-
-    .loading-result-item.error .loading-result-icon {
-      color: var(--color-deleted);
-    }
-
-    .loading-result-host {
-      font-weight: 500;
-      color: var(--text-primary);
-      flex-shrink: 0;
-      min-width: 120px;
-    }
-
-    .loading-result-details {
+      justify-content: space-between;
       font-size: 12px;
       color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    .progress-target-file {
+      max-width: 60%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-
-    .loading-result-item.error .loading-result-details {
-      color: var(--color-deleted);
     }
   `;
 }
