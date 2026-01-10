@@ -5,6 +5,57 @@
 
 ---
 
+## 完了済み: diff viewer 全ターゲット事前チェック機能
+
+**目的**: UX改善 - 全ターゲットの差分を事前にチェックし、正確なファイル数表示とアップロード動作の予測可能性を向上
+
+### Phase 1: 全ターゲット並列チェック
+
+- [x] 初回ローディング時に全ターゲットの差分を並列チェック
+  - `checkAllTargetsDiff()` 関数を追加 (`ws-handler.ts`)
+  - 同時実行数を制限（デフォルト: 3、`concurrency`オプションで調整可能）
+  - 結果を `diffCacheByTarget` にキャッシュ
+
+- [x] ローディング進捗の表示
+  - WebSocketメッセージ `loading_progress` を追加 (`types/diff-viewer.ts`)
+  - 現在チェック中のターゲット名を表示
+  - 完了ターゲット数/全ターゲット数を表示
+  - ブラウザUI側でプログレスバーとターゲット別結果を表示 (`scripts.ts`, `styles.ts`)
+
+- [x] ターゲット切替時のキャッシュ参照
+  - キャッシュがあればネットワーク通信なしで即時表示
+  - `handleSwitchTarget()` を修正
+
+### Phase 2: Confirm画面の改善
+
+- [x] 各ターゲットのアップロード内容を明示
+  - ターゲットごとのファイル数を表示
+  - 変更種別ごとの内訳（追加/変更/削除）を表示
+  - 例: `localhost:/var/www - 8228 files (+5000 new, ~3200 modified, -28 deleted)`
+
+- [x] Confirmダイアログのレイアウト改善
+  - 全ターゲットの概要を一覧表示
+  - 0件のターゲットは「No changes」と明示
+  - エラーが発生したターゲットはエラーメッセージを表示
+
+---
+
+## 完了済み: diff-viewer コード分割による保守性向上
+
+### html.ts の分割
+
+- [x] `styles.ts` に CSS を分離
+- [x] `scripts.ts` に JavaScript を分離
+- [x] `html.ts` を更新して分離したモジュールをインポート
+
+### server.ts の責任分離
+
+- [x] `ws-handler.ts` に WebSocket メッセージハンドラを分離
+- [x] `file-content.ts` にローカル/リモートファイル取得ロジックを分離
+- [x] `server.ts` を HTTP サーバ処理に集中
+
+---
+
 ## 完了済み (Phase 11: ignore設定の階層化)
 
 **目的**: ターゲットごとに柔軟なignoreパターンを設定可能にする
