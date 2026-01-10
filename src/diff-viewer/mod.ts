@@ -33,27 +33,59 @@ export async function startDiffViewer(
 
   // diff viewerの起動メッセージ
   logSection("Diff Viewer");
-  logSectionLine(`Starting server on ${cyan(url)}`);
 
-  if (options.openBrowser) {
-    logSectionLine(`Opening browser...`, true);
+  // CUIモードかGUIモードかで分岐
+  if (options.cui) {
+    // --cui モード: CUIフォールバック
+    logSectionLine(`Using CUI mode`, true);
+    logSectionClose();
+    console.log();
+
+    const cuiResult = await cuiConfirm(diffResult, {
+      targets: options.targets,
+      uploadFiles: options.uploadFiles,
+      localDir: options.localDir,
+      checksum: options.checksum,
+    });
+    return {
+      confirmed: cuiResult.confirmed,
+      cancelReason: cuiResult.confirmed
+        ? undefined
+        : cuiResult.noChanges
+        ? "no_changes"
+        : "user_cancel",
+      changedFilesByTarget: cuiResult.changedFilesByTarget,
+    };
+  } else {
+    // GUIモード
+    logSectionLine(`Starting server on ${cyan(url)}`);
+
+    if (options.openBrowser) {
+      logSectionLine(`Opening browser...`, true);
+    } else {
+      logSectionLine(`Server ready (manual open mode)`, true);
+      console.log(dim(`  Open ${cyan(url)} in your browser.`));
+    }
     console.log();
 
     // サーバを起動（非同期）
     const serverPromise = startDiffViewerServer(diffResult, options);
 
-    // 少し待ってからブラウザを開く（サーバの起動を待つ）
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // ブラウザ自動起動が有効な場合
+    if (options.openBrowser) {
+      // 少し待ってからブラウザを開く（サーバの起動を待つ）
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // ブラウザを開く
-    const browserOpened = await openBrowser(url);
+      // ブラウザを開く
+      const browserOpened = await openBrowser(url);
 
-    if (!browserOpened) {
-      console.log(
-        dim("  Could not open browser automatically."),
-      );
-      console.log(dim(`  Please open ${cyan(url)} manually.`));
-      console.log();
+      if (!browserOpened) {
+        console.log(
+          dim("  Could not open browser automatically."),
+        );
+        console.log(dim(`  Please open ${cyan(url)} manually.`));
+        console.log();
+      }
     }
 
     // ユーザーの操作を待つ
@@ -78,26 +110,5 @@ export async function startDiffViewer(
     console.log();
 
     return result;
-  } else {
-    // --no-browser モード: CUIフォールバック
-    logSectionLine(`Browser disabled, using CUI mode`, true);
-    logSectionClose();
-    console.log();
-
-    const cuiResult = await cuiConfirm(diffResult, {
-      targets: options.targets,
-      uploadFiles: options.uploadFiles,
-      localDir: options.localDir,
-      checksum: options.checksum,
-    });
-    return {
-      confirmed: cuiResult.confirmed,
-      cancelReason: cuiResult.confirmed
-        ? undefined
-        : cuiResult.noChanges
-        ? "no_changes"
-        : "user_cancel",
-      changedFilesByTarget: cuiResult.changedFilesByTarget,
-    };
   }
 }

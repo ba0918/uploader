@@ -25,6 +25,7 @@ Options:
   -q, --quiet              最小限の出力
   -p, --port <number>      diff viewerのポート (default: 3000)
       --no-browser         ブラウザを自動で開かない
+      --cui                CUIモードで確認（diff viewerを使わない）
   -s, --strict             ファイル転送エラーで即座に終了
   -l, --log-file <path>    ログファイルのパス
       --concurrency <num>  リモートステータスチェックの同時実行数 (default: 10)
@@ -134,6 +135,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       "verbose",
       "quiet",
       "no-browser",
+      "cui",
       "strict",
       "parallel",
       "checksum",
@@ -147,6 +149,7 @@ export function parseArgs(args: string[]): CliArgs | null {
       verbose: false,
       quiet: false,
       "no-browser": false,
+      cui: false,
       strict: false,
       parallel: false,
       checksum: false,
@@ -218,6 +221,7 @@ export function parseArgs(args: string[]): CliArgs | null {
     quiet: parsed.quiet,
     port,
     noBrowser: parsed["no-browser"],
+    cui: parsed.cui,
     strict: parsed.strict,
     logFile: parsed["log-file"],
     concurrency,

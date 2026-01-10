@@ -5,6 +5,55 @@
 
 ---
 
+## 完了済み: diff viewer ブラウザ自動起動制御 (2026-01-10)
+
+**目的**: GUI diff viewerのブラウザ自動起動を制御可能にし、タブの使い回しを可能にする
+
+### 実装内容
+
+- [x] `--cui`オプションの追加
+  - `src/cli/args.ts`: booleanオプションに追加、ヘルプテキスト更新
+  - `src/types/cli.ts`: `CliOptions`/`CliArgs`に`cui: boolean`を追加
+
+- [x] `--no-browser`の動作変更
+  - `src/diff-viewer/mod.ts`: `startDiffViewer()`の分岐ロジック変更
+    - 変更前: `openBrowser === false` → CUIモード
+    - 変更後: `cui === true` → CUIモード
+    - 変更後: `openBrowser === false` → GUIサーバ起動、ブラウザ自動起動なし
+  - `src/types/diff-viewer.ts`: `DiffViewerOptions`に`cui: boolean`を追加
+
+- [x] main.tsでのオプション渡し方を変更
+  - `cui: args.cui`を追加
+  - `openBrowser`の計算ロジックは維持
+
+- [x] テスト追加/更新
+  - `tests/cli/args_test.ts`: `--cui`オプションのテスト3件追加
+  - `tests/diff-viewer/server_test.ts`: `DiffViewerOptions`に`cui: false`を追加
+
+### 動作仕様
+
+```bash
+# CUI確認なしアップロード
+uploader <profile>
+
+# CUI確認付きアップロード
+uploader --diff --cui <profile>
+
+# GUI確認（自動起動）
+uploader --diff <profile>
+
+# GUI確認（手動起動）
+uploader --diff --no-browser <profile>
+```
+
+### テスト結果
+
+- 全テスト通過: 83 passed (574 steps)
+- lint エラー0件
+- 型チェック通過
+
+---
+
 ## 完了済み: diff viewer 全ターゲット事前チェック機能
 
 **目的**: UX改善 - 全ターゲットの差分を事前にチェックし、正確なファイル数表示とアップロード動作の予測可能性を向上

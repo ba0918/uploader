@@ -216,6 +216,24 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("cuiオプション", () => {
+    it("--cuiオプションをパースできる", () => {
+      const result = parseArgs(["--cui", "profile"]);
+      assertEquals(result?.cui, true);
+    });
+
+    it("デフォルトはfalse", () => {
+      const result = parseArgs(["profile"]);
+      assertEquals(result?.cui, false);
+    });
+
+    it("--diffと--cuiを同時に指定できる", () => {
+      const result = parseArgs(["--diff", "--cui", "profile"]);
+      assertEquals(result?.diff, "auto");
+      assertEquals(result?.cui, true);
+    });
+  });
+
   describe("strictオプション", () => {
     it("--strictオプションをパースできる", () => {
       const result = parseArgs(["--strict", "profile"]);

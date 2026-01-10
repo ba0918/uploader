@@ -17,6 +17,8 @@ export interface DiffViewerOptions {
   port: number;
   /** ブラウザを自動で開くか */
   openBrowser: boolean;
+  /** CUIモードで確認するか */
+  cui: boolean;
   /** base ブランチ（gitモード用） */
   base: string;
   /** target ブランチ（gitモード用） */

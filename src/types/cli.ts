@@ -43,6 +43,9 @@ export interface CliOptions {
   /** ブラウザを開かない */
   noBrowser: boolean;
 
+  /** CUIモードで確認 */
+  cui: boolean;
+
   /** ファイル転送エラーで終了 */
   strict: boolean;
 

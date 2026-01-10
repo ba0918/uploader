@@ -334,6 +334,7 @@ async function main(): Promise<number> {
         const viewerResult = await startDiffViewer(viewerDiffResult, {
           port: args.port,
           openBrowser: !args.noBrowser,
+          cui: args.cui,
           base: profile.from.type === "git" ? profile.from.base : "Local",
           target: profile.from.type === "git"
             ? (profile.from.target || "HEAD")
