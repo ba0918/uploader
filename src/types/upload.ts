@@ -89,6 +89,8 @@ export interface UploadOptions {
   strict?: boolean;
   /** 複数ターゲットへの並列アップロード */
   parallel?: boolean;
+  /** ターゲットインデックスごとのファイルリスト（remote diffモード用） */
+  filesByTarget?: Map<number, UploadFile[]>;
 }
 
 /** 転送進捗イベント */

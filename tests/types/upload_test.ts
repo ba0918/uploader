@@ -10,6 +10,8 @@ import {
   type BulkUploadCapable,
   type DiffCapable,
   type RemoteFileContent,
+  type UploadFile,
+  type UploadOptions,
   type Uploader,
 } from "../../src/types/mod.ts";
 
@@ -113,5 +115,68 @@ describe("hasDiff", () => {
   it("BulkUploadCapableのみ実装している場合はfalseを返す", () => {
     const uploader = new MockBulkUploader();
     assertEquals(hasDiff(uploader), false);
+  });
+});
+
+describe("UploadOptions.filesByTarget", () => {
+  // テスト用のUploadFileを作成
+  function createTestFile(path: string): UploadFile {
+    return {
+      relativePath: path,
+      size: 100,
+      content: new Uint8Array([1, 2, 3]),
+      isDirectory: false,
+    };
+  }
+
+  it("filesByTargetを設定できる", () => {
+    const filesByTarget = new Map<number, UploadFile[]>();
+    filesByTarget.set(0, [createTestFile("file1.txt")]);
+    filesByTarget.set(1, [createTestFile("file2.txt"), createTestFile("file3.txt")]);
+
+    const options: UploadOptions = {
+      dryRun: false,
+      filesByTarget,
+    };
+
+    assertEquals(options.filesByTarget?.size, 2);
+    assertEquals(options.filesByTarget?.get(0)?.length, 1);
+    assertEquals(options.filesByTarget?.get(1)?.length, 2);
+  });
+
+  it("filesByTargetが未設定の場合はundefined", () => {
+    const options: UploadOptions = {
+      dryRun: false,
+    };
+
+    assertEquals(options.filesByTarget, undefined);
+  });
+
+  it("filesByTargetで登録されていないターゲットはundefinedを返す", () => {
+    const filesByTarget = new Map<number, UploadFile[]>();
+    filesByTarget.set(0, [createTestFile("file1.txt")]);
+
+    const options: UploadOptions = {
+      filesByTarget,
+    };
+
+    // 登録されているインデックスは取得できる
+    assertEquals(options.filesByTarget?.get(0)?.length, 1);
+    // 登録されていないインデックスはundefined
+    assertEquals(options.filesByTarget?.get(1), undefined);
+    assertEquals(options.filesByTarget?.get(2), undefined);
+  });
+
+  it("空のファイルリストも設定できる", () => {
+    const filesByTarget = new Map<number, UploadFile[]>();
+    filesByTarget.set(0, []);
+    filesByTarget.set(1, [createTestFile("file1.txt")]);
+
+    const options: UploadOptions = {
+      filesByTarget,
+    };
+
+    assertEquals(options.filesByTarget?.get(0)?.length, 0);
+    assertEquals(options.filesByTarget?.get(1)?.length, 1);
   });
 });

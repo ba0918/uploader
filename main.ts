@@ -240,6 +240,8 @@ async function main(): Promise<number> {
 
     // アップロード用ファイルリストを作成
     let uploadFiles: UploadFile[] = [];
+    // ターゲット別のファイルリスト（remote diffモード時に設定）
+    let filesByTarget: Map<number, UploadFile[]> | undefined;
 
     if (diffResult) {
       // Gitモード: 差分ファイルをアップロードファイルに変換
@@ -357,8 +359,31 @@ async function main(): Promise<number> {
         // 進捗コントローラーを保存
         diffViewerController = viewerResult.progressController;
 
-        // remote diffモードの場合、変更があったファイルのみにフィルタリング
-        if (viewerResult.changedFiles) {
+        // remote diffモードの場合、ターゲット別に変更ファイルをフィルタリング
+        if (viewerResult.changedFilesByTarget) {
+          // ターゲット別のファイルリストを作成
+          filesByTarget = new Map<number, UploadFile[]>();
+          for (const [targetIndex, changedFiles] of viewerResult
+            .changedFilesByTarget) {
+            const changedSet = new Set(changedFiles);
+            const filteredFiles = uploadFiles.filter(
+              (f) => changedSet.has(f.relativePath),
+            );
+            filesByTarget.set(targetIndex, filteredFiles);
+            logVerbose(
+              `Target ${targetIndex}: ${filteredFiles.length} changed files`,
+            );
+          }
+          // 全ターゲットのうち最大のファイル数をログに出力
+          const fileCounts = Array.from(filesByTarget.values()).map((f) =>
+            f.length
+          );
+          const maxFiles = fileCounts.length > 0 ? Math.max(...fileCounts) : 0;
+          logInfo(
+            `Filtered to target-specific files (max ${maxFiles} files per target)`,
+          );
+        } else if (viewerResult.changedFiles) {
+          // 後方互換: changedFilesがある場合は全ターゲットに同じフィルタを適用
           const changedSet = new Set(viewerResult.changedFiles);
           uploadFiles = uploadFiles.filter(
             (f) => changedSet.has(f.relativePath),
@@ -413,6 +438,7 @@ async function main(): Promise<number> {
         deleteRemote: args.delete,
         strict: args.strict,
         parallel: args.parallel,
+        filesByTarget,
       },
       onProgress,
     );

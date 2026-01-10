@@ -45,8 +45,10 @@ export interface DiffViewerResult {
   cancelReason?: "user_cancel" | "connection_closed" | "timeout" | "no_changes";
   /** 進捗コントローラー（confirm時のみ存在） */
   progressController?: DiffViewerProgressController;
-  /** 変更があったファイルのパスリスト（remote diffモード時のみ） */
+  /** 変更があったファイルのパスリスト（remote diffモード時のみ）@deprecated changedFilesByTarget を使用 */
   changedFiles?: string[];
+  /** ターゲットインデックスごとの変更ファイルリスト（remote diffモード時のみ） */
+  changedFilesByTarget?: Map<number, string[]>;
 }
 
 /** diff-viewer進捗コントローラー */
@@ -224,6 +226,43 @@ export interface WsUploadStateMessage extends WsMessageBase {
   data: UploadButtonState;
 }
 
+/** ターゲットごとの差分サマリー */
+export interface TargetDiffSummary {
+  /** ターゲットインデックス */
+  targetIndex: number;
+  /** ホスト名 */
+  host: string;
+  /** 宛先パス */
+  dest: string;
+  /** ファイル数 */
+  fileCount: number;
+  /** 追加ファイル数 */
+  added: number;
+  /** 変更ファイル数 */
+  modified: number;
+  /** 削除ファイル数 */
+  deleted: number;
+  /** チェック完了したか */
+  completed: boolean;
+  /** エラーメッセージ（エラー時のみ） */
+  error?: string;
+}
+
+/** ローディング進捗メッセージ */
+export interface WsLoadingProgressMessage extends WsMessageBase {
+  type: "loading_progress";
+  data: {
+    /** 現在チェック中のターゲット名（複数可） */
+    checkingTargets: string[];
+    /** 完了したターゲット数 */
+    completedCount: number;
+    /** 全ターゲット数 */
+    totalCount: number;
+    /** 各ターゲットの結果 */
+    results: TargetDiffSummary[];
+  };
+}
+
 /** サーバーからクライアントへのメッセージ */
 export type WsServerMessage =
   | WsInitMessage
@@ -233,7 +272,8 @@ export type WsServerMessage =
   | WsProgressMessage
   | WsCompleteMessage
   | WsCancelledMessage
-  | WsUploadStateMessage;
+  | WsUploadStateMessage
+  | WsLoadingProgressMessage;
 
 /** クライアントからサーバーへのメッセージ */
 export type WsClientMessage =
