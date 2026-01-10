@@ -2,6 +2,8 @@
  * 結合テスト用ヘルパー関数
  */
 
+import type { Uploader, UploadFile } from "../../src/types/mod.ts";
+
 /** Docker環境の設定 */
 export const DOCKER_CONFIG = {
   sftp: {
@@ -139,4 +141,91 @@ export async function shouldSkipIntegrationTests(): Promise<string | null> {
   }
 
   return null;
+}
+
+// ============================================================
+// Mirror mode test helpers (Phase I1)
+// ============================================================
+
+/** mirrorテスト用のリモートファイルを準備 */
+export async function setupRemoteFiles(
+  uploader: Uploader,
+  baseDir: string,
+  files: Array<{ path: string; content: string }>,
+): Promise<void> {
+  await uploader.connect();
+
+  try {
+    // ベースディレクトリを作成
+    await uploader.mkdir(baseDir);
+
+    // 各ファイルをアップロード
+    for (const file of files) {
+      const fullPath = `${baseDir}/${file.path}`;
+      const content = new TextEncoder().encode(file.content);
+
+      // サブディレクトリがある場合は作成
+      const dirParts = file.path.split("/");
+      if (dirParts.length > 1) {
+        let currentDir = baseDir;
+        for (let i = 0; i < dirParts.length - 1; i++) {
+          currentDir = `${currentDir}/${dirParts[i]}`;
+          await uploader.mkdir(currentDir);
+        }
+      }
+
+      const uploadFile: UploadFile = {
+        relativePath: fullPath,
+        size: content.length,
+        content,
+        isDirectory: false,
+        changeType: "add",
+      };
+
+      await uploader.upload(uploadFile, fullPath);
+    }
+  } finally {
+    await uploader.disconnect();
+  }
+}
+
+/** リモートファイルの存在確認 */
+export async function verifyRemoteFileExists(
+  uploader: Uploader,
+  path: string,
+): Promise<boolean> {
+  await uploader.connect();
+  try {
+    const result = await uploader.readFile(path);
+    return result !== null;
+  } catch {
+    return false;
+  } finally {
+    await uploader.disconnect();
+  }
+}
+
+/** リモートファイルの不存在確認 */
+export async function verifyRemoteFileNotExists(
+  uploader: Uploader,
+  path: string,
+): Promise<boolean> {
+  const exists = await verifyRemoteFileExists(uploader, path);
+  return !exists;
+}
+
+/** リモートディレクトリを再帰的に削除 */
+export async function cleanupRemoteDir(
+  uploader: Uploader,
+  baseDir: string,
+): Promise<void> {
+  await uploader.connect();
+  try {
+    // ディレクトリを再帰的に削除
+    await uploader.delete(baseDir);
+  } catch {
+    // 削除失敗は無視（存在しない場合など）
+  } finally {
+    await uploader.disconnect();
+  }
 }
