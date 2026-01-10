@@ -642,8 +642,6 @@ Deno.test({
       return;
     }
 
-    const testId = randomString();
-
     await t.step("getDiff detects new files", async () => {
       const uploader = new RsyncUploader({
         host: DOCKER_CONFIG.sftp.host,

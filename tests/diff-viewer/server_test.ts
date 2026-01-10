@@ -54,6 +54,7 @@ describe("startDiffViewerServer", () => {
     const serverPromise = startDiffViewerServer(mockDiffResult, {
       port: testPort,
       openBrowser: false,
+      cui: false,
       base: "main",
       target: "feature",
       diffMode: "remote",
@@ -97,6 +98,7 @@ describe("startDiffViewerServer", () => {
     const serverPromise = startDiffViewerServer(mockDiffResult, {
       port: testPort,
       openBrowser: false,
+      cui: false,
       base: "main",
       target: "feature",
       diffMode: "remote",
@@ -128,6 +130,7 @@ describe("startDiffViewerServer", () => {
     const serverPromise = startDiffViewerServer(mockDiffResult, {
       port: testPort,
       openBrowser: false,
+      cui: false,
       base: "main",
       target: "feature",
       diffMode: "remote",
@@ -175,6 +178,7 @@ describe("startDiffViewerServer", () => {
     const serverPromise = startDiffViewerServer(mockDiffResult, {
       port: testPort,
       openBrowser: false,
+      cui: false,
       base: "main",
       target: "feature",
       diffMode: "remote",
@@ -209,6 +213,7 @@ describe("startDiffViewerServer", () => {
     const serverPromise = startDiffViewerServer(mockDiffResult, {
       port: testPort,
       openBrowser: false,
+      cui: false,
       base: "main",
       target: "feature",
       diffMode: "remote",
@@ -272,6 +277,7 @@ describe("startDiffViewerServer", () => {
     const serverPromise = startDiffViewerServer(mockDiffResult, {
       port: testPort,
       openBrowser: false,
+      cui: false,
       base: "main",
       target: "feature",
       diffMode: "remote",
@@ -329,6 +335,7 @@ describe("startDiffViewerServer", () => {
     const serverPromise = startDiffViewerServer(mockDiffResult, {
       port: testPort,
       openBrowser: false,
+      cui: false,
       base: "main",
       target: "feature",
       diffMode: "remote",
