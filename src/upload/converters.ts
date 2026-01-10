@@ -6,13 +6,20 @@
 
 import type { CollectedFile, DiffFile, UploadFile } from "../types/mod.ts";
 import { logVerbose } from "../ui/logger.ts";
+import { applyIgnoreFilter } from "./filter.ts";
 
 /**
  * Git差分ファイルをUploadFileに変換
+ *
+ * @param files Git差分ファイル配列
+ * @param targetRef Gitリファレンス（ブランチ名など）
+ * @param ignorePatterns ignoreパターン（省略時はフィルタリングしない）
+ * @returns UploadFile配列（ignoreパターン適用後）
  */
 export async function diffFilesToUploadFiles(
   files: DiffFile[],
   targetRef: string,
+  ignorePatterns: string[] = [],
 ): Promise<UploadFile[]> {
   const uploadFiles: UploadFile[] = [];
 
@@ -44,7 +51,8 @@ export async function diffFilesToUploadFiles(
     }
   }
 
-  return uploadFiles;
+  // ignoreパターンを適用
+  return applyIgnoreFilter(uploadFiles, ignorePatterns);
 }
 
 /**

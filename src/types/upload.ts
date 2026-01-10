@@ -261,6 +261,32 @@ export function hasDiff(
   return typeof (uploader as unknown as DiffCapable).getDiff === "function";
 }
 
+/**
+ * リモートファイル一覧取得機能インターフェース (ISP: 拡張機能)
+ *
+ * リモートディレクトリのファイル一覧を再帰的に取得できるプロトコル用。
+ * fileモード + mirrorモード時に、削除対象ファイルを特定するために使用。
+ */
+export interface ListRemoteFilesCapable {
+  /**
+   * リモートディレクトリのファイル一覧を再帰的に取得
+   * @returns ファイルパス（相対パス）の配列
+   */
+  listRemoteFiles(): Promise<string[]>;
+}
+
+/**
+ * リモートファイル一覧取得機能を持つかどうかを判定する型ガード
+ * @param uploader アップローダー
+ * @returns ListRemoteFilesCapable を実装している場合 true
+ */
+export function hasListRemoteFiles(
+  uploader: Uploader,
+): uploader is Uploader & ListRemoteFilesCapable {
+  return typeof (uploader as unknown as ListRemoteFilesCapable)
+    .listRemoteFiles === "function";
+}
+
 /** アップローダーエラー */
 export class UploadError extends Error {
   constructor(

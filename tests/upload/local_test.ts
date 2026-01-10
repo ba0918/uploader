@@ -679,4 +679,119 @@ describe("LocalUploader", () => {
       assertEquals(error.code, "TRANSFER_ERROR");
     });
   });
+
+  describe("listRemoteFiles", () => {
+    it("ファイル一覧を取得できる", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        // テストファイルを作成
+        await createTestFile(tempDir, "file1.txt", "content1");
+        await createTestFile(tempDir, "file2.txt", "content2");
+
+        const uploader = new LocalUploader({ dest: tempDir });
+        await uploader.connect();
+
+        const files = await uploader.listRemoteFiles();
+
+        assertEquals(files.length, 2);
+        assertEquals(files.includes("file1.txt"), true);
+        assertEquals(files.includes("file2.txt"), true);
+
+        await uploader.disconnect();
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+
+    it("ネストしたディレクトリのファイルも取得できる", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        // ネストしたディレクトリを作成
+        await Deno.mkdir(join(tempDir, "subdir"), { recursive: true });
+        await Deno.mkdir(join(tempDir, "subdir/nested"), { recursive: true });
+
+        await createTestFile(tempDir, "root.txt", "root");
+        await createTestFile(join(tempDir, "subdir"), "sub.txt", "sub");
+        await createTestFile(
+          join(tempDir, "subdir/nested"),
+          "deep.txt",
+          "deep",
+        );
+
+        const uploader = new LocalUploader({ dest: tempDir });
+        await uploader.connect();
+
+        const files = await uploader.listRemoteFiles();
+
+        assertEquals(files.length, 3);
+        assertEquals(files.includes("root.txt"), true);
+        assertEquals(
+          files.includes("subdir/sub.txt") ||
+            files.includes("subdir\\sub.txt"),
+          true,
+        );
+        assertEquals(
+          files.includes("subdir/nested/deep.txt") ||
+            files.includes("subdir\\nested\\deep.txt"),
+          true,
+        );
+
+        await uploader.disconnect();
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+
+    it("空のディレクトリは空配列を返す", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        const uploader = new LocalUploader({ dest: tempDir });
+        await uploader.connect();
+
+        const files = await uploader.listRemoteFiles();
+
+        assertEquals(files.length, 0);
+
+        await uploader.disconnect();
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+
+    it("存在しないディレクトリは空配列を返す", async () => {
+      const tempDir = await createTempDir();
+      const nonExistentDir = join(tempDir, "nonexistent");
+
+      try {
+        const uploader = new LocalUploader({ dest: nonExistentDir });
+        // @ts-ignore: テスト用に強制的に接続済み状態にする
+        uploader["connected"] = true;
+
+        const files = await uploader.listRemoteFiles();
+
+        assertEquals(files.length, 0);
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+
+    it("未接続状態ではエラー", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        const uploader = new LocalUploader({ dest: tempDir });
+
+        await assertRejects(
+          () => uploader.listRemoteFiles(),
+          UploadError,
+          "Not connected",
+        );
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+  });
 });

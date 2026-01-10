@@ -2,9 +2,14 @@
  * ローカルコピー
  */
 
-import { join } from "@std/path";
-import { ensureDir } from "@std/fs";
-import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
+import { join, relative } from "@std/path";
+import { ensureDir, walk } from "@std/fs";
+import type {
+  ListRemoteFilesCapable,
+  RemoteFileContent,
+  Uploader,
+  UploadFile,
+} from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import {
   ensureParentDir,
@@ -27,7 +32,7 @@ export interface LocalCopyOptions {
 /**
  * ローカルコピーアップローダー
  */
-export class LocalUploader implements Uploader {
+export class LocalUploader implements Uploader, ListRemoteFilesCapable {
   private options: LocalCopyOptions;
   private connected: boolean = false;
 
@@ -244,5 +249,39 @@ export class LocalUploader implements Uploader {
         error instanceof Error ? error : undefined,
       );
     }
+  }
+
+  /**
+   * リモートディレクトリのファイル一覧を再帰的に取得
+   * @returns ファイルパス（相対パス）の配列
+   */
+  async listRemoteFiles(): Promise<string[]> {
+    if (!this.connected) {
+      throw new UploadError("Not connected", "CONNECTION_ERROR");
+    }
+
+    const files: string[] = [];
+    try {
+      for await (
+        const entry of walk(this.options.dest, { includeDirs: false })
+      ) {
+        const relativePath = relative(this.options.dest, entry.path);
+        // 空文字列は除外（destディレクトリ自体）
+        if (relativePath) {
+          files.push(relativePath);
+        }
+      }
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        // ディレクトリが存在しない場合は空配列を返す
+        return [];
+      }
+      throw new UploadError(
+        `Failed to list remote files: ${this.options.dest}`,
+        "TRANSFER_ERROR",
+        error instanceof Error ? error : undefined,
+      );
+    }
+    return files;
   }
 }

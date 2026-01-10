@@ -1,7 +1,159 @@
 # uploader 実装TODO（アーカイブ）
 
-このファイルは完了済みのタスクのアーカイブです。 アクティブなタスクは
-[TODO.md](./TODO.md) を参照してください。
+このファイルは完了済みのタスクと不採用の提案のアーカイブです。
+アクティブなタスクは [TODO.md](./TODO.md) を参照してください。
+
+---
+
+## 不採用: mirror + ignore 対応の代替案 (2026-01-11)
+
+**背景**: fileモード +
+mirrorモード時のリモートのみファイル表示対応において、複数の実装案を検討した結果、提案C
+(getDiff不使用アプローチ) を採用。以下の提案は不採用となった。
+
+**不採用理由の要約**:
+
+- 提案A: diff時とupload時で2回staging作成が必要、パフォーマンスコスト
+- 提案B: `--files-from`問題未解決、プロトコル間で不一致
+- 提案D: 設計原則違反（プロトコル別分岐）
+
+### 提案A: Staging Directory アプローチ【不採用】
+
+**実現可能性**: ⭐⭐⭐⭐ (高い)
+
+**参考実装**: `rsync.ts` の `bulkUpload()` (186-270行目)
+
+- tempディレクトリ作成 → ファイルコピー → rsync転送 → temp削除
+
+**実装手順**:
+
+1. `upload/staging.ts` を新規作成
+   ```typescript
+   async function prepareStagingDirectory(
+     uploadFiles: UploadFile[],
+     ignorePatterns: string[],
+   ): Promise<string> {
+     const stagingDir = await Deno.makeTempDir({ prefix: "uploader_staging_" });
+     const ignoreMatcher = new IgnoreMatcher(ignorePatterns);
+
+     for (const file of uploadFiles) {
+       if (ignoreMatcher.matches(file.relativePath)) continue;
+       if (file.changeType === "delete") continue;
+
+       const destPath = join(stagingDir, file.relativePath);
+       // ファイルコピー処理
+     }
+
+     return stagingDir;
+   }
+   ```
+
+2. `remote-diff.ts` と `ws-target-checker.ts` を修正
+   - staging使用に変更
+   - `getDiff(stagingDir, [])` で全体比較（`--delete`有効）
+
+3. `executor.ts` を修正
+   - staging経由のアップロードに変更
+
+**影響範囲**:
+
+- 新規: `upload/staging.ts` (約200行)
+- 修正: `remote-diff.ts` (30行), `ws-target-checker.ts` (50行), `executor.ts`
+  (100行)
+- テスト: 新規テスト約300行
+
+**所要時間見積もり**: 実装3日 + テスト2日 = **5日**
+
+**要件適合性**:
+
+- 要件1 (CUI/GUI一貫性): ⚠️ 条件付き（diff時とupload時で2回staging作成）
+- 要件2 (プロトコル一貫性): ✅ 一致
+- 要件3 (syncモード対応): ✅ 対応
+- 要件4 (組み合わせ): ⚠️ 条件付き
+- 要件5 (パフォーマンス): ⚠️ コピーコスト（10,000ファイルで10秒）
+
+**不採用理由**:
+
+- diff表示時とupload実行時で2回staging作成が必要
+- 全ファイルをディスクにコピーするオーバーヘッド
+- 提案Cの方がパフォーマンスが良い
+
+---
+
+### 提案B: 現在の実装を改善（段階的）【不採用】
+
+**実現可能性**: ⭐⭐⭐ (中)
+
+**実装手順**:
+
+1. `remote-diff.ts` に ignore + mirror 追加
+   ```typescript
+   async function getRsyncDiffForTarget(...) {
+     const ignoreMatcher = new IgnoreMatcher(target.ignore || []);
+
+     // mirrorモード時はfilePathsを空にする
+     const filePaths = target.sync_mode === "mirror"
+       ? []
+       : extractFilePaths(uploadFiles).filter(p => !ignoreMatcher.matches(p));
+
+     const diff = await uploader.getDiff(localDir, filePaths, options);
+
+     // diff結果をフィルタリング
+     diff.entries = diff.entries.filter(e => !ignoreMatcher.matches(e.path));
+   }
+   ```
+
+2. rsync.ts の `getDiff()` に `--exclude` 追加
+   ```typescript
+   if (ignorePatterns && ignorePatterns.length > 0) {
+     for (const pattern of ignorePatterns) {
+       args.push(`--exclude=${pattern}`);
+     }
+   }
+   ```
+
+3. gitモードに ignoreフィルタ追加
+   - `converters.ts` の `diffFilesToUploadFiles()` を修正
+
+**影響範囲**:
+
+- 修正: `remote-diff.ts` (50行), `rsync.ts` (20行), `converters.ts` (10行)
+- テスト: 新規テスト約200行
+
+**所要時間見積もり**: 実装2日 + テスト1日 = **3日**
+
+**要件適合性**:
+
+- 要件1 (CUI/GUI一貫性): ❌ 不一致（rsyncのみgetDiff()、他は差分表示不可）
+- 要件2 (プロトコル一貫性): ❌ 不一致（プロトコル間で機能差）
+- 要件3 (syncモード対応): ⚠️ 部分的（`--files-from`問題が残る）
+- 要件4 (組み合わせ): ❌ 多数の組み合わせで問題
+- 要件5 (パフォーマンス): ✅ 良好
+
+**不採用理由**:
+
+- **`--files-from` + mirror の根本的矛盾が未解決**
+- プロトコル間で動作が異なる（rsyncのみgetDiff()対応）
+- フィルタリングが複数箇所に分散（保守性低下）
+- 要件2, 3, 4を満たさない
+
+---
+
+### 提案D: rsync最適化 + 他プロトコル統一【不採用】
+
+**実現可能性**: ⭐⭐ (低い)
+
+**コンセプト**:
+
+- rsync: `getDiff()` 使用 + `--exclude` 追加
+- 他プロトコル: `listRemoteFiles()` 使用
+
+**不採用理由**:
+
+- プロトコル別の分岐が複雑化
+- 一貫性の原則に反する（設計原則違反）
+- rsyncと他プロトコルで処理フローが異なる
+- テスト・保守が困難
 
 ---
 

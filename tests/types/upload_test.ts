@@ -9,6 +9,8 @@ import {
   type DiffCapable,
   hasBulkUpload,
   hasDiff,
+  hasListRemoteFiles,
+  type ListRemoteFilesCapable,
   type RemoteFileContent,
   type Uploader,
   type UploadFile,
@@ -72,6 +74,14 @@ class MockFullUploader extends MockBasicUploader
   }
 }
 
+// ListRemoteFilesCapableを実装したUploader
+class MockListRemoteFilesUploader extends MockBasicUploader
+  implements ListRemoteFilesCapable {
+  listRemoteFiles() {
+    return Promise.resolve(["file1.txt", "file2.txt"]);
+  }
+}
+
 describe("hasBulkUpload", () => {
   it("BulkUploadCapableを実装していない場合はfalseを返す", () => {
     const uploader = new MockBasicUploader();
@@ -113,6 +123,28 @@ describe("hasDiff", () => {
   it("BulkUploadCapableのみ実装している場合はfalseを返す", () => {
     const uploader = new MockBulkUploader();
     assertEquals(hasDiff(uploader), false);
+  });
+});
+
+describe("hasListRemoteFiles", () => {
+  it("ListRemoteFilesCapableを実装していない場合はfalseを返す", () => {
+    const uploader = new MockBasicUploader();
+    assertEquals(hasListRemoteFiles(uploader), false);
+  });
+
+  it("ListRemoteFilesCapableを実装している場合はtrueを返す", () => {
+    const uploader = new MockListRemoteFilesUploader();
+    assertEquals(hasListRemoteFiles(uploader), true);
+  });
+
+  it("BulkUploadCapableのみ実装している場合はfalseを返す", () => {
+    const uploader = new MockBulkUploader();
+    assertEquals(hasListRemoteFiles(uploader), false);
+  });
+
+  it("DiffCapableのみ実装している場合はfalseを返す", () => {
+    const uploader = new MockDiffUploader();
+    assertEquals(hasListRemoteFiles(uploader), false);
   });
 });
 

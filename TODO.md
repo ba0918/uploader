@@ -118,6 +118,382 @@
 
 ---
 
+## fileモード + mirror時のリモートのみファイル表示対応【設計見直し中】
+
+**目的**: fileモード +
+mirrorモード時に、リモートにのみ存在するファイル（削除対象）をdiff-viewerに表示
+
+**背景**:
+
+- 現在の実装では、ローカル→リモートの差分のみ表示される
+- mirrorモードではリモートにのみ存在するファイルは削除されるべきだが、diff-viewerに表示されない
+- Uploadボタンが有効にならず、同期を実行できない
+
+**実装後に発見された重大な問題**:
+
+1. **GUI/CUI間の実装不一致**
+   - GUI mode (`ws-target-checker.ts`): ignore + mirror 対応済み
+   - CUI mode (`remote-diff.ts` + `browser.ts`): **未対応**
+   - → 同じ設定でもインターフェースで異なる結果になる
+2. **rsyncのignore処理の欠如**
+   - `getDiff()`で`--exclude`オプションを使っていない
+   - ターゲットの`ignore`設定が全く反映されない
+3. **mirror + `--files-from`の根本的矛盾**
+   - `--files-from`指定時は指定ファイルのみ比較対象
+   - リモート専用ファイル（削除対象）が検出できない
+   - mirrorモードで正しく動作しない
+4. **テストカバレッジ不足**
+   - mirror + ignoreの組み合わせテストなし
+   - CUI modeのテストなし
+   - 実際の削除動作の統合テストなし
+
+**設計原則違反**:
+
+- sync_mode (update/mirror) やインターフェース (GUI/CUI)
+  で動作が変わってはいけない
+- すべてのプロトコル (rsync/scp/sftp/local) で同じ挙動を保証すべき
+
+---
+
+### 設計見直し案（不採用の詳細は TODO_ARCHIVE.md を参照）
+
+提案A（Staging
+Directory）、提案B（段階的改善）、提案D（rsync最適化）の詳細な実装計画は不採用のため、TODO_ARCHIVE.md
+に移動しました。
+
+---
+
+### 要件適合性の検証結果
+
+**ユーザー要件**:
+
+1. CUI/GUIでDiff/Uploadの内容がぶれないこと
+2. プロトコル(rsync/scp/sftp/local)でDiff/Uploadがぶれないこと
+3. syncモード(update/mirror)で問題が起きないこと
+4. それぞれの組み合わせで問題が起きないこと
+5. パフォーマンスはある程度までは許容するが、致命的に遅くないこと
+
+**検証結果サマリー**:
+
+| 要件                    | 提案A (Staging) | 提案B (段階的) | 提案C (getDiff不使用) |
+| ----------------------- | --------------- | -------------- | --------------------- |
+| **1. CUI/GUI一貫性**    | ⚠️ 条件付き     | ❌ 不一致      | ✅ 完全一致           |
+| **2. プロトコル一貫性** | ✅ 一致         | ❌ 不一致      | ✅ 完全一致           |
+| **3. syncモード対応**   | ✅ 対応         | ⚠️ 部分的      | ✅ 完全対応           |
+| **4. 組み合わせ**       | ⚠️ 条件付き     | ❌ 問題あり    | ✅ 問題なし           |
+| **5. パフォーマンス**   | ⚠️ コピーコスト | ✅ 良好        | ⚠️ 許容範囲           |
+
+**採用決定**: **提案C: getDiff不使用アプローチ** ⭐⭐⭐⭐⭐
+
+- ✅ 全要件を完全に満たす唯一の提案
+- ✅ CUI/GUI完全一致、全プロトコル完全一致
+- ✅ パフォーマンスも提案Aより良好
+- ✅ コード量削減、テスト容易
+- ✨ 副次効果: rsync以外でも差分表示可能
+
+詳細な分析結果は上記セクション、不採用案の詳細は TODO_ARCHIVE.md を参照。
+
+---
+
+## 実装計画: 提案C (getDiff不使用アプローチ)【採用】
+
+### 実装方針
+
+**コンセプト**:
+
+- rsync `getDiff()` に依存せず、uploadFiles配列だけで完結
+- CUI/GUIで完全に同じロジック
+- 全プロトコルで完全に同じロジック
+- ignoreフィルタリングを一箇所に集約
+- mirrorモードは `listRemoteFiles()` でリモート一覧取得
+
+**処理フロー**:
+
+```
+1. uploadFiles配列取得（git diff or file mode）
+2. ignoreフィルタリング適用（統一処理）
+3. mirrorモード時:
+   - listRemoteFiles() でリモート一覧取得
+   - ignoreフィルタリング適用
+   - ローカルにないファイルを削除対象に追加
+4. 結果を使用:
+   - diff表示: uploadFilesをそのまま表示
+   - upload: uploadFilesをそのまま実行
+```
+
+### Phase C1: ignoreフィルタリングの統一 【高優先度】✅ 完了
+
+**目的**: ignoreパターンフィルタリングを一箇所に集約
+
+- [x] `upload/filter.ts` を新規作成
+  - [x] `applyIgnoreFilter(files: UploadFile[], patterns: string[]): UploadFile[]`
+        実装
+  - [x] IgnoreMatcher を使用
+  - [x] git/file両モードで使用可能な設計
+- [x] `converters.ts` を修正（gitモードにignore適用）
+  - [x] `diffFilesToUploadFiles()` にignorePatterns引数追加
+  - [x] フィルタリング処理を `applyIgnoreFilter()` に委譲
+- [x] `file/collector.ts` との整合性確認
+  - [x] fileモードは既にcollector内でフィルタリング済み
+  - [x] gitモードでもフィルタリングが適用されることを確認
+- [x] テスト作成
+  - [x] `upload/filter_test.ts` を新規作成
+  - [x] gitモード + ignoreパターンのテスト
+  - [x] 様々なパターン（*.log, node_modules/**, .git/**等）のテスト
+  - [x] `converters_test.ts` にignoreパターンのテスト追加
+
+**影響範囲**:
+
+- 新規: `upload/filter.ts` (45行)
+- 修正: `converters.ts` (10行)
+- テスト: `upload/filter_test.ts` (198行)
+- テスト: `converters_test.ts` (追加65行)
+
+**実装内容**:
+
+- `applyIgnoreFilter()` 関数を実装し、ignoreパターンフィルタリングを統一
+- `diffFilesToUploadFiles()` に `ignorePatterns` 引数を追加（デフォルト:
+  空配列）
+- 10個のテストケースで様々なパターンをカバー（_.log, node_modules/, **/_.map,
+  .git/ など）
+- 全テスト通過（229 passed）、テストカバレッジ維持
+
+### Phase C2: mirrorモード処理の統一 【高優先度】✅ 完了
+
+**目的**: mirrorモード時の削除対象検出を統一
+
+- [x] `upload/mirror.ts` を新規作成
+  - [x] `prepareMirrorSync()` 実装
+    ```typescript
+    export async function prepareMirrorSync(
+      uploader: Uploader,
+      uploadFiles: UploadFile[],
+      ignorePatterns: string[],
+    ): Promise<UploadFile[]>;
+    ```
+  - [x] `listRemoteFiles()` でリモート一覧取得
+  - [x] ignoreフィルタリング適用
+  - [x] ローカルにないファイルを削除対象として追加
+  - [x] `hasListRemoteFiles()` 型ガードで分岐
+  - [x] uploadFiles に既に含まれているファイルの重複を防止
+- [x] エラーハンドリング
+  - [x] `listRemoteFiles()` 失敗時の graceful degradation
+  - [x] ログ出力
+- [x] テスト作成
+  - [x] `upload/mirror_test.ts` を新規作成
+  - [x] モックUploaderを使用したユニットテスト
+  - [x] 削除対象ファイル検出のテスト
+  - [x] ignoreパターン適用のテスト
+  - [x] エラーハンドリングのテスト
+  - [x] 複雑なケース（追加、変更、削除、ignoreの組み合わせ）のテスト
+
+**影響範囲**:
+
+- 新規: `upload/mirror.ts` (118行)
+- テスト: `upload/mirror_test.ts` (245行)
+
+**実装内容**:
+
+- `prepareMirrorSync()` 関数を実装し、mirrorモード時の削除対象検出を統一
+- `hasListRemoteFiles()` 型ガードで対応しているアップローダーのみ処理
+- リモートファイルにもignoreパターンを適用
+- uploadFiles に既に含まれているファイルの重複を防止
+- エラー時は警告を出して続行（graceful degradation）
+- 9個のテストケースで様々なシナリオをカバー
+- 全テスト通過（238 passed）、テストカバレッジ維持
+
+### Phase C3: main処理フローの修正 【高優先度】✅ 完了
+
+**目的**: main.tsでignore+mirror処理を適用
+
+- [x] `main.ts` を修正
+  - [x] fileモード + mirrorモード時、`prepareMirrorSync()` を呼び出し
+  - [x] リモートにのみ存在するファイルを削除対象として追加
+  - [x] プロファイルのignoreパターンを使用
+- [x] 処理フロー整理
+  - [x] uploadFiles取得後にmirrorモード処理を追加
+  - [x] ignoreフィルタリングは既にgetDiff/collectFilesで適用済み
+- [x] ログ出力改善
+  - [x] 削除対象ファイル数を表示
+
+**影響範囲**:
+
+- 修正: `main.ts` (47行追加: インポート2行 + mirrorモード処理45行)
+
+**実装内容**:
+
+- fileモード + いずれかのターゲットがmirrorモードの場合、mirror処理を実行
+- 最初のmirrorモードターゲットを使用してリモートファイル一覧を取得
+- `prepareMirrorSync()` を呼び出してuploadFilesに削除対象を追加
+- 削除対象ファイル数をlogInfo()で表示
+- エラー時はgraceful degradation（prepareMirrorSync内で処理）
+- gitモードの場合は既存の処理（getDiffで削除ファイルを取得）を使用
+- テスト通過（237 passed）
+
+### Phase C4: diff-viewer修正（GUI） 【中優先度】✅ 完了
+
+**目的**: ws-target-checker.tsを簡素化、統一処理を使用
+
+- [x] `ws-target-checker.ts` を大幅簡素化
+  - [x] 既存のmirror+ignore処理を削除（約30行簡素化）
+  - [x] `prepareMirrorSync()` を使用するように変更
+  - [x] rsyncのignoreフィルタリングは保持（IgnoreMatcher使用）
+- [x] `ws-init-handler.ts` を確認
+  - [x] deleteFiles処理が統一ロジックと整合することを確認（修正不要）
+- [x] テスト確認
+  - [x] 既存テストが全て通過（238 passed）
+  - [x] lintエラー修正（tests/upload/mirror_test.ts）
+
+**影響範囲**:
+
+- 修正: `ws-target-checker.ts` (約30行簡素化: 183-236行を187-231行に)
+- 修正: `tests/upload/mirror_test.ts` (lintエラー修正: async削除)
+- 確認: `ws-init-handler.ts` (修正不要)
+
+**実装内容**:
+
+- 非rsyncプロトコルでのmirrorモード処理（183-231行）を`prepareMirrorSync()`を使用するように変更
+- 独自のリモートファイル一覧取得・ignoreフィルタリング処理を削除
+- `prepareMirrorSync()`が返すUploadFileから削除対象ファイルを抽出
+- 全テスト通過（238 passed）、lintエラー0件、フォーマットOK
+
+### Phase C5: diff-viewer修正（CUI） 【中優先度】✅ 完了
+
+**目的**: CUI側をuploadFiles配列ベースの処理に変更
+
+- [x] `browser.ts` を修正
+  - [x] `cuiConfirm()`をuploadFilesベースの処理に変更
+  - [x] uploadFilesから直接サマリーを作成するヘルパー関数を追加
+  - [x] rsync以外でも差分表示できることを確認
+- [x] `remote-diff.ts` を確認
+  - [x] 既存のgetDiff()関連機能は維持（rsync用）
+  - [x] 修正不要と判断
+- [x] テスト確認
+  - [x] 既存テストが全て通過（238 passed）
+  - [x] lintエラー0件、フォーマットOK
+
+**影響範囲**:
+
+- 修正: `browser.ts` (約45行追加: ヘルパー関数2つ + cuiConfirm修正)
+- 確認: `remote-diff.ts` (修正不要)
+
+**実装内容**:
+
+- `createSummaryFromUploadFiles()`: uploadFilesからサマリーを作成
+- `uploadFilesToDiffFiles()`: uploadFilesをDiffFile形式に変換
+- `cuiConfirm()`: uploadFilesがある場合はそこから直接サマリーを作成して表示
+- rsyncの場合も引き続きgetDiff()を使用可能（従来の動作を維持）
+- **副次効果**: sftp/scp/local プロトコルでもCUI差分表示が可能に
+
+### Phase C6: 統合テスト 【高優先度】
+
+**目的**: 全ての組み合わせで動作確認
+
+- [ ] 組み合わせテスト作成
+  - [ ] CUI + rsync + update + ignore
+  - [ ] CUI + rsync + mirror + ignore
+  - [ ] CUI + scp + mirror + ignore
+  - [ ] GUI + sftp + mirror + ignore
+  - [ ] GUI + local + update + ignore
+  - [ ] CUI + scp + mirror（ignoreなし）
+- [ ] パフォーマンステスト
+  - [ ] 100ファイル、1,000ファイル、10,000ファイルで計測
+  - [ ] updateモード vs mirrorモードの比較
+- [ ] エッジケーステスト
+  - [ ] ignoreパターンで全ファイル除外
+  - [ ] リモートにファイルがない場合
+  - [ ] ローカルにファイルがない場合（mirrorで全削除）
+
+**影響範囲**:
+
+- テスト: `tests/integration/mirror_ignore_test.ts` (約200行)
+
+### Phase C7: ドキュメント更新とクリーンアップ 【低優先度】
+
+**目的**: 不要なコードの削除とドキュメント更新
+
+- [ ] 不要なコードの削除
+  - [ ] rsync `getDiff()` の使用箇所を確認し、必要最小限に削減
+  - [ ] 重複したignoreフィルタリング処理を削除
+- [ ] コメント・ドキュメント更新
+  - [ ] SPEC.md を更新（新しいフロー図）
+  - [ ] CLAUDE.md を更新
+  - [ ] 主要関数にJSDocコメント追加
+- [ ] CHANGELOG.md 更新
+  - [ ] 破壊的変更の有無を確認
+  - [ ] 新機能（rsync以外での差分表示）を記載
+
+**影響範囲**:
+
+- ドキュメント: SPEC.md, CLAUDE.md, CHANGELOG.md
+
+### 実装の優先順位
+
+1. ✅ **Phase C1**: ignoreフィルタリング統一（基盤） - 完了
+2. ✅ **Phase C2**: mirrorモード処理統一（基盤） - 完了
+3. ✅ **Phase C3**: main処理フロー修正（統合） - 完了
+4. ✅ **Phase C4**: GUI修正（改善） - 完了
+5. ✅ **Phase C5**: CUI修正（改善） - 完了
+6. **Phase C6**: 統合テスト（検証）
+7. **Phase C7**: ドキュメント更新（仕上げ）
+
+### 所要時間見積もり
+
+| Phase    | 実装      | テスト    | 合計      |
+| -------- | --------- | --------- | --------- |
+| C1       | 0.5日     | 0.3日     | 0.8日     |
+| C2       | 0.8日     | 0.5日     | 1.3日     |
+| C3       | 0.5日     | 0.2日     | 0.7日     |
+| C4       | 0.5日     | 0.2日     | 0.7日     |
+| C5       | 0.3日     | 0.2日     | 0.5日     |
+| C6       | 0.2日     | 0.5日     | 0.7日     |
+| C7       | 0.2日     | -         | 0.2日     |
+| **合計** | **3.0日** | **1.9日** | **4.9日** |
+
+### リスクと対策
+
+**リスク1**: `listRemoteFiles()` が大量ファイルで遅い
+
+- **対策**: パフォーマンステストで計測、必要に応じてキャッシュ機構追加
+
+**リスク2**: 既存の動作が変わる可能性
+
+- **対策**: 統合テストを十分に実施、phase単位で慎重に進める
+
+**リスク3**: rsync getDiff()を使わないことでパフォーマンス低下
+
+- **対策**: パフォーマンス比較テスト、updateモードではオーバーヘッドなし
+
+### 期待される効果
+
+1. ✅ CUI/GUI完全一致（要件適合）
+2. ✅ 全プロトコル完全一致（要件適合）
+3. ✅ syncモード完全対応（要件適合）
+4. ✅ コード量削減（ws-target-checker: -100行）
+5. ✅ テスト容易性向上
+6. ✨ **副次効果**: rsync以外でも差分表示可能
+
+---
+
+### 過去の実装（Phase 1-4）【提案Cで活用】
+
+- [x] Phase 1: Uploaderインターフェース拡張
+  - [x] `ListRemoteFilesCapable`インターフェース追加
+  - [x] `hasListRemoteFiles()`型ガード追加
+- [x] Phase 2: 各アップローダーの実装
+  - [x] `listRemoteFiles()`実装（local/ssh-base/sftp）
+- [x] Phase 3: diff-viewer修正（GUI modeのみ）
+  - [x] `ws-target-checker.ts`: mirror + ignore対応
+  - [x] `ws-init-handler.ts`: deleteFiles表示対応
+- [x] Phase 4: テスト（不十分）
+  - [x] `listRemoteFiles()`基本テスト
+  - [x] 型ガードテスト
+  - [ ] mirror + ignoreテスト **未実装**
+  - [ ] CUI modeテスト **未実装**
+  - [ ] 統合テスト **未実装**
+
+---
+
 ## 保留中 (Phase 9.4: diff viewer 仮想スクロール)
 
 **目的**: 大量ファイル表示時のブラウザパフォーマンス改善

@@ -19,6 +19,8 @@ import {
   diffFilesToUploadFiles,
   uploadToTargets,
 } from "./src/upload/mod.ts";
+import { prepareMirrorSync } from "./src/upload/mirror.ts";
+import { createUploader } from "./src/upload/factory.ts";
 import type {
   DiffMode,
   DiffOption,
@@ -258,6 +260,53 @@ async function main(): Promise<number> {
     if (uploadFiles.length === 0) {
       logNoChanges();
       return EXIT_CODES.SUCCESS;
+    }
+
+    // mirrorモード処理: リモートにのみ存在するファイルを削除対象として追加
+    const hasMirrorMode = profile.to.targets.some((t) =>
+      t.sync_mode === "mirror"
+    );
+
+    if (hasMirrorMode && profile.from.type === "file") {
+      logVerbose("Mirror mode detected. Checking for remote-only files...");
+
+      // 最初のmirrorモードターゲットを使用してリモートファイルを取得
+      const mirrorTarget = profile.to.targets.find((t) =>
+        t.sync_mode === "mirror"
+      );
+
+      if (mirrorTarget) {
+        const uploader = createUploader(mirrorTarget);
+        try {
+          await uploader.connect();
+          logVerbose(
+            `[${mirrorTarget.host}] Connected for mirror sync preparation`,
+          );
+
+          const beforeCount = uploadFiles.length;
+          uploadFiles = await prepareMirrorSync(
+            uploader,
+            uploadFiles,
+            profile.ignore,
+          );
+          const deleteCount = uploadFiles.length - beforeCount;
+
+          if (deleteCount > 0) {
+            logInfo(
+              `Mirror mode: ${deleteCount} remote-only file(s) will be deleted`,
+            );
+          }
+
+          await uploader.disconnect();
+        } catch (error) {
+          logVerbose(
+            `Failed to prepare mirror sync: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          // エラーが発生しても続行（prepareMirrorSync内でgraceful degradation）
+        }
+      }
     }
 
     // dry-run モードの場合

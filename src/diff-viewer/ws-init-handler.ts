@@ -75,9 +75,18 @@ export async function sendInitMessage(
       );
 
       // キャッシュから結果を構築
-      const files = cached.rsyncDiff
+      let files = cached.rsyncDiff
         ? rsyncDiffToFiles(cached.rsyncDiff)
         : diffResult.files.filter((f) => cached.changedFiles.includes(f.path));
+
+      // 非rsyncプロトコルで削除ファイルがある場合は追加
+      if (cached.deleteFiles && cached.deleteFiles.length > 0) {
+        const deleteFileDiffs = cached.deleteFiles.map((path) => ({
+          path,
+          status: "D" as const,
+        }));
+        files = [...files, ...deleteFileDiffs];
+      }
 
       const summary = {
         added: cached.summary.added,

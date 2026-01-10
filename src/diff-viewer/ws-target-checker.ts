@@ -11,8 +11,10 @@ import type {
   UploadButtonState,
   WsLoadingProgressMessage,
 } from "../types/mod.ts";
-import { hasDiff } from "../types/mod.ts";
+import { hasDiff, hasListRemoteFiles } from "../types/mod.ts";
+import { IgnoreMatcher } from "../file/ignore.ts";
 import { createUploader } from "../upload/mod.ts";
+import { prepareMirrorSync } from "../upload/mirror.ts";
 import { batchAsync } from "../utils/mod.ts";
 import { getLocalAndRemoteContents } from "./file-content.ts";
 import {
@@ -100,63 +102,145 @@ export async function checkSingleTargetDiff(
     };
   }
 
+  // mirrorモードかどうかを判定
+  const isMirrorMode = target.sync_mode === "mirror";
+
   try {
     // ターゲット用のUploaderを作成
     const uploader = createUploader(target);
     await uploader.connect();
 
     try {
-      // getDiff()がサポートされているか確認
-      if (!hasDiff(uploader)) {
+      // getDiff()がサポートされているか確認（rsync）
+      if (hasDiff(uploader)) {
+        // mirrorモード時はfilePathsを空にして--deleteを有効化
+        // これによりリモートのみに存在するファイルも検出される
+        const filePaths = isMirrorMode
+          ? []
+          : (options.uploadFiles ? extractFilePaths(options.uploadFiles) : []);
+
         debugLog(
-          `[CheckTarget ${targetIndex}] Uploader does not support getDiff()`,
+          `[CheckTarget ${targetIndex}] Running rsync getDiff() for ${target.host}... (mirror: ${isMirrorMode})`,
         );
-        const total = diffResult.added + diffResult.modified +
-          diffResult.deleted + diffResult.renamed;
+
+        // rsync dry-runで差分を取得
+        const rsyncDiff = await uploader.getDiff(options.localDir, filePaths, {
+          checksum: options.checksum,
+        });
+
+        debugLog(
+          `[CheckTarget ${targetIndex}] Found ${rsyncDiff.entries.length} changed files`,
+        );
+
+        // 結果を変換
+        let { files, summary } = filterFilesByRsyncDiff(
+          diffResult.files,
+          rsyncDiff,
+        );
+
+        // mirrorモード時はignoreパターンでフィルタリング（除外対象は削除しない）
+        if (isMirrorMode && target.ignore && target.ignore.length > 0) {
+          const ignoreMatcher = new IgnoreMatcher(target.ignore);
+          const filteredFiles = files.filter(
+            (f) => !ignoreMatcher.matches(f.path),
+          );
+
+          // サマリーを再計算
+          const deleted = filteredFiles.filter((f) => f.status === "D").length;
+          const added = filteredFiles.filter((f) => f.status === "A").length;
+          const modified = filteredFiles.filter((f) => f.status === "M").length;
+
+          debugLog(
+            `[CheckTarget ${targetIndex}] After ignore filter: ${filteredFiles.length} files (was ${files.length})`,
+          );
+
+          files = filteredFiles;
+          summary = {
+            added,
+            modified,
+            deleted,
+            renamed: 0,
+            total: filteredFiles.length,
+          };
+        }
+
         return {
-          rsyncDiff: null,
-          changedFiles: diffResult.files.map((f) => f.path),
+          rsyncDiff,
+          changedFiles: files.map((f) => f.path),
           summary: {
-            added: diffResult.added,
-            modified: diffResult.modified,
-            deleted: diffResult.deleted,
-            total,
+            added: summary.added,
+            modified: summary.modified,
+            deleted: summary.deleted,
+            total: summary.total,
           },
         };
       }
 
-      // uploadFilesの相対パスリストを取得
-      const filePaths = options.uploadFiles
-        ? extractFilePaths(options.uploadFiles)
-        : [];
-
+      // getDiff()をサポートしていない場合（sftp/scp/local）
       debugLog(
-        `[CheckTarget ${targetIndex}] Running rsync getDiff() for ${target.host}...`,
+        `[CheckTarget ${targetIndex}] Uploader does not support getDiff()`,
       );
 
-      // rsync dry-runで差分を取得
-      const rsyncDiff = await uploader.getDiff(options.localDir, filePaths, {
-        checksum: options.checksum,
-      });
+      // mirrorモードかつlistRemoteFiles()をサポートしている場合
+      // リモートファイル一覧を取得して削除対象を特定
+      if (isMirrorMode && hasListRemoteFiles(uploader)) {
+        debugLog(
+          `[CheckTarget ${targetIndex}] Mirror mode: using prepareMirrorSync()...`,
+        );
 
-      debugLog(
-        `[CheckTarget ${targetIndex}] Found ${rsyncDiff.entries.length} changed files`,
-      );
+        // uploadFilesを使ってmirror同期準備
+        const uploadFiles = options.uploadFiles ?? [];
+        const ignorePatterns = target.ignore ?? [];
 
-      // 結果を変換
-      const { files, summary } = filterFilesByRsyncDiff(
-        diffResult.files,
-        rsyncDiff,
-      );
+        const syncedFiles = await prepareMirrorSync(
+          uploader,
+          uploadFiles,
+          ignorePatterns,
+        );
 
+        // 削除対象ファイルのみ抽出
+        const deleteFiles = syncedFiles
+          .filter((f) => f.changeType === "delete")
+          .map((f) => f.relativePath);
+
+        debugLog(
+          `[CheckTarget ${targetIndex}] Found ${deleteFiles.length} files to delete`,
+        );
+
+        // diffResultのファイルと削除対象を統合
+        const changedFiles = [
+          ...diffResult.files.map((f) => f.path),
+          ...deleteFiles,
+        ];
+
+        const deleted = deleteFiles.length;
+        const total = diffResult.added + diffResult.modified + deleted +
+          diffResult.renamed;
+
+        return {
+          rsyncDiff: null,
+          changedFiles,
+          summary: {
+            added: diffResult.added,
+            modified: diffResult.modified,
+            deleted,
+            total,
+          },
+          deleteFiles, // 削除対象ファイルリストを追加
+        };
+      }
+
+      // 非mirrorモードまたはlistRemoteFiles()をサポートしていない場合
+      const total = diffResult.added + diffResult.modified +
+        diffResult.deleted + diffResult.renamed;
       return {
-        rsyncDiff,
-        changedFiles: files.map((f) => f.path),
+        rsyncDiff: null,
+        changedFiles: diffResult.files.map((f) => f.path),
         summary: {
-          added: summary.added,
-          modified: summary.modified,
-          deleted: summary.deleted,
-          total: summary.total,
+          added: diffResult.added,
+          modified: diffResult.modified,
+          deleted: diffResult.deleted,
+          total,
         },
       };
     } finally {

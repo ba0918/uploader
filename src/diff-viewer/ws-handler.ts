@@ -46,6 +46,8 @@ export interface CachedTargetDiff {
   };
   /** エラー（発生時のみ） */
   error?: string;
+  /** 削除対象ファイルリスト（mirrorモード時、非rsyncプロトコル用） */
+  deleteFiles?: string[];
 }
 
 /** サーバの状態 */

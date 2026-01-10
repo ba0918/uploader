@@ -121,6 +121,53 @@ export interface CuiConfirmOptions {
 }
 
 /**
+ * UploadFilesからサマリーを作成
+ */
+function createSummaryFromUploadFiles(uploadFiles: UploadFile[]): {
+  added: number;
+  modified: number;
+  deleted: number;
+  total: number;
+} {
+  let added = 0;
+  let modified = 0;
+  let deleted = 0;
+
+  for (const file of uploadFiles) {
+    if (file.changeType === "add") {
+      added++;
+    } else if (file.changeType === "modify") {
+      modified++;
+    } else if (file.changeType === "delete") {
+      deleted++;
+    }
+  }
+
+  return {
+    added,
+    modified,
+    deleted,
+    total: uploadFiles.length,
+  };
+}
+
+/**
+ * UploadFilesをDiffFile形式に変換
+ */
+function uploadFilesToDiffFiles(uploadFiles: UploadFile[]): DiffFile[] {
+  return uploadFiles.map((file) => ({
+    path: file.relativePath,
+    status: file.changeType === "add"
+      ? "A"
+      : file.changeType === "modify"
+      ? "M"
+      : file.changeType === "delete"
+      ? "D"
+      : "A", // デフォルトはA
+  }));
+}
+
+/**
  * ターゲットごとの差分サマリーを表示
  */
 function displayTargetDiffSummary(info: TargetDiffInfo, index: number): void {
@@ -168,29 +215,48 @@ export async function cuiConfirm(
   const localDir = options?.localDir ?? "";
   const checksum = options?.checksum ?? false;
 
-  // 複数ターゲットがある場合、各ターゲットの差分を取得
-  const shouldGetRemoteDiffs = targets.length > 0 &&
-    uploadFiles.length > 0 &&
+  // uploadFilesがある場合は、それをベースに差分を表示
+  const useUploadFiles = uploadFiles.length > 0;
+
+  // rsyncターゲットがある場合のみ、追加でgetDiff()を実行
+  const shouldGetRemoteDiffs = !useUploadFiles &&
+    targets.length > 0 &&
     localDir;
 
   let targetDiffs: TargetDiffInfo[] = [];
+  let filesToDisplay: DiffFile[] = [];
+  let summary = {
+    added: diffResult.added,
+    modified: diffResult.modified,
+    deleted: diffResult.deleted,
+    total: diffResult.files.length,
+  };
 
-  if (shouldGetRemoteDiffs) {
+  if (useUploadFiles) {
+    // uploadFilesから直接サマリーを作成（全プロトコル対応）
+    summary = createSummaryFromUploadFiles(uploadFiles);
+    filesToDisplay = uploadFilesToDiffFiles(uploadFiles);
+  } else if (shouldGetRemoteDiffs) {
+    // rsyncのgetDiff()を使用（従来の処理）
     console.log(dim("  Checking remote differences..."));
     targetDiffs = await getRemoteDiffs(targets, uploadFiles, localDir, {
       checksum,
     });
     // 進捗表示をクリア
     console.log("\x1b[1A\x1b[2K");
+    filesToDisplay = diffResult.files;
+  } else {
+    // ローカルの差分のみ表示
+    filesToDisplay = diffResult.files;
   }
 
   // 全体の変更があるかチェック
   const remoteHasChanges = hasRemoteChanges(targetDiffs);
-  const hasGitChanges = diffResult.files.length > 0;
+  const hasLocalChanges = summary.total > 0;
 
-  // remoteモード: 全ターゲットの差分が0なら変更なし
+  // 変更があるか判定
   const hasAnyChanges = targetDiffs.length === 0
-    ? hasGitChanges
+    ? hasLocalChanges
     : remoteHasChanges;
 
   // 差分サマリーを表示
@@ -209,7 +275,7 @@ export async function cuiConfirm(
     console.log();
   }
 
-  // 差分取得できなかった場合（単一ターゲットなど）は従来の表示
+  // uploadFilesベースまたは差分取得できなかった場合の表示
   if (targetDiffs.length === 0) {
     if (targets.length > 0) {
       // ターゲット情報を表示
@@ -228,32 +294,33 @@ export async function cuiConfirm(
       console.log();
     }
 
-    console.log(`   ${green("+")}  ${diffResult.added} files added`);
-    console.log(`   ${yellow("~")}  ${diffResult.modified} files modified`);
-    console.log(`   ${red("-")}  ${diffResult.deleted} files deleted`);
+    console.log(`   ${green("+")}  ${summary.added} files added`);
+    console.log(`   ${yellow("~")}  ${summary.modified} files modified`);
+    console.log(`   ${red("-")}  ${summary.deleted} files deleted`);
     console.log(`   ${"─".repeat(20)}`);
-    console.log(`      ${diffResult.files.length} files total`);
+    console.log(`      ${summary.total} files total`);
     console.log();
 
     // ファイル一覧を表示
-    if (diffResult.added > 0) {
+    if (summary.added > 0) {
       console.log(`   ${green("Added:")}`);
-      displayFiles(diffResult.files.filter((f) => f.status === "A"), 5);
+      displayFiles(filesToDisplay.filter((f) => f.status === "A"), 5);
     }
 
-    if (diffResult.modified > 0) {
+    if (summary.modified > 0) {
       console.log(`   ${yellow("Modified:")}`);
-      displayFiles(diffResult.files.filter((f) => f.status === "M"), 5);
+      displayFiles(filesToDisplay.filter((f) => f.status === "M"), 5);
     }
 
-    if (diffResult.deleted > 0) {
+    if (summary.deleted > 0) {
       console.log(`   ${red("Deleted:")}`);
-      displayFiles(diffResult.files.filter((f) => f.status === "D"), 5);
+      displayFiles(filesToDisplay.filter((f) => f.status === "D"), 5);
     }
 
-    if (diffResult.renamed > 0) {
+    const renamed = filesToDisplay.filter((f) => f.status === "R");
+    if (renamed.length > 0) {
       console.log(`   ${cyan("Renamed:")}`);
-      displayFiles(diffResult.files.filter((f) => f.status === "R"), 5);
+      displayFiles(renamed, 5);
     }
   }
 
