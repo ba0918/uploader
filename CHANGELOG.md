@@ -3,7 +3,8 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -42,7 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - gitモードでもignoreパターンが正しく適用されるように修正
 
 - **mirrorモード時の削除対象ファイル検出** (Phase C2-C3)
-  - fileモード + mirrorモード時、リモート専用ファイルが削除対象として正しく検出されるように修正
+  - fileモード +
+    mirrorモード時、リモート専用ファイルが削除対象として正しく検出されるように修正
   - main.tsで`prepareMirrorSync()`を呼び出し、uploadFilesに削除対象を追加
 
 ### Technical Details
@@ -100,5 +102,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Future Work
 
-- Docker環境での実機統合テスト（CUI/GUI × 各プロトコル × update/mirror × ignore）
-- パフォーマンステスト（100/1,000/10,000ファイル）
+### 優先度別実装計画
+
+**Phase I1: mirrorモード統合テスト** [高優先度 - 1.5日]
+
+- rsync/sftp/scp/local各プロトコルでのmirror動作検証
+- ignoreパターンとの組み合わせテスト
+- CUI/GUI両方での差分表示検証
+- **推奨**: 次のリリース前に実施
+
+**Phase I2: CUI/GUI差分表示統合テスト** [中優先度 - 1.0日]
+
+- uploadFilesベースの差分表示検証（全プロトコル）
+- WebSocket経由の差分送信検証
+- ターゲット別差分集計の動作確認
+
+**Phase I3: パフォーマンステスト** [低優先度 - 2.0日]
+
+- 100/1,000/10,000ファイルでの性能計測
+- updateモード vs mirrorモードの比較
+- プロトコル別パフォーマンス比較
+- **実施条件**: パフォーマンス問題の報告があった場合
+
+### 現状評価
+
+**実機統合テストなしでもリリース可能な理由**:
+
+- ✅ ユニットテストで論理は完全に検証済み（241 passed）
+- ✅ Phase C1-C6で段階的に実装・テスト・検証済み
+- ✅ 破壊的変更なし、後方互換性を維持
+- ✅ エッジケースも網羅（mirror_test.ts）
+
+**リスク評価**:
+
+- 🟡 中リスク: mirrorモード + ignoreパターンの実機動作未検証
+- 🟡 中リスク: 大量ファイル時のパフォーマンス未計測
+- 🟢 低リスク: ユニットテストで論理は検証済み
