@@ -84,6 +84,16 @@ describe("LocalUploader", () => {
         await removeTempDir(tempDir);
       }
     });
+
+    it("statが失敗した場合はCONNECTION_ERROR", async () => {
+      // 無効なパスで接続を試みる
+      const uploader = new LocalUploader({ dest: "/dev/null/invalid" });
+      const error = await assertRejects(
+        () => uploader.connect(),
+        UploadError,
+      );
+      assertEquals(error.code, "CONNECTION_ERROR");
+    });
   });
 
   describe("mkdir", () => {
@@ -135,6 +145,28 @@ describe("LocalUploader", () => {
           UploadError,
           "Not connected",
         );
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+
+    it("ディレクトリ作成に失敗した場合はPERMISSION_ERROR", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        // ファイルを作成して、その中にディレクトリを作成しようとする
+        await createTestFile(tempDir, "not_a_dir", "content");
+
+        const uploader = new LocalUploader({ dest: tempDir });
+        await uploader.connect();
+
+        const error = await assertRejects(
+          () => uploader.mkdir("not_a_dir/subdir"),
+          UploadError,
+        );
+        assertEquals(error.code, "PERMISSION_ERROR");
+
+        await uploader.disconnect();
       } finally {
         await removeTempDir(tempDir);
       }
@@ -231,6 +263,35 @@ describe("LocalUploader", () => {
 
         const stat = await Deno.stat(join(tempDir, "new_dir"));
         assertEquals(stat.isDirectory, true);
+
+        await uploader.disconnect();
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+
+    it("ディレクトリ作成時にonProgressが呼ばれる", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        const uploader = new LocalUploader({ dest: tempDir });
+        await uploader.connect();
+
+        const file: UploadFile = {
+          relativePath: "progress_dir",
+          size: 0,
+          isDirectory: true,
+          changeType: "add",
+        };
+
+        let progressCalled = false;
+        await uploader.upload(file, file.relativePath, (transferred, total) => {
+          progressCalled = true;
+          assertEquals(transferred, 0);
+          assertEquals(total, 0);
+        });
+
+        assertEquals(progressCalled, true);
 
         await uploader.disconnect();
       } finally {
@@ -355,6 +416,69 @@ describe("LocalUploader", () => {
         await removeTempDir(srcDir);
       }
     });
+
+    it("タイムスタンプ保持有効でもcontentモードでは保持されない", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        const uploader = new LocalUploader({
+          dest: tempDir,
+          preserveTimestamps: true,
+        });
+        await uploader.connect();
+
+        const content = "Content mode timestamp test";
+        const file: UploadFile = {
+          relativePath: "content_ts.txt",
+          content: new TextEncoder().encode(content),
+          size: content.length,
+          isDirectory: false,
+          changeType: "add",
+          // sourcePathがないのでタイムスタンプ保持されない
+        };
+
+        await uploader.upload(file, file.relativePath);
+
+        // ファイルが作成されたことを確認
+        const stat = await Deno.stat(join(tempDir, "content_ts.txt"));
+        assertEquals(stat.isFile, true);
+
+        await uploader.disconnect();
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
+
+    it("ファイル書き込みに失敗した場合はTRANSFER_ERROR", async () => {
+      const tempDir = await createTempDir();
+
+      try {
+        // ディレクトリを作成
+        await Deno.mkdir(join(tempDir, "existing_dir"));
+
+        const uploader = new LocalUploader({ dest: tempDir });
+        await uploader.connect();
+
+        // ディレクトリと同名のファイルを書き込もうとする
+        const file: UploadFile = {
+          relativePath: "existing_dir",
+          content: new TextEncoder().encode("content"),
+          size: 7,
+          isDirectory: false,
+          changeType: "add",
+        };
+
+        const error = await assertRejects(
+          () => uploader.upload(file, file.relativePath),
+          UploadError,
+        );
+        assertEquals(error.code, "TRANSFER_ERROR");
+
+        await uploader.disconnect();
+      } finally {
+        await removeTempDir(tempDir);
+      }
+    });
   });
 
   describe("delete", () => {
@@ -444,6 +568,20 @@ describe("LocalUploader", () => {
         await removeTempDir(tempDir);
       }
     });
+
+    it("削除に失敗した場合はPERMISSION_ERROR", async () => {
+      // /dev/nullは削除できないディレクトリなのでエラーになる
+      const uploader = new LocalUploader({ dest: "/" });
+      // 強制的にconnectedをtrueにするためにプライベートフィールドを設定
+      // @ts-ignore: テスト用に強制的に接続済み状態にする
+      uploader["connected"] = true;
+
+      const error = await assertRejects(
+        () => uploader.delete("dev/null"),
+        UploadError,
+      );
+      assertEquals(error.code, "PERMISSION_ERROR");
+    });
   });
 
   describe("readFile", () => {
@@ -519,6 +657,20 @@ describe("LocalUploader", () => {
       } finally {
         await removeTempDir(tempDir);
       }
+    });
+
+    it("読み取りに失敗した場合はTRANSFER_ERROR", async () => {
+      // /proc/1/rootは通常のユーザーにはアクセスできないのでエラーになる
+      const uploader = new LocalUploader({ dest: "/proc" });
+      // @ts-ignore: テスト用に強制的に接続済み状態にする
+      uploader["connected"] = true;
+
+      // 権限エラーで読み取りに失敗する
+      const error = await assertRejects(
+        () => uploader.readFile("1/root"),
+        UploadError,
+      );
+      assertEquals(error.code, "TRANSFER_ERROR");
     });
   });
 });

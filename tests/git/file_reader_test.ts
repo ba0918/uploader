@@ -4,8 +4,8 @@
  * 実際のgitリポジトリを使用してテスト
  */
 
-import { assertEquals, assertExists } from "@std/assert";
-import { describe, it } from "@std/testing/bdd";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
+import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
 import {
   getFileContent,
   getFileDiffContents,
@@ -13,6 +13,7 @@ import {
   getWorkingTreeContent,
   isFileBinary,
 } from "../../src/git/file-reader.ts";
+import { GitCommandError } from "../../src/git/diff.ts";
 
 // このテストは実際のgitリポジトリ（現在のプロジェクト）を使用する
 const cwd = Deno.cwd();
@@ -60,6 +61,16 @@ describe("getFileContent", () => {
     // deno.jsonはJSON形式
     assertEquals(result.content?.includes("{"), true);
   });
+
+  it("無効なrefでGitCommandErrorをスローする", async () => {
+    // 存在しないref + 存在するファイルパスでGitCommandErrorをスローする
+    await assertRejects(
+      async () => {
+        await getFileContent("invalid_ref_12345", "README.md", cwd);
+      },
+      GitCommandError,
+    );
+  });
 });
 
 describe("getFileDiffContents", () => {
@@ -88,6 +99,22 @@ describe("getFileDiffContents", () => {
 
     assertEquals(result.base.content, null);
     assertEquals(result.target.content, null);
+  });
+
+  it("無効なrefでもエラーをキャッチしてnullを返す", async () => {
+    // 存在しないrefを指定した場合、catchブロックでフォールバック
+    const result = await getFileDiffContents(
+      "invalid_ref_base_12345",
+      "invalid_ref_target_12345",
+      "README.md",
+      cwd,
+    );
+
+    // catchブロックでnullコンテンツが返される
+    assertEquals(result.base.content, null);
+    assertEquals(result.target.content, null);
+    assertEquals(result.base.isBinary, false);
+    assertEquals(result.target.isBinary, false);
   });
 });
 
@@ -123,6 +150,26 @@ describe("getMultipleFileContents", () => {
 
     assertEquals(results.size, 0);
   });
+
+  it("無効なrefでもエラーをキャッチしてnullコンテンツを返す", async () => {
+    // 存在しないrefを指定した場合、catchブロックでフォールバック
+    const paths = ["README.md", "main.ts"];
+    const results = await getMultipleFileContents(
+      "invalid_ref_12345",
+      paths,
+      cwd,
+    );
+
+    assertEquals(results.size, 2);
+
+    // 両方ともnullコンテンツになる
+    for (const path of paths) {
+      const content = results.get(path);
+      assertExists(content);
+      assertEquals(content.content, null);
+      assertEquals(content.isBinary, false);
+    }
+  });
 });
 
 describe("isFileBinary", () => {
@@ -143,9 +190,27 @@ describe("isFileBinary", () => {
 
     assertEquals(result, false);
   });
+
+  it("存在しないファイルはエラーをキャッチしてfalseを返す", async () => {
+    // 存在しないファイルの場合、git diffは失敗するがcatchでフォールバック
+    const result = await isFileBinary("HEAD", "nonexistent_12345.txt", cwd);
+
+    // catchブロックでgetFileContentが呼ばれ、content.isBinaryが返される
+    assertEquals(result, false);
+  });
 });
 
 describe("getWorkingTreeContent", () => {
+  let tempDir: string;
+
+  beforeAll(async () => {
+    tempDir = await Deno.makeTempDir();
+  });
+
+  afterAll(async () => {
+    await Deno.remove(tempDir, { recursive: true });
+  });
+
   it("ワーキングツリーのファイルを読み取れる", async () => {
     const result = await getWorkingTreeContent("README.md", cwd);
 
@@ -173,5 +238,47 @@ describe("getWorkingTreeContent", () => {
     assertEquals(result.isBinary, false);
     assertExists(result.content);
     assertEquals(result.content?.includes("import"), true);
+  });
+
+  it("バイナリファイルはisBinary: trueを返す", async () => {
+    // バイナリファイルを作成（NULLバイトを含む）
+    const binaryPath = "test_binary.bin";
+    const binaryContent = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x00]);
+    await Deno.writeFile(`${tempDir}/${binaryPath}`, binaryContent);
+
+    const result = await getWorkingTreeContent(binaryPath, tempDir);
+
+    assertEquals(result.path, binaryPath);
+    assertEquals(result.isBinary, true);
+    assertEquals(result.content, null);
+  });
+
+  it("NotFound以外のエラーは再スローする", async () => {
+    // 読み取り権限のないディレクトリを指定するとPermissionDeniedエラーになる
+    // 代わりにディレクトリを読み取ろうとするとエラーになる
+    const dirPath = "test_dir_for_error";
+    await Deno.mkdir(`${tempDir}/${dirPath}`);
+
+    // ディレクトリを読み込もうとするとエラーになる
+    await assertRejects(
+      async () => {
+        await getWorkingTreeContent(dirPath, tempDir);
+      },
+    );
+  });
+
+  it("cwdなしでファイルを読み取れる", async () => {
+    // cwdを指定しない場合、カレントディレクトリから読み取る
+    // テスト用の一時ファイルを作成
+    const testPath = `${tempDir}/cwd_test.txt`;
+    await Deno.writeTextFile(testPath, "test content");
+
+    // 絶対パスで読み取り（cwdなし）
+    const result = await getWorkingTreeContent(testPath);
+
+    assertExists(result);
+    assertEquals(result.path, testPath);
+    assertEquals(result.isBinary, false);
+    assertEquals(result.content, "test content");
   });
 });

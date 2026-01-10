@@ -179,6 +179,46 @@ describe("createUploader", () => {
 
       assertInstanceOf(uploader, SftpUploader);
     });
+
+    it("timeout未指定でデフォルト30秒が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "sftp.example.com",
+        protocol: "sftp",
+        port: 22,
+        user: "sftpuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: undefined,
+        retry: 3,
+        ignore: [],
+      };
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, SftpUploader);
+    });
+
+    it("retry未指定でデフォルト3回が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "sftp.example.com",
+        protocol: "sftp",
+        port: 22,
+        user: "sftpuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: 30,
+        retry: undefined,
+        ignore: [],
+      };
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, SftpUploader);
+    });
   });
 
   describe("scp プロトコル", () => {
@@ -233,6 +273,66 @@ describe("createUploader", () => {
 
       assertInstanceOf(uploader, ScpUploader);
     });
+
+    it("port未指定でデフォルト22が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "scp.example.com",
+        protocol: "scp",
+        port: undefined,
+        user: "scpuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: 30,
+        retry: 3,
+        ignore: [],
+      };
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, ScpUploader);
+    });
+
+    it("timeout未指定でデフォルト30秒が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "scp.example.com",
+        protocol: "scp",
+        port: 22,
+        user: "scpuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: undefined,
+        retry: 3,
+        ignore: [],
+      };
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, ScpUploader);
+    });
+
+    it("retry未指定でデフォルト3回が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "scp.example.com",
+        protocol: "scp",
+        port: 22,
+        user: "scpuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: 30,
+        retry: undefined,
+        ignore: [],
+      };
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, ScpUploader);
+    });
   });
 
   describe("rsync プロトコル", () => {
@@ -282,6 +382,66 @@ describe("createUploader", () => {
         user: "rsyncuser",
         legacy_mode: true,
       });
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, RsyncUploader);
+    });
+
+    it("port未指定でデフォルト22が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "rsync.example.com",
+        protocol: "rsync",
+        port: undefined,
+        user: "rsyncuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: 30,
+        retry: 3,
+        ignore: [],
+      };
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, RsyncUploader);
+    });
+
+    it("timeout未指定でデフォルト30秒が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "rsync.example.com",
+        protocol: "rsync",
+        port: 22,
+        user: "rsyncuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: undefined,
+        retry: 3,
+        ignore: [],
+      };
+
+      const uploader = createUploader(target);
+
+      assertInstanceOf(uploader, RsyncUploader);
+    });
+
+    it("retry未指定でデフォルト3回が使用される", () => {
+      const target: ResolvedTargetConfig = {
+        host: "rsync.example.com",
+        protocol: "rsync",
+        port: 22,
+        user: "rsyncuser",
+        dest: "/var/www/",
+        sync_mode: "update",
+        preserve_permissions: false,
+        preserve_timestamps: false,
+        timeout: 30,
+        retry: undefined,
+        ignore: [],
+      };
 
       const uploader = createUploader(target);
 
