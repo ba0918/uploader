@@ -275,5 +275,203 @@ describe("showProfileList", () => {
       // 実際のパスワードは表示されない
       assertEquals(output.includes("secret123"), false);
     });
+
+    it("auth_typeがある場合に表示する", () => {
+      const config: Config = {
+        production: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            defaults: {
+              auth_type: "ssh_key",
+            },
+            targets: [
+              { host: "web1.example.com", protocol: "sftp", dest: "/var/www/" },
+              { host: "web2.example.com", protocol: "sftp", dest: "/var/www/" },
+            ],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      assertEquals(output.includes("auth=ssh_key"), true);
+    });
+
+    it("空のdefaultsは表示されない", () => {
+      const config: Config = {
+        production: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            defaults: {},
+            targets: [
+              { host: "web1.example.com", protocol: "sftp", dest: "/var/www/" },
+              { host: "web2.example.com", protocol: "sftp", dest: "/var/www/" },
+            ],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      assertEquals(output.includes("defaults:"), false);
+    });
+  });
+
+  describe("defaultsからの値継承", () => {
+    it("単一ターゲットでdefaultsからhost/user/protocolを継承する", () => {
+      const config: Config = {
+        production: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            defaults: {
+              host: "default-host.com",
+              user: "default-user",
+              protocol: "sftp",
+              port: 2222,
+            },
+            targets: [{ dest: "/var/www/" }],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      assertEquals(output.includes("default-user@default-host.com:2222"), true);
+    });
+
+    it("複数ターゲットでdefaultsからhost/user/protocolを継承する", () => {
+      const config: Config = {
+        production: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            defaults: {
+              host: "default-host.com",
+              user: "default-user",
+              protocol: "scp",
+            },
+            targets: [{ dest: "/var/www/a" }, { dest: "/var/www/b" }],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      assertEquals(output.includes("default-user@default-host.com:22"), true);
+    });
+  });
+
+  describe("プロトコルごとのポート表示", () => {
+    it("localプロトコルでもターゲット情報は表示される", () => {
+      const config: Config = {
+        local: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            targets: [
+              { host: "localhost", protocol: "local", dest: "/tmp/deploy/" },
+            ],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      // localプロトコルでもホスト情報は表示される
+      assertEquals(output.includes("localhost"), true);
+      assertEquals(output.includes("/tmp/deploy/"), true);
+    });
+
+    it("rsyncプロトコルでターゲット情報が表示される", () => {
+      const config: Config = {
+        rsync: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            targets: [
+              {
+                host: "rsync.example.com",
+                protocol: "rsync",
+                user: "deploy",
+                dest: "/var/www/",
+              },
+            ],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      assertEquals(output.includes("deploy@rsync.example.com"), true);
+      assertEquals(output.includes("/var/www/"), true);
+    });
+
+    it("カスタムポートが正しく表示される", () => {
+      const config: Config = {
+        custom: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            targets: [
+              {
+                host: "example.com",
+                protocol: "sftp",
+                port: 2222,
+                user: "deploy",
+                dest: "/var/www/",
+              },
+            ],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      assertEquals(output.includes(":2222"), true);
+    });
+  });
+
+  describe("環境変数形式のユーザー名", () => {
+    it("環境変数形式のユーザー名がそのまま表示される", () => {
+      const config: Config = {
+        env_test: {
+          from: { type: "file", src: ["dist/"] },
+          to: {
+            targets: [
+              {
+                host: "example.com",
+                protocol: "sftp",
+                user: "${SSH_USER}",
+                dest: "/var/www/",
+              },
+            ],
+          },
+        },
+      };
+
+      const logs = captureConsoleLog(() => {
+        showProfileList(config, "./uploader.yaml");
+      });
+
+      const output = logs.join("\n");
+      assertEquals(output.includes("${SSH_USER}@example.com"), true);
+    });
   });
 });
