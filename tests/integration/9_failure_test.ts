@@ -205,3 +205,77 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
 });
+
+// SFTP SSH鍵認証失敗テスト
+Deno.test({
+  name: "SFTP SSH key authentication failure",
+  ignore: false,
+  fn: async (t) => {
+    const skipReason = await shouldSkipIntegrationTests();
+    if (skipReason) {
+      console.log(`Skipping: ${skipReason}`);
+      return;
+    }
+
+    await t.step("fails with non-existent key file", async () => {
+      const uploader = new SftpUploader({
+        host: DOCKER_CONFIG.sftp.host,
+        port: DOCKER_CONFIG.sftp.port,
+        user: DOCKER_CONFIG.sftp.user,
+        authType: "ssh_key",
+        keyFile: "/nonexistent/key",
+        dest: DOCKER_CONFIG.sftp.dest,
+        timeout: 5000,
+        retry: 1,
+      });
+
+      let error: Error | null = null;
+      try {
+        await uploader.connect();
+      } catch (e) {
+        error = e as Error;
+      } finally {
+        await uploader.disconnect();
+      }
+
+      assertExists(error);
+      assertEquals(
+        error.message.includes("Failed to read SSH key file") ||
+          error.message.includes("Failed to connect"),
+        true,
+      );
+    });
+
+    await t.step("fails without keyFile when using ssh_key auth", async () => {
+      const uploader = new SftpUploader({
+        host: DOCKER_CONFIG.sftp.host,
+        port: DOCKER_CONFIG.sftp.port,
+        user: DOCKER_CONFIG.sftp.user,
+        authType: "ssh_key",
+        // keyFileを指定しない
+        dest: DOCKER_CONFIG.sftp.dest,
+        timeout: 5000,
+        retry: 1,
+      });
+
+      let error: Error | null = null;
+      try {
+        await uploader.connect();
+      } catch (e) {
+        error = e as Error;
+      } finally {
+        await uploader.disconnect();
+      }
+
+      assertExists(error);
+      // withRetryでラップされているため、"Failed to connect"または元のエラーが返される
+      assertEquals(
+        error!.message.includes("Failed to connect") ||
+          error!.message.includes("SSH key file not specified"),
+        true,
+      );
+    });
+  },
+  sanitizeResources: false,
+  sanitizeOps: false,
+});

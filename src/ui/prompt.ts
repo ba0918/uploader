@@ -4,7 +4,7 @@
  */
 
 import { bold, box, dim, info, path } from "./colors.ts";
-import { formatFileSizeExport } from "./logger.ts";
+import { formatFileSize } from "../utils/format.ts";
 
 /** 確認プロンプトのオプション */
 export interface ConfirmOptions {
@@ -104,7 +104,7 @@ export async function confirmUpload(
   );
   console.log(
     box.vertical + "  Files:   " + info(`${fileCount} files`) + " " +
-      dim(`(${formatFileSizeExport(totalSize)})`),
+      dim(`(${formatFileSize(totalSize)})`),
   );
   console.log(
     box.vertical + "  Mode:    " + info(syncMode) +

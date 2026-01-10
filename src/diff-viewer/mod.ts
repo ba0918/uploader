@@ -11,6 +11,7 @@ import type {
 } from "../types/mod.ts";
 import { cuiConfirm, openBrowser } from "./browser.ts";
 import { getServerUrl, startDiffViewerServer } from "./server.ts";
+import { BROWSER_STARTUP_DELAY } from "./ws-constants.ts";
 import {
   cyan,
   dim,
@@ -74,7 +75,7 @@ export async function startDiffViewer(
     // ブラウザ自動起動が有効な場合
     if (options.openBrowser) {
       // 少し待ってからブラウザを開く（サーバの起動を待つ）
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, BROWSER_STARTUP_DELAY));
 
       // ブラウザを開く
       const browserOpened = await openBrowser(url);

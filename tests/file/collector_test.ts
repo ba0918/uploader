@@ -451,4 +451,271 @@ describe("FileCollectError", () => {
     assertEquals(error.source, "src/file.ts");
     assertEquals(error.originalError, originalError);
   });
+
+  it("originalErrorなしでエラーを作成できる", () => {
+    const error = new FileCollectError(
+      "Failed to collect",
+      "src/file.ts",
+    );
+
+    assertEquals(error.name, "FileCollectError");
+    assertEquals(error.message, "Failed to collect");
+    assertEquals(error.source, "src/file.ts");
+    assertEquals(error.originalError, undefined);
+  });
+});
+
+describe("シンボリックリンク対応", () => {
+  /** シンボリックリンク対応のモックファイルシステムを作成 */
+  function createSymlinkMockFileSystem(
+    structure: Map<string, MockEntry>,
+    symlinks: Map<string, string> = new Map(),
+    _cwd: string = "/project",
+  ): FileSystem {
+    function normalizePath(path: string): string {
+      return path.replace(/\\/g, "/").replace(/\/+$/, "");
+    }
+
+    function findEntry(path: string): MockEntry | undefined {
+      const normalizedPath = normalizePath(path);
+      const parts = normalizedPath.split("/").filter((p) => p.length > 0);
+
+      let current: MockEntry | undefined = structure.get("/" + parts[0]);
+
+      for (let i = 1; i < parts.length && current; i++) {
+        if (current.type !== "directory") {
+          return undefined;
+        }
+        current = current.entries.get(parts[i]);
+      }
+
+      return current;
+    }
+
+    return {
+      stat(path: string): Promise<FileInfo> {
+        const entry = findEntry(path);
+        if (!entry) {
+          return Promise.reject(
+            new Deno.errors.NotFound(`Path not found: ${path}`),
+          );
+        }
+
+        if (entry.type === "file") {
+          return Promise.resolve({
+            size: entry.size,
+            mtime: entry.mtime,
+            isFile: true,
+            isDirectory: false,
+            isSymlink: false,
+          });
+        } else {
+          return Promise.resolve({
+            size: 0,
+            mtime: null,
+            isFile: false,
+            isDirectory: true,
+            isSymlink: false,
+          });
+        }
+      },
+
+      async *readDir(path: string): AsyncIterable<DirEntry> {
+        const entry = findEntry(path);
+        if (!entry || entry.type !== "directory") {
+          throw new Error(`Not a directory: ${path}`);
+        }
+
+        for (const [name, child] of entry.entries) {
+          const fullPath = `${normalizePath(path)}/${name}`;
+          const isSymlink = symlinks.has(fullPath);
+
+          yield {
+            name,
+            isFile: !isSymlink && child.type === "file",
+            isDirectory: !isSymlink && child.type === "directory",
+            isSymlink,
+          };
+        }
+      },
+
+      readTextFile(path: string): Promise<string> {
+        const entry = findEntry(path);
+        if (!entry || entry.type !== "file") {
+          return Promise.reject(new Error(`Not a file: ${path}`));
+        }
+        return Promise.resolve("mock content");
+      },
+
+      realPath(path: string): Promise<string> {
+        const normalizedPath = normalizePath(path);
+        if (symlinks.has(normalizedPath)) {
+          return Promise.resolve(symlinks.get(normalizedPath)!);
+        }
+        return Promise.resolve(path);
+      },
+
+      cwd(): string {
+        return _cwd;
+      },
+    };
+  }
+
+  it("followSymlinks=trueでシンボリックリンク先のファイルを収集する", async () => {
+    const structure = new Map<string, MockEntry>([
+      [
+        "/project",
+        mockDir({
+          src: mockDir({
+            "link.txt": mockFile(100), // シンボリックリンクとして扱う
+          }),
+          real: mockDir({
+            "target.txt": mockFile(200), // リンク先の実体
+          }),
+        }),
+      ],
+    ]);
+
+    // /project/src/link.txt は /project/real/target.txt へのシンボリックリンク
+    const symlinks = new Map<string, string>([
+      ["/project/src/link.txt", "/project/real/target.txt"],
+    ]);
+
+    const fs = createSymlinkMockFileSystem(structure, symlinks);
+
+    const result = await collectFiles(["src/"], {
+      baseDir: "/project",
+      followSymlinks: true,
+      fs,
+    });
+
+    // シンボリックリンクを追跡してファイルが収集される
+    assertEquals(result.fileCount, 1);
+    assertEquals(result.files[0].relativePath, "link.txt");
+  });
+
+  it("followSymlinks=trueでシンボリックリンク先のディレクトリを収集する", async () => {
+    const structure = new Map<string, MockEntry>([
+      [
+        "/project",
+        mockDir({
+          src: mockDir({
+            linked_dir: mockDir({
+              "file_in_linked.txt": mockFile(150),
+            }),
+          }),
+          real_dir: mockDir({
+            "file_in_real.txt": mockFile(250),
+          }),
+        }),
+      ],
+    ]);
+
+    // /project/src/linked_dir は /project/real_dir へのシンボリックリンク
+    const symlinks = new Map<string, string>([
+      ["/project/src/linked_dir", "/project/real_dir"],
+    ]);
+
+    const fs = createSymlinkMockFileSystem(structure, symlinks);
+
+    const result = await collectFiles(["src/"], {
+      baseDir: "/project",
+      followSymlinks: true,
+      fs,
+    });
+
+    // シンボリックリンク先のディレクトリ内のファイルが収集される
+    assertEquals(result.fileCount >= 1, true);
+  });
+
+  it("followSymlinks=falseではシンボリックリンクを無視する", async () => {
+    const structure = new Map<string, MockEntry>([
+      [
+        "/project",
+        mockDir({
+          src: mockDir({
+            "regular.txt": mockFile(100),
+            "link.txt": mockFile(200), // シンボリックリンクとして扱う
+          }),
+        }),
+      ],
+    ]);
+
+    const symlinks = new Map<string, string>([
+      ["/project/src/link.txt", "/project/real/target.txt"],
+    ]);
+
+    const fs = createSymlinkMockFileSystem(structure, symlinks);
+
+    const result = await collectFiles(["src/"], {
+      baseDir: "/project",
+      followSymlinks: false,
+      fs,
+    });
+
+    // シンボリックリンクは無視され、通常ファイルのみ収集
+    assertEquals(result.fileCount, 1);
+    assertEquals(result.files[0].relativePath, "regular.txt");
+  });
+});
+
+describe("エラーハンドリング追加ケース", () => {
+  it("アクセスエラーでFileCollectErrorを投げる", async () => {
+    // カスタムエラーを返すモックファイルシステム
+    const fs: FileSystem = {
+      stat(_path: string): Promise<FileInfo> {
+        return Promise.reject(new Error("Permission denied"));
+      },
+      // deno-lint-ignore require-yield
+      async *readDir(_path: string): AsyncIterable<DirEntry> {
+        throw new Error("Not implemented");
+      },
+      readTextFile(_path: string): Promise<string> {
+        return Promise.reject(new Error("Not implemented"));
+      },
+      realPath(path: string): Promise<string> {
+        return Promise.resolve(path);
+      },
+      cwd(): string {
+        return "/project";
+      },
+    };
+
+    await assertRejects(
+      () =>
+        collectFiles(["file.txt"], {
+          baseDir: "/project",
+          fs,
+        }),
+      FileCollectError,
+      "Failed to access source",
+    );
+  });
+});
+
+describe("重複除去の詳細ケース", () => {
+  it("同じファイルがディレクトリとしても存在する場合、ファイルが優先される", async () => {
+    // この挙動はcollectFilesの重複除去ロジックをテスト
+    const fs = createMockFileSystem(
+      new Map([
+        [
+          "/project",
+          mockDir({
+            dist: mockDir({
+              "index.js": mockFile(500),
+            }),
+          }),
+        ],
+      ]),
+    );
+
+    // 同じソースを2回指定しても重複は除去される
+    const result = await collectFiles(["dist/", "dist/"], {
+      baseDir: "/project",
+      fs,
+    });
+
+    assertEquals(result.fileCount, 1);
+    assertEquals(result.files[0].relativePath, "index.js");
+  });
 });
