@@ -4,11 +4,7 @@
  * DiffFile, CollectedFile を UploadFile に変換
  */
 
-import type {
-  CollectedFile,
-  DiffFile,
-  UploadFile,
-} from "../types/mod.ts";
+import type { CollectedFile, DiffFile, UploadFile } from "../types/mod.ts";
 import { logVerbose } from "../ui/logger.ts";
 
 /**

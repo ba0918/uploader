@@ -147,7 +147,10 @@ describe("LEGACY_ALGORITHMS_SSH2", () => {
 
   it("ssh2ライブラリ用のホスト鍵アルゴリズムが配列で定義されている", () => {
     assertEquals(Array.isArray(LEGACY_ALGORITHMS_SSH2.serverHostKey), true);
-    assertEquals(LEGACY_ALGORITHMS_SSH2.serverHostKey.includes("ssh-rsa"), true);
+    assertEquals(
+      LEGACY_ALGORITHMS_SSH2.serverHostKey.includes("ssh-rsa"),
+      true,
+    );
   });
 
   it("ssh2ライブラリ用の暗号アルゴリズムが配列で定義されている", () => {

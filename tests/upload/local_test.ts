@@ -71,7 +71,11 @@ describe("LocalUploader", () => {
 
     it("ファイルを指定した場合はエラー", async () => {
       const tempDir = await createTempDir();
-      const filePath = await createTestFile(tempDir, "not_a_dir.txt", "content");
+      const filePath = await createTestFile(
+        tempDir,
+        "not_a_dir.txt",
+        "content",
+      );
 
       try {
         const uploader = new LocalUploader({ dest: filePath });
@@ -318,7 +322,9 @@ describe("LocalUploader", () => {
         await uploader.upload(file, file.relativePath);
 
         // ファイルが作成されたことを確認
-        const written = await Deno.readTextFile(join(tempDir, "a/b/c/nested.txt"));
+        const written = await Deno.readTextFile(
+          join(tempDir, "a/b/c/nested.txt"),
+        );
         assertEquals(written, content);
 
         await uploader.disconnect();

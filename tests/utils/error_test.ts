@@ -34,7 +34,10 @@ describe("isSshAuthError", () => {
 
 describe("isSftpAuthError", () => {
   it("authentication を検出する", () => {
-    assertEquals(isSftpAuthError("All configured authentication methods failed"), true);
+    assertEquals(
+      isSftpAuthError("All configured authentication methods failed"),
+      true,
+    );
   });
 
   it("publickey を検出する", () => {

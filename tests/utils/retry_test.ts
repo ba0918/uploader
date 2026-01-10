@@ -4,10 +4,7 @@
 
 import { assertEquals, assertRejects } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
-import {
-  toError,
-  withRetry,
-} from "../../src/utils/retry.ts";
+import { toError, withRetry } from "../../src/utils/retry.ts";
 
 describe("withRetry", () => {
   it("成功した場合は結果を返す", async () => {

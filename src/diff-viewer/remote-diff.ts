@@ -118,7 +118,9 @@ export async function getRemoteDiffs(
   const filePaths = extractFilePaths(uploadFiles);
 
   logVerbose(
-    `[getRemoteDiffs] localDir: ${localDir}, files: ${filePaths.length}, checksum: ${options?.checksum ?? false}`,
+    `[getRemoteDiffs] localDir: ${localDir}, files: ${filePaths.length}, checksum: ${
+      options?.checksum ?? false
+    }`,
   );
   logVerbose(
     `[getRemoteDiffs] First 5 file paths: ${filePaths.slice(0, 5).join(", ")}`,

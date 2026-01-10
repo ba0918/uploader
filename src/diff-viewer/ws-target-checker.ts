@@ -55,7 +55,9 @@ export function filterFilesByRsyncDiff(
   );
   if (filteredFiles.length > 0 && filteredFiles.length <= 5) {
     debugLog(
-      `[filterFilesByRsyncDiff] Filtered paths: ${filteredFiles.map((f) => f.path).join(", ")}`,
+      `[filterFilesByRsyncDiff] Filtered paths: ${
+        filteredFiles.map((f) => f.path).join(", ")
+      }`,
     );
   }
 

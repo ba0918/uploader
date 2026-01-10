@@ -338,7 +338,9 @@ export class RsyncUploader extends SshBaseUploader {
     }
 
     if (code === 23) {
-      logWarning(`rsync: 一部の属性を設定できませんでした（ファイル転送は成功）`);
+      logWarning(
+        `rsync: 一部の属性を設定できませんでした（ファイル転送は成功）`,
+      );
       logVerbose(`[rsync] Details: ${errorMsg}`);
     } else if (code === 24) {
       logWarning(`rsync: 転送中に一部ファイルが消えました`);
@@ -416,7 +418,9 @@ export class RsyncUploader extends SshBaseUploader {
         `[RsyncUploader.getDiff] Target: ${this.options.user}@${this.options.host}:${this.options.dest}/`,
       );
       logVerbose(
-        `[RsyncUploader.getDiff] LocalDir: ${srcDir}, Files: ${files?.length ?? "all"}`,
+        `[RsyncUploader.getDiff] LocalDir: ${srcDir}, Files: ${
+          files?.length ?? "all"
+        }`,
       );
 
       const { code, stdout, stderr } = await this.runWithSshpass("rsync", args);
@@ -425,7 +429,11 @@ export class RsyncUploader extends SshBaseUploader {
       const stdoutText = new TextDecoder().decode(stdout);
       const stderrText = new TextDecoder().decode(stderr);
       logVerbose(
-        `[RsyncUploader.getDiff] Exit code: ${code}, stdout lines: ${stdoutText.split("\n").length}, stderr: ${stderrText.length > 0 ? stderrText.substring(0, 200) : "(empty)"}`,
+        `[RsyncUploader.getDiff] Exit code: ${code}, stdout lines: ${
+          stdoutText.split("\n").length
+        }, stderr: ${
+          stderrText.length > 0 ? stderrText.substring(0, 200) : "(empty)"
+        }`,
       );
 
       if (code !== 0) {

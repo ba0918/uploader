@@ -5,14 +5,14 @@
 import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
-  hasBulkUpload,
-  hasDiff,
   type BulkUploadCapable,
   type DiffCapable,
+  hasBulkUpload,
+  hasDiff,
   type RemoteFileContent,
+  type Uploader,
   type UploadFile,
   type UploadOptions,
-  type Uploader,
 } from "../../src/types/mod.ts";
 
 // モック用のUploaderクラス
@@ -57,10 +57,8 @@ class MockDiffUploader extends MockBasicUploader implements DiffCapable {
 }
 
 // 両方を実装したUploader
-class MockFullUploader
-  extends MockBasicUploader
-  implements BulkUploadCapable, DiffCapable
-{
+class MockFullUploader extends MockBasicUploader
+  implements BulkUploadCapable, DiffCapable {
   bulkUpload() {
     return Promise.resolve({
       successCount: 0,
@@ -132,7 +130,10 @@ describe("UploadOptions.filesByTarget", () => {
   it("filesByTargetを設定できる", () => {
     const filesByTarget = new Map<number, UploadFile[]>();
     filesByTarget.set(0, [createTestFile("file1.txt")]);
-    filesByTarget.set(1, [createTestFile("file2.txt"), createTestFile("file3.txt")]);
+    filesByTarget.set(1, [
+      createTestFile("file2.txt"),
+      createTestFile("file3.txt"),
+    ]);
 
     const options: UploadOptions = {
       dryRun: false,

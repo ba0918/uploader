@@ -4,17 +4,13 @@
  * SshBaseUploaderは抽象クラスなので、テスト用の具象クラスを作成してテストする
  */
 
-import {
-  assertEquals,
-  assertRejects,
-  assertStringIncludes,
-} from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import { join } from "@std/path";
 import {
   type CommandResult,
-  SshBaseUploader,
   type SshBaseOptions,
+  SshBaseUploader,
 } from "../../src/upload/ssh-base.ts";
 import { UploadError } from "../../src/types/mod.ts";
 import type { UploadFile } from "../../src/types/mod.ts";
@@ -215,7 +211,10 @@ describe("SshBaseUploader", () => {
 
       // 最初の2回は失敗、3回目で成功するようにオーバーライド
       const originalRunWithSshpass = uploader["runWithSshpass"].bind(uploader);
-      uploader["runWithSshpass"] = (cmd: string, args: string[]): Promise<CommandResult> => {
+      uploader["runWithSshpass"] = (
+        cmd: string,
+        args: string[],
+      ): Promise<CommandResult> => {
         callCount++;
         if (callCount < 3) {
           return Promise.resolve({

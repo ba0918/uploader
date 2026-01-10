@@ -352,10 +352,14 @@ function validateTargetDefaults(
   // protocol の検証（指定されていれば）
   if (
     defaults.protocol &&
-    !VALID_PROTOCOLS.includes(defaults.protocol as typeof VALID_PROTOCOLS[number])
+    !VALID_PROTOCOLS.includes(
+      defaults.protocol as typeof VALID_PROTOCOLS[number],
+    )
   ) {
     throw new ConfigValidationError(
-      `無効な protocol です: ${defaults.protocol} (${VALID_PROTOCOLS.join(", ")} のいずれか)`,
+      `無効な protocol です: ${defaults.protocol} (${
+        VALID_PROTOCOLS.join(", ")
+      } のいずれか)`,
       `${path}.protocol`,
     );
   }
@@ -363,10 +367,14 @@ function validateTargetDefaults(
   // auth_type の検証（指定されていれば）
   if (
     defaults.auth_type &&
-    !VALID_AUTH_TYPES.includes(defaults.auth_type as typeof VALID_AUTH_TYPES[number])
+    !VALID_AUTH_TYPES.includes(
+      defaults.auth_type as typeof VALID_AUTH_TYPES[number],
+    )
   ) {
     throw new ConfigValidationError(
-      `無効な auth_type です: ${defaults.auth_type} (${VALID_AUTH_TYPES.join(", ")} のいずれか)`,
+      `無効な auth_type です: ${defaults.auth_type} (${
+        VALID_AUTH_TYPES.join(", ")
+      } のいずれか)`,
       `${path}.auth_type`,
     );
   }
@@ -374,10 +382,14 @@ function validateTargetDefaults(
   // sync_mode の検証（指定されていれば）
   if (
     defaults.sync_mode &&
-    !VALID_SYNC_MODES.includes(defaults.sync_mode as typeof VALID_SYNC_MODES[number])
+    !VALID_SYNC_MODES.includes(
+      defaults.sync_mode as typeof VALID_SYNC_MODES[number],
+    )
   ) {
     throw new ConfigValidationError(
-      `無効な sync_mode です: ${defaults.sync_mode} (${VALID_SYNC_MODES.join(", ")} のいずれか)`,
+      `無効な sync_mode です: ${defaults.sync_mode} (${
+        VALID_SYNC_MODES.join(", ")
+      } のいずれか)`,
       `${path}.sync_mode`,
     );
   }
@@ -473,7 +485,9 @@ function validateTarget(
     !VALID_PROTOCOLS.includes(target.protocol as typeof VALID_PROTOCOLS[number])
   ) {
     throw new ConfigValidationError(
-      `無効な protocol です: ${target.protocol} (${VALID_PROTOCOLS.join(", ")} のいずれか)`,
+      `無効な protocol です: ${target.protocol} (${
+        VALID_PROTOCOLS.join(", ")
+      } のいずれか)`,
       `${path}.protocol`,
     );
   }
@@ -489,10 +503,14 @@ function validateTarget(
   // auth_type の検証（個別に指定されている場合）
   if (
     target.auth_type &&
-    !VALID_AUTH_TYPES.includes(target.auth_type as typeof VALID_AUTH_TYPES[number])
+    !VALID_AUTH_TYPES.includes(
+      target.auth_type as typeof VALID_AUTH_TYPES[number],
+    )
   ) {
     throw new ConfigValidationError(
-      `無効な auth_type です: ${target.auth_type} (${VALID_AUTH_TYPES.join(", ")} のいずれか)`,
+      `無効な auth_type です: ${target.auth_type} (${
+        VALID_AUTH_TYPES.join(", ")
+      } のいずれか)`,
       `${path}.auth_type`,
     );
   }
@@ -500,10 +518,14 @@ function validateTarget(
   // sync_mode の検証（個別に指定されている場合）
   if (
     target.sync_mode &&
-    !VALID_SYNC_MODES.includes(target.sync_mode as typeof VALID_SYNC_MODES[number])
+    !VALID_SYNC_MODES.includes(
+      target.sync_mode as typeof VALID_SYNC_MODES[number],
+    )
   ) {
     throw new ConfigValidationError(
-      `無効な sync_mode です: ${target.sync_mode} (${VALID_SYNC_MODES.join(", ")} のいずれか)`,
+      `無効な sync_mode です: ${target.sync_mode} (${
+        VALID_SYNC_MODES.join(", ")
+      } のいずれか)`,
       `${path}.sync_mode`,
     );
   }

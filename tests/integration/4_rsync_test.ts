@@ -465,13 +465,23 @@ Deno.test({
       assertEquals(result.failedCount, 0);
 
       // 確認
-      const content1 = await uploader.readFile(`rsync-bulk-${testId}/file1.txt`);
+      const content1 = await uploader.readFile(
+        `rsync-bulk-${testId}/file1.txt`,
+      );
       assertExists(content1);
-      assertEquals(new TextDecoder().decode(content1.content), "Bulk content 1");
+      assertEquals(
+        new TextDecoder().decode(content1.content),
+        "Bulk content 1",
+      );
 
-      const content3 = await uploader.readFile(`rsync-bulk-${testId}/subdir/file3.txt`);
+      const content3 = await uploader.readFile(
+        `rsync-bulk-${testId}/subdir/file3.txt`,
+      );
       assertExists(content3);
-      assertEquals(new TextDecoder().decode(content3.content), "Bulk content 3");
+      assertEquals(
+        new TextDecoder().decode(content3.content),
+        "Bulk content 3",
+      );
 
       // cleanup
       await uploader.delete(`rsync-bulk-${testId}`);
@@ -492,7 +502,11 @@ Deno.test({
       await uploader.connect();
 
       const tempDir = await createTempDir("rsync-bulk");
-      const localPath = await createTestFile(tempDir, "source.txt", "Source file content");
+      const localPath = await createTestFile(
+        tempDir,
+        "source.txt",
+        "Source file content",
+      );
 
       const files: UploadFile[] = [
         {
@@ -507,9 +521,14 @@ Deno.test({
       const result = await uploader.bulkUpload(files);
       assertEquals(result.successCount, 1);
 
-      const content = await uploader.readFile(`rsync-bulk-src-${testId}/source.txt`);
+      const content = await uploader.readFile(
+        `rsync-bulk-src-${testId}/source.txt`,
+      );
       assertExists(content);
-      assertEquals(new TextDecoder().decode(content.content), "Source file content");
+      assertEquals(
+        new TextDecoder().decode(content.content),
+        "Source file content",
+      );
 
       await uploader.delete(`rsync-bulk-src-${testId}`);
       await uploader.disconnect();
@@ -910,7 +929,11 @@ Deno.test({
     await t.step("upload large file", async () => {
       const tempDir = await createTempDir("rsync-large");
       const largeContent = "x".repeat(1024 * 512); // 512KB
-      const localPath = await createTestFile(tempDir, "large.txt", largeContent);
+      const localPath = await createTestFile(
+        tempDir,
+        "large.txt",
+        largeContent,
+      );
 
       const file: UploadFile = {
         relativePath: `rsync-large-${testId}/large.txt`,

@@ -13,17 +13,13 @@ export {
 } from "./tree.ts";
 export {
   buildSshArgs,
+  type BuildSshArgsOptions,
   buildSshCommand,
   LEGACY_ALGORITHMS,
   LEGACY_ALGORITHMS_SSH2,
-  type BuildSshArgsOptions,
   type SshConnectionOptions,
 } from "./ssh-config.ts";
-export {
-  toError,
-  withRetry,
-  type RetryOptions,
-} from "./retry.ts";
+export { type RetryOptions, toError, withRetry } from "./retry.ts";
 export { ensureParentDir, getParentDir } from "./directory.ts";
 export { escapeShellArg } from "./shell.ts";
 export {

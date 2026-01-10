@@ -7,7 +7,8 @@
 
 ## 完了済み: diff viewer ブラウザ自動起動制御 (2026-01-10)
 
-**目的**: GUI diff viewerのブラウザ自動起動を制御可能にし、タブの使い回しを可能にする
+**目的**: GUI diff
+viewerのブラウザ自動起動を制御可能にし、タブの使い回しを可能にする
 
 ### 実装内容
 
@@ -56,7 +57,8 @@ uploader --diff --no-browser <profile>
 
 ## 完了済み: diff viewer 全ターゲット事前チェック機能
 
-**目的**: UX改善 - 全ターゲットの差分を事前にチェックし、正確なファイル数表示とアップロード動作の予測可能性を向上
+**目的**: UX改善 -
+全ターゲットの差分を事前にチェックし、正確なファイル数表示とアップロード動作の予測可能性を向上
 
 ### Phase 1: 全ターゲット並列チェック
 
@@ -69,7 +71,8 @@ uploader --diff --no-browser <profile>
   - WebSocketメッセージ `loading_progress` を追加 (`types/diff-viewer.ts`)
   - 現在チェック中のターゲット名を表示
   - 完了ターゲット数/全ターゲット数を表示
-  - ブラウザUI側でプログレスバーとターゲット別結果を表示 (`scripts.ts`, `styles.ts`)
+  - ブラウザUI側でプログレスバーとターゲット別結果を表示 (`scripts.ts`,
+    `styles.ts`)
 
 - [x] ターゲット切替時のキャッシュ参照
   - キャッシュがあればネットワーク通信なしで即時表示
@@ -80,7 +83,8 @@ uploader --diff --no-browser <profile>
 - [x] 各ターゲットのアップロード内容を明示
   - ターゲットごとのファイル数を表示
   - 変更種別ごとの内訳（追加/変更/削除）を表示
-  - 例: `localhost:/var/www - 8228 files (+5000 new, ~3200 modified, -28 deleted)`
+  - 例:
+    `localhost:/var/www - 8228 files (+5000 new, ~3200 modified, -28 deleted)`
 
 - [x] Confirmダイアログのレイアウト改善
   - 全ターゲットの概要を一覧表示
@@ -157,16 +161,16 @@ profile:
   to:
     defaults:
       ignore:
-        use: [common, template]  # defaults での指定
+        use: [common, template] # defaults での指定
     targets:
-      - dest: /var/www/A           # defaults.ignore を使用
+      - dest: /var/www/A # defaults.ignore を使用
       - dest: /var/www/B
         ignore:
-          use: [common]            # defaults を上書き
-          add: ["special/"]        # 追加パターン
+          use: [common] # defaults を上書き
+          add: ["special/"] # 追加パターン
       - dest: /var/www/C
         ignore:
-          use: []                  # 何も除外しない
+          use: [] # 何も除外しない
 ```
 
 ### 後方互換性（削除済み）
@@ -174,17 +178,20 @@ profile:
 ~~既存の `_global.ignore`（文字列配列）は内部的に `_legacy` グループとして扱い、
 `default_ignore: [_legacy]` として動作。既存の設定はそのまま動作する。~~
 
-**注: 後方互換性機能は削除されました。** `_global.ignore_groups` + `_global.default_ignore` を使用してください。
+**注: 後方互換性機能は削除されました。** `_global.ignore_groups` +
+`_global.default_ignore` を使用してください。
 
 ### 不具合修正: defaults.ignoreがprofile.ignoreに反映されない問題
 
-**問題**: `to.defaults.ignore`で設定したignoreパターンが`profile.ignore`に反映されず、
+**問題**:
+`to.defaults.ignore`で設定したignoreパターンが`profile.ignore`に反映されず、
 常に`_global.default_ignore`が使われていた。
 
 **修正内容**: `resolveProfile()`で`profile.ignore`を解決する際に、
 `defaults.ignore`が存在すればそれを優先的に使用するように変更。
 
 **優先順位**:
+
 1. `target.ignore` - ターゲット固有の設定
 2. `to.defaults.ignore` - プロファイル内のデフォルト設定
 3. `_global.default_ignore` - グローバルデフォルト設定
