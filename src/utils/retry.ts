@@ -50,15 +50,6 @@ export async function withRetry<T>(
 }
 
 /**
- * エラーメッセージを取得するヘルパー
- *
- * 複数箇所で使用される `error instanceof Error ? error.message : String(error)` パターンを共通化
- */
-export function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/**
  * エラーをError型に変換するヘルパー
  */
 export function toError(error: unknown): Error {

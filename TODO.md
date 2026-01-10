@@ -77,6 +77,47 @@
 
 ---
 
+## リファクタリング: コードレビュー指摘事項
+
+**目的**: コード品質向上と保守性改善
+
+### 高優先度（完了）
+
+- [x] 未使用の `getErrorMessage()` 関数を削除 (`utils/retry.ts`)
+  - `utils/mod.ts` からのエクスポートを削除
+  - テストも同時に削除
+
+- [x] `formatFileSize` の二重命名問題を解消 (`ui/logger.ts`)
+  - `formatFileSizeExport` を廃止
+  - `ui/progress.ts`, `ui/prompt.ts` で `utils/format.ts` から直接インポート
+
+- [x] `ws-handler.ts` を分割 (1,088行 → 242行)
+  - `ws-constants.ts`: 定数定義 (16行)
+  - `ws-utils.ts`: ユーティリティ関数 (62行)
+  - `ws-target-checker.ts`: ターゲット差分チェック (350行)
+  - `ws-init-handler.ts`: 初期化処理 (497行)
+  - `ws-handler.ts`: メッセージルーティング (242行)
+
+- [x] `upload/mod.ts` を分割 (458行 → 24行)
+  - `upload/factory.ts`: アップローダー作成 (82行)
+  - `upload/converters.ts`: ファイル変換処理 (90行)
+  - `upload/executor.ts`: アップロード実行 (300行)
+  - `upload/mod.ts`: 再エクスポート (24行)
+
+- [ ] `logger.ts` を分割 (1,123行) ※次回PRで対応
+  - 内部状態（config, ファイルハンドル等）の共有が複雑
+  - 別PRで慎重に対応予定
+
+### 中優先度（完了）
+
+- [x] setTimeout のマジックナンバーを定数化
+  - `BROWSER_STARTUP_DELAY` を `ws-constants.ts` に追加
+
+- [x] エラーキャッチ時の詳細ログを追加
+  - `upload/converters.ts` でエラーメッセージを記録
+
+---
+
 ## 保留中 (Phase 9.4: diff viewer 仮想スクロール)
 
 **目的**: 大量ファイル表示時のブラウザパフォーマンス改善

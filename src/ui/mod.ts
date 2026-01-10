@@ -8,7 +8,6 @@ export {
   clearUploadProgress,
   closeLogger,
   formatDuration,
-  formatFileSizeExport,
   getLogLevel,
   initLogger,
   isQuiet,

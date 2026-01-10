@@ -5,7 +5,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
-  getErrorMessage,
   toError,
   withRetry,
 } from "../../src/utils/retry.ts";
@@ -92,33 +91,6 @@ describe("withRetry", () => {
       Error,
       "string error",
     );
-  });
-});
-
-describe("getErrorMessage", () => {
-  it("Errorオブジェクトからメッセージを取得する", () => {
-    const error = new Error("test message");
-    assertEquals(getErrorMessage(error), "test message");
-  });
-
-  it("文字列をそのまま返す", () => {
-    assertEquals(getErrorMessage("string error"), "string error");
-  });
-
-  it("数値を文字列に変換して返す", () => {
-    assertEquals(getErrorMessage(123), "123");
-  });
-
-  it("nullを文字列に変換して返す", () => {
-    assertEquals(getErrorMessage(null), "null");
-  });
-
-  it("undefinedを文字列に変換して返す", () => {
-    assertEquals(getErrorMessage(undefined), "undefined");
-  });
-
-  it("オブジェクトを文字列に変換して返す", () => {
-    assertEquals(getErrorMessage({ key: "value" }), "[object Object]");
   });
 });
 

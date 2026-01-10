@@ -20,7 +20,6 @@ export {
   type SshConnectionOptions,
 } from "./ssh-config.ts";
 export {
-  getErrorMessage,
   toError,
   withRetry,
   type RetryOptions,

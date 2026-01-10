@@ -548,6 +548,251 @@ describe("getProfileNames", () => {
   });
 });
 
+describe("エラーパス検証", () => {
+  describe("fromの検証", () => {
+    it("fromがオブジェクトでない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              from: "not-object",
+              to: {
+                targets: [{ host: "example.com", protocol: "local", dest: "/" }],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "オブジェクトである必要があります",
+      );
+    });
+
+    it("from.typeがない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              from: {},
+              to: {
+                targets: [{ host: "example.com", protocol: "local", dest: "/" }],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "type は必須です",
+      );
+    });
+  });
+
+  describe("toの検証", () => {
+    it("toがオブジェクトでない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              from: { type: "file", src: ["dist/"] },
+              to: "not-object",
+            },
+          }),
+        ConfigValidationError,
+        "オブジェクトである必要があります",
+      );
+    });
+
+    it("targetsが配列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              from: { type: "file", src: ["dist/"] },
+              to: { targets: "not-array" },
+            },
+          }),
+        ConfigValidationError,
+        "targets (配列) は必須です",
+      );
+    });
+  });
+
+  describe("ターゲットの検証", () => {
+    const baseProfile = {
+      from: { type: "file", src: ["dist/"] },
+    };
+
+    it("ターゲットがオブジェクトでない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              ...baseProfile,
+              to: {
+                targets: ["not-object"],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "オブジェクトである必要があります",
+      );
+    });
+  });
+
+  describe("defaultsの検証", () => {
+    const baseProfile = {
+      from: { type: "file", src: ["dist/"] },
+    };
+
+    it("defaultsがオブジェクトでない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              ...baseProfile,
+              to: {
+                defaults: "not-object",
+                targets: [{ dest: "/" }],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "オブジェクトである必要があります",
+      );
+    });
+
+    it("defaults.protocolが無効な場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              ...baseProfile,
+              to: {
+                defaults: {
+                  host: "example.com",
+                  protocol: "invalid",
+                },
+                targets: [{ dest: "/" }],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "無効な protocol です",
+      );
+    });
+
+    it("defaults.auth_typeが無効な場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              ...baseProfile,
+              to: {
+                defaults: {
+                  host: "example.com",
+                  protocol: "sftp",
+                  user: "deploy",
+                  auth_type: "invalid",
+                },
+                targets: [{ dest: "/" }],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "無効な auth_type です",
+      );
+    });
+
+    it("defaults.sync_modeが無効な場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              ...baseProfile,
+              to: {
+                defaults: {
+                  host: "example.com",
+                  protocol: "sftp",
+                  user: "deploy",
+                  sync_mode: "invalid",
+                },
+                targets: [{ dest: "/" }],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "無効な sync_mode です",
+      );
+    });
+
+    it("defaultsの各種設定が正しく反映される", () => {
+      const result = validateConfig({
+        test: {
+          ...baseProfile,
+          to: {
+            defaults: {
+              host: "example.com",
+              protocol: "sftp",
+              port: 2222,
+              user: "deploy",
+              auth_type: "ssh_key",
+              key_file: "~/.ssh/id_rsa",
+              password: "secret",
+              sync_mode: "mirror",
+              preserve_permissions: true,
+              preserve_timestamps: true,
+              timeout: 60,
+              retry: 5,
+              rsync_path: "/usr/bin/rsync",
+              rsync_options: ["--compress"],
+              legacy_mode: true,
+            },
+            targets: [{ dest: "/" }],
+          },
+        },
+      });
+      const profile = getProfile(result, "test");
+      const defaults = profile?.to.defaults;
+
+      assertEquals(defaults?.host, "example.com");
+      assertEquals(defaults?.protocol, "sftp");
+      assertEquals(defaults?.port, 2222);
+      assertEquals(defaults?.user, "deploy");
+      assertEquals(defaults?.auth_type, "ssh_key");
+      assertEquals(defaults?.key_file, "~/.ssh/id_rsa");
+      assertEquals(defaults?.password, "secret");
+      assertEquals(defaults?.sync_mode, "mirror");
+      assertEquals(defaults?.preserve_permissions, true);
+      assertEquals(defaults?.preserve_timestamps, true);
+      assertEquals(defaults?.timeout, 60);
+      assertEquals(defaults?.retry, 5);
+      assertEquals(defaults?.rsync_path, "/usr/bin/rsync");
+      assertEquals(defaults?.rsync_options, ["--compress"]);
+      assertEquals(defaults?.legacy_mode, true);
+    });
+  });
+
+  describe("プロファイルの検証", () => {
+    it("プロファイルがオブジェクトでない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: "not-object",
+          }),
+        ConfigValidationError,
+        "プロファイルはオブジェクトである必要があります",
+      );
+    });
+
+    it("プロファイルがnullの場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: null,
+          }),
+        ConfigValidationError,
+        "プロファイルはオブジェクトである必要があります",
+      );
+    });
+  });
+});
+
 describe("ignore_groups バリデーション", () => {
   describe("_global.ignore_groups", () => {
     it("有効なignore_groupsは通過する", () => {
@@ -911,6 +1156,133 @@ describe("ignore_groups バリデーション", () => {
       assertEquals(profile?.to.defaults?.ignore, {
         use: ["common", "template"],
       });
+    });
+
+    it("ignoreがオブジェクトでない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              ...baseProfile,
+              to: {
+                targets: [
+                  {
+                    host: "localhost",
+                    protocol: "local",
+                    dest: "/tmp/",
+                    ignore: "not-object",
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "ignore はオブジェクトである必要があります",
+      );
+    });
+
+    it("ignore.use要素が文字列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            _global: {
+              ignore_groups: {
+                common: ["*.log"],
+              },
+            },
+            test: {
+              ...baseProfile,
+              to: {
+                targets: [
+                  {
+                    host: "localhost",
+                    protocol: "local",
+                    dest: "/tmp/",
+                    ignore: {
+                      use: [123],
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "グループ名は文字列である必要があります",
+      );
+    });
+
+    it("ignore.add要素が文字列でない場合は無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            test: {
+              ...baseProfile,
+              to: {
+                targets: [
+                  {
+                    host: "localhost",
+                    protocol: "local",
+                    dest: "/tmp/",
+                    ignore: {
+                      add: [123],
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        "パターンは文字列である必要があります",
+      );
+    });
+
+    it("ターゲットの各種設定が正しく反映される", () => {
+      const result = validateConfig({
+        test: {
+          ...baseProfile,
+          to: {
+            targets: [
+              {
+                host: "example.com",
+                protocol: "rsync",
+                port: 2222,
+                user: "deploy",
+                auth_type: "password",
+                key_file: "~/.ssh/id_rsa",
+                password: "secret",
+                dest: "/var/www/",
+                sync_mode: "mirror",
+                preserve_permissions: true,
+                preserve_timestamps: true,
+                timeout: 60,
+                retry: 5,
+                rsync_path: "/usr/bin/rsync",
+                rsync_options: ["--compress"],
+                legacy_mode: true,
+              },
+            ],
+          },
+        },
+      });
+      const profile = getProfile(result, "test");
+      const target = profile?.to.targets[0];
+
+      assertEquals(target?.host, "example.com");
+      assertEquals(target?.protocol, "rsync");
+      assertEquals(target?.port, 2222);
+      assertEquals(target?.user, "deploy");
+      assertEquals(target?.auth_type, "password");
+      assertEquals(target?.key_file, "~/.ssh/id_rsa");
+      assertEquals(target?.password, "secret");
+      assertEquals(target?.dest, "/var/www/");
+      assertEquals(target?.sync_mode, "mirror");
+      assertEquals(target?.preserve_permissions, true);
+      assertEquals(target?.preserve_timestamps, true);
+      assertEquals(target?.timeout, 60);
+      assertEquals(target?.retry, 5);
+      assertEquals(target?.rsync_path, "/usr/bin/rsync");
+      assertEquals(target?.rsync_options, ["--compress"]);
+      assertEquals(target?.legacy_mode, true);
     });
   });
 });

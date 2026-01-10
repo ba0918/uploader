@@ -196,3 +196,184 @@ Deno.test({
   sanitizeOps: false,
 });
 // 接続失敗テストは9_failure_test.tsに統合
+
+import { join } from "@std/path";
+
+/** SSH鍵ファイルのパス */
+const SSH_KEY_PATH = join(
+  Deno.cwd(),
+  "tests/integration/fixtures/ssh-keys/test_key",
+);
+
+/** SSH鍵が存在するかチェック */
+async function sshKeyExists(): Promise<boolean> {
+  try {
+    await Deno.stat(SSH_KEY_PATH);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+Deno.test({
+  name: "SFTP with SSH key authentication",
+  ignore: false,
+  fn: async (t) => {
+    const skipReason = await shouldSkipIntegrationTests();
+    if (skipReason) {
+      console.log(`Skipping: ${skipReason}`);
+      return;
+    }
+
+    if (!(await sshKeyExists())) {
+      console.log("Skipping: SSH key not found");
+      return;
+    }
+
+    const testId = randomString();
+
+    await t.step("connect with SSH key", async () => {
+      const uploader = new SftpUploader({
+        host: DOCKER_CONFIG.sftp.host,
+        port: DOCKER_CONFIG.sftp.port,
+        user: DOCKER_CONFIG.sftp.user,
+        authType: "ssh_key",
+        keyFile: SSH_KEY_PATH,
+        dest: DOCKER_CONFIG.sftp.dest,
+        timeout: 10000,
+        retry: 3,
+      });
+
+      await uploader.connect();
+
+      const content = `SSH key auth test: ${testId}`;
+      const file: UploadFile = {
+        relativePath: `sftp-key-${testId}/test.txt`,
+        changeType: "add",
+        size: content.length,
+        content: new TextEncoder().encode(content),
+        isDirectory: false,
+      };
+
+      await uploader.upload(file, file.relativePath);
+
+      const result = await uploader.readFile(`sftp-key-${testId}/test.txt`);
+      assertExists(result);
+      assertEquals(new TextDecoder().decode(result.content), content);
+
+      // ファイルを先に削除してからディレクトリを削除
+      await uploader.delete(`sftp-key-${testId}/test.txt`);
+      await uploader.delete(`sftp-key-${testId}`);
+      await uploader.disconnect();
+    });
+
+    // Note: legacyModeのテストはサーバーがレガシーアルゴリズムをサポートしていないためスキップ
+    // await t.step("connect with legacyMode", async () => { ... });
+  },
+  sanitizeResources: false,
+  sanitizeOps: false,
+});
+
+// SFTP追加カバレッジテスト
+Deno.test({
+  name: "SFTP additional coverage tests",
+  ignore: false,
+  fn: async (t) => {
+    const skipReason = await shouldSkipIntegrationTests();
+    if (skipReason) {
+      console.log(`Skipping: ${skipReason}`);
+      return;
+    }
+
+    const testId = randomString();
+    const uploader = new SftpUploader({
+      host: DOCKER_CONFIG.sftp.host,
+      port: DOCKER_CONFIG.sftp.port,
+      user: DOCKER_CONFIG.sftp.user,
+      authType: "password",
+      password: DOCKER_CONFIG.sftp.password,
+      dest: DOCKER_CONFIG.sftp.dest,
+      timeout: 10000,
+      retry: 3,
+    });
+
+    await uploader.connect();
+
+    await t.step("readFile on directory returns null", async () => {
+      // ディレクトリを作成
+      const dirPath = `dir-test-${testId}`;
+      await uploader.mkdir(dirPath);
+
+      // ディレクトリをファイルとして読み取るとnullを返す
+      const result = await uploader.readFile(dirPath);
+      assertEquals(result, null);
+
+      // クリーンアップ
+      await uploader.delete(dirPath);
+    });
+
+    await t.step("upload large file triggers drain event", async () => {
+      // 大きなファイル（1MB以上）でdrainイベントをトリガー
+      const tempDir = await createTempDir("sftp-large");
+      const largeContent = "x".repeat(1024 * 1024 * 2); // 2MB
+      const localPath = await createTestFile(tempDir, "large.txt", largeContent);
+
+      const file: UploadFile = {
+        relativePath: `large-${testId}/large.txt`,
+        changeType: "add",
+        size: largeContent.length,
+        sourcePath: localPath,
+        isDirectory: false,
+      };
+
+      let lastProgress = 0;
+      await uploader.upload(file, file.relativePath, (transferred, _total) => {
+        lastProgress = transferred;
+      });
+
+      // 全てのバイトが転送されたことを確認
+      assertEquals(lastProgress, largeContent.length);
+
+      // クリーンアップ
+      await uploader.delete(`large-${testId}/large.txt`);
+      await uploader.delete(`large-${testId}`);
+      await removeTempDir(tempDir);
+    });
+
+    await t.step("delete non-existent file succeeds", async () => {
+      // 存在しないファイルの削除は成功扱い
+      await uploader.delete(`nonexistent-${testId}.txt`);
+    });
+
+    await t.step("mkdir creates nested directories", async () => {
+      const nestedPath = `nested-${testId}/a/b/c`;
+      await uploader.mkdir(nestedPath);
+
+      // ファイルをアップロードして検証
+      const content = "test";
+      const file: UploadFile = {
+        relativePath: `${nestedPath}/test.txt`,
+        changeType: "add",
+        size: content.length,
+        content: new TextEncoder().encode(content),
+        isDirectory: false,
+      };
+      await uploader.upload(file, file.relativePath);
+
+      // 読み取り確認
+      const result = await uploader.readFile(`${nestedPath}/test.txt`);
+      assertExists(result);
+
+      // クリーンアップ
+      await uploader.delete(`${nestedPath}/test.txt`);
+      await uploader.delete(`${nestedPath}`);
+      await uploader.delete(`nested-${testId}/a/b`);
+      await uploader.delete(`nested-${testId}/a`);
+      await uploader.delete(`nested-${testId}`);
+    });
+
+    await uploader.disconnect();
+  },
+  sanitizeResources: false,
+  sanitizeOps: false,
+});

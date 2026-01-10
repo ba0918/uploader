@@ -954,11 +954,8 @@ function createProgressBar(percent: number, width: number): string {
   return success("█".repeat(filled)) + dim("░".repeat(empty));
 }
 
-// 後方互換性のため、utils/format.ts から再エクスポート
-export {
-  formatDuration,
-  formatFileSize as formatFileSizeExport,
-} from "../utils/format.ts";
+// utils/format.ts から再エクスポート（利便性のため）
+export { formatDuration } from "../utils/format.ts";
 
 /** アップロード結果サマリー */
 export interface UploadResultSummary {

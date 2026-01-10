@@ -4,7 +4,8 @@
  */
 
 import { box, dim, icons, info, path, success } from "./colors.ts";
-import { formatDuration, formatFileSizeExport, isQuiet } from "./logger.ts";
+import { formatDuration, isQuiet } from "./logger.ts";
+import { formatFileSize } from "../utils/format.ts";
 
 /** プログレスバーオプション */
 export interface ProgressBarOptions {
@@ -110,7 +111,7 @@ export function renderSingleTargetProgress(
 
   if (currentFile) {
     const sizeStr = currentFileSize !== undefined
-      ? ` (${formatFileSizeExport(currentFileSize)})`
+      ? ` (${formatFileSize(currentFileSize)})`
       : "";
     lines.push(
       box.vertical + "  " + info(icons.arrowUp) + " " + currentFile +
