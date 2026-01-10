@@ -272,3 +272,80 @@ Deno.test("prepareMirrorSync - 複雑なケース（追加、変更、削除、i
   const deletePaths = deleteFiles.map((f) => f.relativePath).sort();
   assertEquals(deletePaths, ["dist/bundle.js", "src/old.ts"]);
 });
+
+Deno.test("prepareMirrorSync - エッジケース: ignoreパターンで全ファイル除外", async () => {
+  const remoteFiles = [
+    "debug.log",
+    "test.log",
+    "node_modules/foo/index.js",
+  ];
+  const uploader = new MockUploaderWithList(remoteFiles);
+
+  const uploadFiles: UploadFile[] = [
+    {
+      relativePath: "src/index.ts",
+      size: 100,
+      isDirectory: false,
+      changeType: "add",
+    },
+  ];
+
+  // 全てのリモートファイルがignoreパターンにマッチ
+  const result = await prepareMirrorSync(uploader, uploadFiles, [
+    "*.log",
+    "node_modules/",
+  ]);
+
+  // 期待: src/index.ts (add)のみ、削除対象は0件
+  assertEquals(result.length, 1);
+  assertEquals(result[0].relativePath, "src/index.ts");
+  assertEquals(result[0].changeType, "add");
+
+  const deleteFiles = result.filter((f) => f.changeType === "delete");
+  assertEquals(deleteFiles.length, 0);
+});
+
+Deno.test("prepareMirrorSync - エッジケース: ローカルにファイルがない（mirrorで全削除）", async () => {
+  const remoteFiles = [
+    "src/old1.ts",
+    "src/old2.ts",
+    "dist/bundle.js",
+  ];
+  const uploader = new MockUploaderWithList(remoteFiles);
+
+  // ローカルにファイルが全くない
+  const uploadFiles: UploadFile[] = [];
+
+  const result = await prepareMirrorSync(uploader, uploadFiles, []);
+
+  // 期待: 全てのリモートファイルが削除対象
+  assertEquals(result.length, 3);
+
+  const deleteFiles = result.filter((f) => f.changeType === "delete");
+  assertEquals(deleteFiles.length, 3);
+
+  const deletePaths = deleteFiles.map((f) => f.relativePath).sort();
+  assertEquals(deletePaths, ["dist/bundle.js", "src/old1.ts", "src/old2.ts"]);
+});
+
+Deno.test("prepareMirrorSync - エッジケース: ローカルにファイルがなく、ignoreパターン適用", async () => {
+  const remoteFiles = [
+    "src/old.ts",
+    "debug.log",
+    "node_modules/foo/index.js",
+  ];
+  const uploader = new MockUploaderWithList(remoteFiles);
+
+  // ローカルにファイルが全くない
+  const uploadFiles: UploadFile[] = [];
+
+  const result = await prepareMirrorSync(uploader, uploadFiles, [
+    "*.log",
+    "node_modules/",
+  ]);
+
+  // 期待: src/old.ts のみ削除対象（*.log と node_modules/ は除外）
+  assertEquals(result.length, 1);
+  assertEquals(result[0].relativePath, "src/old.ts");
+  assertEquals(result[0].changeType, "delete");
+});
