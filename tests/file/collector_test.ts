@@ -666,6 +666,7 @@ describe("エラーハンドリング追加ケース", () => {
       stat(_path: string): Promise<FileInfo> {
         return Promise.reject(new Error("Permission denied"));
       },
+      // deno-lint-ignore require-yield
       async *readDir(_path: string): AsyncIterable<DirEntry> {
         throw new Error("Not implemented");
       },
