@@ -2,14 +2,13 @@
  * diff-viewer/remote-diff.ts のテスト
  */
 
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
   extractFilePaths,
   getManualDiffForTarget,
   rsyncDiffToFiles,
   rsyncDiffToSummary,
-  type TargetDiffInfo,
 } from "../../src/diff-viewer/remote-diff.ts";
 import type {
   RemoteFileContent,
@@ -36,7 +35,7 @@ class MockUploader implements Uploader {
   async connect(): Promise<void> {}
   async disconnect(): Promise<void> {}
   async testConnection(): Promise<boolean> {
-    return true;
+    return await Promise.resolve(true);
   }
 
   async mkdir(_remotePath: string): Promise<void> {}
@@ -52,13 +51,13 @@ class MockUploader implements Uploader {
   async readFile(path: string): Promise<RemoteFileContent | null> {
     const content = this.files.get(path);
     if (!content) {
-      return null;
+      return await Promise.resolve(null);
     }
-    return { content, size: content.length };
+    return await Promise.resolve({ content, size: content.length });
   }
 
   async listRemoteFiles(): Promise<string[]> {
-    return this.remoteFiles;
+    return await Promise.resolve(this.remoteFiles);
   }
 }
 
@@ -596,7 +595,7 @@ describe("getRemoteDiffs", () => {
     }
   });
 
-  it("uploadFilesからfilePathsへの変換を行う", async () => {
+  it("uploadFilesからfilePathsへの変換を行う", () => {
     const uploadFiles: UploadFile[] = [
       {
         relativePath: "file1.txt",
@@ -625,10 +624,10 @@ describe("getRemoteDiffs", () => {
     assertEquals(filePaths, ["file1.txt"]);
   });
 
-  it("空のターゲット配列を処理する", async () => {
+  it("空のターゲット配列を処理する", () => {
     // getRemoteDiffsは空配列を返すはず（直接テストはできないが、ロジック的に）
     const targets: ResolvedTargetConfig[] = [];
-    const uploadFiles: UploadFile[] = [];
+    const _uploadFiles: UploadFile[] = [];
 
     // 空配列の場合、forループが実行されず空のresultsが返される
     assertEquals(targets.length, 0);
@@ -689,7 +688,7 @@ describe("getManualDiffForTarget - エッジケース", () => {
     // listRemoteFilesでエラーを投げるモックアップローダー
     class ErrorUploader extends MockUploader {
       override async listRemoteFiles(): Promise<string[]> {
-        throw new Error("Network error");
+        throw await Promise.reject(new Error("Network error"));
       }
     }
 
@@ -730,7 +729,7 @@ describe("getManualDiffForTarget - エッジケース", () => {
     // readFileでエラーを投げるモックアップローダー
     class ErrorUploader extends MockUploader {
       override async readFile(_path: string): Promise<RemoteFileContent | null> {
-        throw new Error("Permission denied");
+        throw await Promise.reject(new Error("Permission denied"));
       }
     }
 
