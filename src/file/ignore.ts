@@ -109,6 +109,18 @@ export class IgnoreMatcher {
           return true;
         }
 
+        // **を含むパターンの場合、ディレクトリ配下のファイルにもマッチするようにする
+        // （例: **/.ignore_dir は example/.ignore_dir/a.txt にマッチすべき）
+        if (pattern.includes("**")) {
+          const parts = normalizedPath.split("/");
+          for (let i = 0; i < parts.length - 1; i++) {
+            const partialPath = parts.slice(0, i + 1).join("/");
+            if (regex.test(partialPath)) {
+              return true;
+            }
+          }
+        }
+
         // パスの末尾のファイル名だけでもマッチを試みる（*.ext パターン用）
         if (pattern.startsWith("*")) {
           const fileName = normalizedPath.split("/").pop() || "";

@@ -70,7 +70,7 @@ export async function getRsyncDiffForTarget(
   target: ResolvedTargetConfig,
   localDir: string,
   filePaths: string[],
-  options?: { checksum?: boolean },
+  options?: { checksum?: boolean; ignorePatterns?: string[] },
 ): Promise<TargetDiffInfo> {
   // rsync以外のプロトコルはgetDiff未サポート
   if (target.protocol !== "rsync") {
@@ -92,6 +92,7 @@ export async function getRsyncDiffForTarget(
 
       const diff = await uploader.getDiff(localDir, filePaths, {
         checksum: options?.checksum,
+        ignorePatterns: options?.ignorePatterns ?? target.ignore,
       });
       return { target, diff };
     } finally {
@@ -113,7 +114,7 @@ export async function getRemoteDiffs(
   targets: ResolvedTargetConfig[],
   uploadFiles: UploadFile[],
   localDir: string,
-  options?: { checksum?: boolean },
+  options?: { checksum?: boolean; ignorePatterns?: string[] },
 ): Promise<TargetDiffInfo[]> {
   const filePaths = extractFilePaths(uploadFiles);
 

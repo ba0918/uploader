@@ -472,11 +472,243 @@ Directory）、提案B（段階的改善）、提案D（rsync最適化）の詳�
 - ignoreパターンとの組み合わせも正しく動作
 - Phase C1-C6の実装が統合テストレベルで検証された
 
-**Phase I2: CUI/GUI差分表示統合テスト** 【中優先度】
+**Phase I2: CUI/GUI差分表示統合テスト** 【中優先度】⚠️ **重要な問題を発見・修正**
 
 目的: uploadFilesベースの差分表示が全プロトコルで動作することを検証
 
-テストケース:
+---
+
+### Phase I2: 問題の詳細分析と修正（2026-01-11更新）
+
+**実際の手動テスト結果**:
+
+テスト環境:
+- コマンド: `RSYNC_PASSWORD=testpass deno run dev --config=uploader.test.yaml -v --diff --no-browser test_mirror_sftp`
+- 設定ファイル: `uploader.test.yaml`
+- プロトコル: sftp（mirrorモード）
+- ignoreパターン: `.*`, `.ignore_dir`, `.ignore_dir2`
+
+**発見された問題と修正**:
+
+#### ✅ 問題3: sftp/mirrorモード時の謎の表示（修正完了）
+
+**現象**:
+- ログに `example/` ではなく `xample/a.txt` のような謎のパスが表示される
+- 1文字ずれている
+
+**原因**:
+- `sftp.ts:642-644` の相対パス計算で、destの末尾スラッシュを考慮していなかった
+- `fullPath.slice(this.options.dest.length + 1)` で計算
+- `dest="/upload/"` (8文字) の場合、`slice(9)` となり、1文字ずれる
+
+**修正内容** (src/upload/sftp.ts:642-649):
+```typescript
+// destの末尾スラッシュを考慮した相対パス計算
+const destBase = this.options.dest.endsWith("/")
+  ? this.options.dest
+  : this.options.dest + "/";
+const relativePath = fullPath.slice(destBase.length);
+```
+
+---
+
+#### ✅ 問題2: ignore設定が適用されない（修正完了）
+
+**現象**:
+- ユーザー報告: `**/.ignore_dir`, `**/.ignore_dir2` を指定してもディレクトリ配下のファイルが無視されない
+- `**/.*` は適用された
+
+**原因**:
+- `src/file/ignore.ts` の IgnoreMatcher 実装で、`**/.ignore_dir`（末尾スラッシュなし）の場合、ディレクトリ自体にはマッチするが、ディレクトリ配下のファイルにはマッチしなかった
+- globToRegExp() が生成する正規表現が `/^(?:[^/]*(?:\/|$)+)*\.ignore_dir\/*$/` となり、`example/.ignore_dir/a.txt` にマッチしない
+
+**修正内容** (src/file/ignore.ts:112-122):
+```typescript
+// **を含むパターンの場合、ディレクトリ配下のファイルにもマッチするようにする
+// （例: **/.ignore_dir は example/.ignore_dir/a.txt にマッチすべき）
+if (pattern.includes("**")) {
+  const parts = normalizedPath.split("/");
+  for (let i = 0; i < parts.length - 1; i++) {
+    const partialPath = parts.slice(0, i + 1).join("/");
+    if (regex.test(partialPath)) {
+      return true;
+    }
+  }
+}
+```
+
+**効果**:
+- `**/.ignore_dir` でもディレクトリ配下のファイル（`example/.ignore_dir/a.txt`）にマッチするようになった
+- .gitignoreの慣習に近い動作
+
+---
+
+#### ✅ 問題1: checksum問題（一部修正完了）
+
+**現象**:
+- rsyncのgetDiff()で、サイズが同じで内容が異なるファイル（`dir2/b.txt`: local=`aaaaaa`, remote=`bbbbbb`）が検出されない
+- ユーザー報告: 「rsyncのデフォルト挙動は --size-only で判定する」
+
+**原因分析**:
+
+1. **パーサーの問題（修正完了）**:
+   - `src/utils/rsync-parser.ts:76-84` で、内容変更の判定が `checksum` または `size` フラグのみで、`time` フラグを見ていなかった
+   - そのため、mtimeが異なるファイルが検出されなかった
+
+   **修正内容** (src/utils/rsync-parser.ts:76-80):
+   ```typescript
+   // 内容変更: checksumまたはsizeまたはtimeフラグがある場合
+   // flags[0] = checksum (c/C), flags[1] = size (s/S), flags[2] = time (t/T)
+   const hasContentChange = flags[0] === "c" || flags[0] === "C" ||
+     flags[1] === "s" || flags[1] === "S" ||
+     flags[2] === "t" || flags[2] === "T";
+   ```
+
+2. **rsyncの仕様上の制限（修正不可）**:
+   - rsyncはデフォルトでサイズ+mtimeで比較する（size-onlyではない）
+   - サイズとmtimeが**両方同じ**で内容が異なるファイルは、`--checksum`オプションを使わないと検出できない
+   - これはrsyncの仕様なので、ツールとしては対処不可
+
+**対応策**:
+- `--checksum` オプションは既に実装済み（rsync.ts:380-381）
+- CLI引数: `--checksum` を指定すれば、チェックサムで比較できる
+- ドキュメントで説明する必要がある
+
+**scp/sftpで問題が発生しない理由**:
+- fileモード（scp/sftp）では、`getDiff()` を使わず、uploadFiles配列をそのまま表示する
+- すべてのローカルファイルがアップロード対象として表示されるため、「検出された」ように見える
+- ただし、実際にはリモートとの差分を取っていない
+
+---
+
+#### ⚠️ 未修正の問題: rsyncのgetDiff()でignoreパターンが適用されない
+
+**現象**（TODO.mdに既に記載）:
+- rsyncの `getDiff()` で `--exclude` オプションを使っていない
+- ignoreパターンがrsyncコマンドに渡されないため、ignoreすべきファイルが差分として検出される
+
+**修正が必要**:
+1. `getDiff()` に `ignorePatterns` パラメータを追加
+2. 各パターンを `--exclude='pattern'` の形でrsyncコマンドに追加
+
+**影響範囲**:
+- rsync mirrorモード時：ignore設定が適用されずdiff-viewerに表示される
+
+**所要時間見積もり**: 0.5日
+
+---
+
+**手動テスト結果（2026-01-11 - 旧記録）**:
+
+テスト環境:
+- 設定ファイル: `uploader.test.yaml`
+- プロファイル: `test_update` (sync_mode:update), `test_mirror` (sync_mode:mirror)
+- プロトコル: rsync
+- ignoreパターン: `".*"`, `.ignore_dir`, `.ignore_dir2`
+
+**発見された致命的な問題**:
+
+### 問題1: checksum問題（最重要・設計上の欠陥）
+
+**現象**:
+- `example/dir2/b.txt` がremote側で変更されている（内容: `aaaaaa` → `bbbbbb`）のに検知されない
+- sync_mode:update でも sync_mode:mirror でも検知されない
+
+**原因分析**:
+fileモードの根本的な設計問題:
+1. `collectFiles()` は**ローカルのファイルのみ**を収集
+2. remoteとの比較は**一切していない**
+3. `listRemoteFiles()` はファイルパスのリストのみを返す（サイズ・mtime・checksum情報なし）
+4. → **remote側の変更を検知することは構造上不可能**
+
+**検証**:
+```bash
+# local
+cat tests/integration/fixtures/testdata/local/example/dir2/b.txt
+# → aaaaaa (6 bytes)
+
+# remote
+ssh testuser@localhost "cat /upload/example/dir2/b.txt"
+# → bbbbbb (6 bytes)
+```
+サイズは同じだが内容が異なる。現在の実装では検知不可能。
+
+**影響範囲**:
+- fileモード全体（Phase C1-C7で実装した内容が不完全）
+- 全プロトコル（rsync/sftp/scp/local）
+- sync_mode（update/mirror）両方
+
+**修正に必要な作業**:
+1. `listRemoteFiles()` のインターフェース変更:
+   - `Promise<string[]>` → `Promise<RemoteFileInfo[]>`
+   - RemoteFileInfo = { path, size, mtime?, checksum? }
+2. 各アップローダーの実装変更（rsync/sftp/scp/local）
+3. ローカルとリモートのファイルを比較するロジック追加
+4. checksumオプションの実装（オプション）
+5. 大量のテストケース修正
+
+**所要時間見積もり**: 3-5日（大規模な設計変更）
+
+**対応方針の選択肢**:
+- **A. 修正する**: 大規模な設計変更を実施（所要時間: 3-5日）
+- **B. 制限として受け入れる**: fileモードでは「ローカルのファイルのみをアップロード」として文書化
+- **C. rsyncのみ対応**: rsyncは`getDiff()`があるので、rsync限定で対応
+
+---
+
+### 問題2: ignoreパターン問題
+
+**現象**:
+sync_mode:mirror で以下のファイルが検出されている:
+- `example/.ignore_dir/a.txt` （設定: `.ignore_dir` で無視すべき）
+- `example/dir1/.ignore_dir2/a.txt` （設定: `.ignore_dir2` で無視すべき）
+
+**想定される原因**:
+- ignoreパターンのマッチングロジックの問題
+- `.*` パターンがディレクトリに適用されていない可能性
+
+**調査すべき箇所**:
+- `src/file/ignore.ts` の IgnoreMatcher 実装
+- `upload/filter.ts` の `applyIgnoreFilter()` 実装
+- mirrorモードでの `prepareMirrorSync()` のignore適用
+
+---
+
+### 問題3: 同期対象外ファイル問題
+
+**現象**:
+sync_mode:mirror で以下のファイルが検出されている:
+- `a.txt` （`example/` 外のファイル）
+- `b.txt` （`example/` 外のファイル）
+
+**設定**:
+```yaml
+from:
+  src:
+    - "./tests/integration/fixtures/testdata/local/example"
+```
+
+**想定される原因**:
+- ファイル収集時のbaseDirの処理が不正
+- `collectFiles()` または `collectedFilesToUploadFiles()` のバグ
+
+**調査すべき箇所**:
+- `src/file/collector.ts` の `collectFiles()` 実装
+- baseDir とrelativePathの計算ロジック
+
+---
+
+## 今後の方針
+
+**即座に必要な判断**:
+1. 問題1（checksum問題）をどう扱うか？
+   - 修正するか、制限として受け入れるか
+
+**Phase I2の扱い**:
+- 現状では統合テストを進めることに意味がない（致命的なバグがあるため）
+- 問題1-3を修正してから、改めてPhase I2を実施すべき
+
+**元のテストケース（参考）**:
 
 - [ ] CUI差分表示（rsync以外）
   - sftp: cuiConfirm()がuploadFilesから差分を表示
@@ -486,17 +718,6 @@ Directory）、提案B（段階的改善）、提案D（rsync最適化）の詳�
   - WebSocket経由の差分送信
   - ターゲット別の差分集計
   - アップロードボタンの有効/無効制御
-
-所要時間: 1.0日
-
-- テストシナリオ作成: 0.2日
-- テストコード実装: 0.5日
-- 実行・デバッグ: 0.3日
-
-期待される効果:
-
-- Phase C5の実装を実機で検証
-- 全プロトコルでの一貫性を保証
 
 **Phase I3: パフォーマンステスト** 【低優先度】
 

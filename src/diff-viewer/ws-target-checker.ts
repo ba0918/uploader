@@ -12,7 +12,6 @@ import type {
   WsLoadingProgressMessage,
 } from "../types/mod.ts";
 import { hasDiff, hasListRemoteFiles } from "../types/mod.ts";
-import { IgnoreMatcher } from "../file/ignore.ts";
 import { createUploader } from "../upload/mod.ts";
 import { prepareMirrorSync } from "../upload/mirror.ts";
 import { batchAsync } from "../utils/mod.ts";
@@ -126,6 +125,7 @@ export async function checkSingleTargetDiff(
         // rsync dry-runで差分を取得
         const rsyncDiff = await uploader.getDiff(options.localDir, filePaths, {
           checksum: options.checksum,
+          ignorePatterns: target.ignore,
         });
 
         debugLog(
@@ -133,36 +133,11 @@ export async function checkSingleTargetDiff(
         );
 
         // 結果を変換
-        let { files, summary } = filterFilesByRsyncDiff(
+        // Note: getDiff()でignoreパターンが適用されるため、ここでのフィルタリングは不要
+        const { files, summary } = filterFilesByRsyncDiff(
           diffResult.files,
           rsyncDiff,
         );
-
-        // mirrorモード時はignoreパターンでフィルタリング（除外対象は削除しない）
-        if (isMirrorMode && target.ignore && target.ignore.length > 0) {
-          const ignoreMatcher = new IgnoreMatcher(target.ignore);
-          const filteredFiles = files.filter(
-            (f) => !ignoreMatcher.matches(f.path),
-          );
-
-          // サマリーを再計算
-          const deleted = filteredFiles.filter((f) => f.status === "D").length;
-          const added = filteredFiles.filter((f) => f.status === "A").length;
-          const modified = filteredFiles.filter((f) => f.status === "M").length;
-
-          debugLog(
-            `[CheckTarget ${targetIndex}] After ignore filter: ${filteredFiles.length} files (was ${files.length})`,
-          );
-
-          files = filteredFiles;
-          summary = {
-            added,
-            modified,
-            deleted,
-            renamed: 0,
-            total: filteredFiles.length,
-          };
-        }
 
         return {
           rsyncDiff,

@@ -228,13 +228,13 @@ export interface DiffCapable {
    * リモートとの差分を取得
    * @param localDir ローカルディレクトリのパス
    * @param files 比較対象のファイルパス（相対パス）のリスト。省略時はディレクトリ全体を比較
-   * @param options オプション
+   * @param options オプション（checksum: trueでハッシュ比較、ignorePatterns: 除外パターン）
    * @returns 差分結果
    */
   getDiff(
     localDir: string,
     files?: string[],
-    options?: { checksum?: boolean },
+    options?: { checksum?: boolean; ignorePatterns?: string[] },
   ): Promise<RsyncDiffResult>;
 }
 

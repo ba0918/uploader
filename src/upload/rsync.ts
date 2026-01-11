@@ -354,13 +354,13 @@ export class RsyncUploader extends SshBaseUploader {
    *
    * @param localDir ローカルディレクトリのパス
    * @param files 比較対象のファイルパス（相対パス）のリスト。省略時はディレクトリ全体を比較
-   * @param options オプション（checksum: trueでハッシュ比較を使用）
+   * @param options オプション（checksum: trueでハッシュ比較を使用、ignorePatterns: 除外パターン）
    * @returns 差分結果
    */
   async getDiff(
     localDir: string,
     files?: string[],
-    options?: { checksum?: boolean },
+    options?: { checksum?: boolean; ignorePatterns?: string[] },
   ): Promise<RsyncDiffResult> {
     if (!this.isConnected()) {
       throw new UploadError("Not connected", "CONNECTION_ERROR");
@@ -379,6 +379,14 @@ export class RsyncUploader extends SshBaseUploader {
       // checksumモード（内容比較）
       if (options?.checksum) {
         args.push("--checksum");
+      }
+
+      // ignoreパターンを適用
+      if (options?.ignorePatterns && options.ignorePatterns.length > 0) {
+        for (const pattern of options.ignorePatterns) {
+          // rsyncの--excludeオプションでパターンを除外
+          args.push(`--exclude=${pattern}`);
+        }
       }
 
       // filesが指定されている場合は--files-fromを使用
@@ -420,6 +428,8 @@ export class RsyncUploader extends SshBaseUploader {
       logVerbose(
         `[RsyncUploader.getDiff] LocalDir: ${srcDir}, Files: ${
           files?.length ?? "all"
+        }, IgnorePatterns: ${
+          options?.ignorePatterns?.length ?? 0
         }`,
       );
 

@@ -73,13 +73,14 @@ export function parseItemizeLine(
     return { path, changeType: "A" as const };
   }
 
-  // 内容変更: checksumまたはsizeフラグがある場合のみ
-  // flags[0] = checksum (c), flags[1] = size (s/S)
-  const hasContentChange = flags[0] === "c" ||
-    flags[1] === "s" || flags[1] === "S";
+  // 内容変更: checksumまたはsizeまたはtimeフラグがある場合
+  // flags[0] = checksum (c/C), flags[1] = size (s/S), flags[2] = time (t/T)
+  const hasContentChange = flags[0] === "c" || flags[0] === "C" ||
+    flags[1] === "s" || flags[1] === "S" ||
+    flags[2] === "t" || flags[2] === "T";
 
   if (!hasContentChange) {
-    // タイムスタンプやパーミッションのみの変更はスキップ
+    // パーミッションのみの変更はスキップ
     return null;
   }
 

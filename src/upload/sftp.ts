@@ -639,9 +639,11 @@ export class SftpUploader implements Uploader, ListRemoteFilesCapable {
                   await listDir(fullPath);
                 } else {
                   // ファイルの場合は相対パスを追加
-                  const relativePath = fullPath.slice(
-                    this.options.dest.length + 1,
-                  );
+                  // destの末尾スラッシュを考慮した相対パス計算
+                  const destBase = this.options.dest.endsWith("/")
+                    ? this.options.dest
+                    : this.options.dest + "/";
+                  const relativePath = fullPath.slice(destBase.length);
                   if (relativePath) {
                     files.push(relativePath);
                   }
