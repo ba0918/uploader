@@ -2,6 +2,7 @@
  * 結合テスト用ヘルパー関数
  */
 
+import { join, relative } from "@std/path";
 import type { Uploader, UploadFile } from "../../src/types/mod.ts";
 
 /** Docker環境の設定 */
@@ -156,33 +157,23 @@ export async function setupRemoteFiles(
   await uploader.connect();
 
   try {
-    // ベースディレクトリを作成
+    // baseDirを明示的に作成
     await uploader.mkdir(baseDir);
 
-    // 各ファイルをアップロード
+    // 各ファイルをアップロード（baseDir配下に配置）
     for (const file of files) {
-      const fullPath = `${baseDir}/${file.path}`;
       const content = new TextEncoder().encode(file.content);
-
-      // サブディレクトリがある場合は作成
-      const dirParts = file.path.split("/");
-      if (dirParts.length > 1) {
-        let currentDir = baseDir;
-        for (let i = 0; i < dirParts.length - 1; i++) {
-          currentDir = `${currentDir}/${dirParts[i]}`;
-          await uploader.mkdir(currentDir);
-        }
-      }
+      const remotePath = `${baseDir}/${file.path}`;
 
       const uploadFile: UploadFile = {
-        relativePath: fullPath,
+        relativePath: remotePath,
         size: content.length,
         content,
         isDirectory: false,
         changeType: "add",
       };
 
-      await uploader.upload(uploadFile, fullPath);
+      await uploader.upload(uploadFile, remotePath);
     }
   } finally {
     await uploader.disconnect();
@@ -221,10 +212,67 @@ export async function cleanupRemoteDir(
 ): Promise<void> {
   await uploader.connect();
   try {
-    // ディレクトリを再帰的に削除
+    // baseDirを再帰的に削除
     await uploader.delete(baseDir);
   } catch {
     // 削除失敗は無視（存在しない場合など）
+  } finally {
+    await uploader.disconnect();
+  }
+}
+
+/** ローカルディレクトリからUploadFile配列を再帰的に収集 */
+export async function collectLocalFiles(
+  dir: string,
+  baseDir: string = dir,
+): Promise<UploadFile[]> {
+  const files: UploadFile[] = [];
+
+  for await (const entry of Deno.readDir(dir)) {
+    const fullPath = join(dir, entry.name);
+    const relativePath = relative(baseDir, fullPath);
+
+    if (entry.isFile) {
+      const stat = await Deno.stat(fullPath);
+      files.push({
+        sourcePath: fullPath,
+        relativePath,
+        size: stat.size,
+        isDirectory: false,
+      });
+    } else if (entry.isDirectory) {
+      // 再帰的に収集
+      const subFiles = await collectLocalFiles(fullPath, baseDir);
+      files.push(...subFiles);
+    }
+  }
+
+  return files;
+}
+
+/** UploadFile配列を実行（add/modify/delete） */
+export async function executeUploadFiles(
+  uploader: Uploader,
+  files: UploadFile[],
+  baseDest: string,
+): Promise<void> {
+  await uploader.connect();
+
+  try {
+    for (const file of files) {
+      // baseDest が空文字列の場合は、file.relativePathをそのまま使用
+      const remotePath = baseDest
+        ? `${baseDest}/${file.relativePath}`
+        : file.relativePath;
+
+      if (file.changeType === "delete") {
+        // 削除
+        await uploader.delete(remotePath);
+      } else {
+        // アップロード（add/modify）
+        await uploader.upload(file, remotePath);
+      }
+    }
   } finally {
     await uploader.disconnect();
   }

@@ -431,36 +431,46 @@ Directory）、提案B（段階的改善）、提案D（rsync最適化）の詳�
 
 #### 実装計画
 
-**Phase I1: mirrorモード統合テスト** 【高優先度】
+**Phase I1: mirrorモード統合テスト** 【高優先度】✅ **完了**
 
 目的: Phase C1-C6で実装したmirror機能の実機動作検証
 
-テストケース:
+**実装完了**:
+- ✅ テストファイル作成: `tests/integration/5_mirror_mode_test.ts` (約500行)
+- ✅ ヘルパー関数実装: `tests/integration/helpers.ts` に追加
+  - `collectLocalFiles()`: ローカルファイル収集
+  - `executeUploadFiles()`: uploadFiles配列を実行
+  - `setupRemoteFiles()`: リモートファイル準備（アプローチB採用）
+  - `verifyRemoteFileExists()`, `verifyRemoteFileNotExists()`: 検証用
+  - `cleanupRemoteDir()`: クリーンアップ
+- ✅ 4つのテストケース実装・動作確認完了
 
-- [ ] rsync + mirror + ignore（CUI）
-  - リモート専用ファイルが削除される
-  - ignoreパターンにマッチするファイルは削除されない
-  - 差分表示にリモート専用ファイルが表示される
-- [ ] sftp + mirror + ignore（GUI）
-  - prepareMirrorSync()が正しく動作する
-  - diff-viewerに削除対象ファイルが表示される
-  - アップロードボタンが有効になる
-- [ ] scp + mirror（ignoreなし、CUI）
-  - 全リモート専用ファイルが削除される
-- [ ] local + mirror + ignore（GUI）
-  - ローカルプロトコルでもmirrorが動作する
+**テスト結果（全て成功）**:
+- ✅ rsync + mirror + ignore（CUI）: リモート専用ファイル削除、ignoreパターン適用
+- ✅ sftp + mirror + ignore（GUI）: prepareMirrorSync()動作、ignoreパターン適用
+- ✅ scp + mirror（ignoreなし、CUI）: 全リモート専用ファイル削除
+- ✅ local + mirror + ignore（GUI）: ローカルプロトコルでmirror動作
 
-所要時間: 1.5日
+**採用したアプローチ**:
 
-- テストシナリオ作成: 0.3日
-- テストコード実装: 0.8日
-- 実行・デバッグ: 0.4日
+アプローチB（テスト設計変更）を採用:
+- uploaderのdestを `/upload` に固定
+- `setupRemoteFiles(uploader, baseDir, files)` の形で実装
+- baseDir を明示的に作成してから、`baseDir/file.path` でアップロード
+- localFilesのrelativePathに`baseDir`を追加して、dest配下の相対パスに統一
+- ignoreパターンも`baseDir`を考慮した形に調整
 
-期待される効果:
+**解決した課題**:
 
-- mirrorモードの実機動作を保証
-- ignoreパターンとの組み合わせを検証
-- リグレッション防止
+1. **destディレクトリ問題**: setupRemoteFiles()でbaseDirを明示的に作成
+2. **relativePathの不一致**: localFilesとremoteFilesのrelativePathを統一
+3. **ignoreパターンの不一致**: baseDirを含むパスに対応したパターンに調整
+
+**成果**:
+
+- mirrorモードの実機動作を全プロトコル（rsync/sftp/scp/local）で検証完了
+- ignoreパターンとの組み合わせも正しく動作
+- Phase C1-C6の実装が統合テストレベルで検証された
 
 **Phase I2: CUI/GUI差分表示統合テスト** 【中優先度】
 
