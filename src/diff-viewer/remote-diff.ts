@@ -10,6 +10,7 @@ import type {
   RsyncDiffEntry,
   RsyncDiffResult,
   UploadFile,
+  Uploader,
 } from "../types/mod.ts";
 import { hasDiff, hasListRemoteFiles } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
@@ -282,17 +283,21 @@ function areBuffersEqual(a: Uint8Array, b: Uint8Array): boolean {
  * @param target 対象ターゲット設定
  * @param uploadFiles アップロードファイル一覧
  * @param localDir ローカルディレクトリパス
- * @param options オプション（並列実行数など）
+ * @param options オプション（並列実行数、アップローダーインスタンスなど）
  * @returns rsync差分結果と互換性のある形式
  */
 export async function getManualDiffForTarget(
   target: ResolvedTargetConfig,
   uploadFiles: UploadFile[],
   _localDir: string,
-  options?: { concurrency?: number; ignorePatterns?: string[] },
+  options?: { concurrency?: number; ignorePatterns?: string[]; uploader?: Uploader },
 ): Promise<RsyncDiffResult> {
-  const uploader = createUploader(target);
-  await uploader.connect();
+  const uploader = options?.uploader ?? createUploader(target);
+  const shouldDisconnect = !options?.uploader;
+
+  if (shouldDisconnect) {
+    await uploader.connect();
+  }
 
   try {
     const concurrency = options?.concurrency ?? 10;
@@ -441,6 +446,8 @@ export async function getManualDiffForTarget(
       entries,
     };
   } finally {
-    await uploader.disconnect();
+    if (shouldDisconnect) {
+      await uploader.disconnect();
+    }
   }
 }

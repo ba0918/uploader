@@ -5,6 +5,76 @@
 
 ---
 
+## 完了済み: Phase C1-C7 fileモード + mirror対応 (2026-01-11)
+
+**実装期間**: 2026-01-10 〜 2026-01-11
+
+**目的**: fileモード + mirrorモード時に、リモートにのみ存在するファイル（削除対象）をdiff-viewerに表示し、CUI/GUI完全一致、全プロトコル完全一致を実現
+
+**採用アプローチ**: 提案C (getDiff不使用アプローチ)
+- uploadFiles配列ベースの統一処理
+- rsync getDiff()に依存しない設計
+- CUI/GUIで完全に同じロジック
+- 全プロトコルで完全に同じロジック
+
+**実装内容**:
+
+- ✅ **Phase C1**: ignoreフィルタリングの統一 (新規: `upload/filter.ts`)
+- ✅ **Phase C2**: mirrorモード処理の統一 (新規: `upload/mirror.ts`)
+- ✅ **Phase C3**: main処理フロー修正
+- ✅ **Phase C4**: GUI修正 (`ws-target-checker.ts`, `ws-init-handler.ts`)
+- ✅ **Phase C5**: CUI修正 (`browser.ts`)
+- ✅ **Phase C6**: エッジケーステスト追加 (`mirror_test.ts`)
+- ✅ **Phase C7**: ドキュメント更新 (CHANGELOG.md, CLAUDE.md)
+
+**成果**:
+- 61ファイル変更: +4916行, -164行
+- 全テスト通過: 241 passed
+- 全プロトコル（rsync/scp/sftp/local）対応
+- 後方互換性維持
+
+---
+
+## 完了済み: セキュリティ修正とリファクタリング (2026-01-09 〜 2026-01-10)
+
+### セキュリティ修正
+- ✅ コマンドインジェクション脆弱性の修正 (`utils/shell.ts`)
+  - `escapeShellArg()` 関数を追加
+  - ssh-base.ts の `mkdir()`, `delete()`, `readFile()` で使用
+
+### リファクタリング: 原則違反の修正
+- ✅ 認証エラー検出パターンの共通化 (`utils/error.ts`)
+- ✅ upload() 処理フローの共通化 (`ssh-base.ts`)
+- ✅ Uploader インターフェースの分割 (ISP)
+- ✅ マジックナンバーの定数化 (`utils/constants.ts`)
+
+### リファクタリング: DRY原則違反の修正
+- ✅ SSH接続設定の共通化 (`utils/ssh-config.ts`)
+- ✅ リトライロジックの共通化 (`utils/retry.ts`)
+- ✅ ディレクトリ操作の共通化 (`utils/directory.ts`)
+
+### コードレビュー指摘事項
+- ✅ `ws-handler.ts` を分割 (1,088行 → 242行)
+- ✅ `upload/mod.ts` を分割 (458行 → 24行)
+
+---
+
+## 完了済み: Phase 1-4 mirror対応の基盤実装 (2026-01-08)
+
+- ✅ **Phase 1**: Uploaderインターフェース拡張
+  - `ListRemoteFilesCapable`インターフェース追加
+  - `hasListRemoteFiles()`型ガード追加
+- ✅ **Phase 2**: 各アップローダーの実装
+  - `listRemoteFiles()`実装（local/ssh-base/sftp）
+- ✅ **Phase 3**: diff-viewer修正（GUI modeのみ）
+  - `ws-target-checker.ts`: mirror + ignore対応
+  - `ws-init-handler.ts`: deleteFiles表示対応
+- ✅ **Phase 4**: テスト
+  - `listRemoteFiles()`基本テスト
+  - 型ガードテスト
+
+---
+
 ## 不採用: mirror + ignore 対応の代替案 (2026-01-11)
 
 **背景**: fileモード +
