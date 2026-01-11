@@ -288,7 +288,7 @@ function areBuffersEqual(a: Uint8Array, b: Uint8Array): boolean {
 export async function getManualDiffForTarget(
   target: ResolvedTargetConfig,
   uploadFiles: UploadFile[],
-  localDir: string,
+  _localDir: string,
   options?: { concurrency?: number; ignorePatterns?: string[] },
 ): Promise<RsyncDiffResult> {
   const uploader = createUploader(target);
@@ -371,6 +371,14 @@ export async function getManualDiffForTarget(
       normalFiles,
       async (file) => {
         try {
+          // sourcePathがない場合はスキップ（変更ありとして扱う）
+          if (!file.sourcePath) {
+            logVerbose(
+              `Skipping ${file.relativePath}: no sourcePath`,
+            );
+            return { file, changeType: "M" as const };
+          }
+
           // ローカルファイルを読み込み
           const localContent = await Deno.readFile(file.sourcePath);
 

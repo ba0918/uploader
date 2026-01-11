@@ -220,43 +220,6 @@ function uploadFilesToDiffFiles(uploadFiles: UploadFile[]): DiffFile[] {
 }
 
 /**
- * ターゲットごとの差分サマリーを表示
- */
-function displayTargetDiffSummary(info: TargetDiffInfo, index: number): void {
-  const { target, diff, error, unsupported } = info;
-  const label = `${target.host}:${target.dest}`;
-
-  if (error) {
-    console.log(
-      `   ${dim(`[${index + 1}]`)} ${label} ${red(`(error: ${error})`)}`,
-    );
-    return;
-  }
-
-  if (diff) {
-    const total = diff.added + diff.modified + diff.deleted;
-    console.log(
-      `   ${dim(`[${index + 1}]`)} ${label}`,
-    );
-    console.log(
-      `       ${green("+")} ${diff.added}  ${yellow("~")} ${diff.modified}  ${
-        red("-")
-      } ${diff.deleted}  ${dim(`(${total} total)`)}`,
-    );
-    return;
-  }
-
-  // diff も error もない場合のみ unsupported を表示
-  if (unsupported) {
-    console.log(
-      `   ${dim(`[${index + 1}]`)} ${label} ${
-        dim(`(${target.protocol} - diff not supported)`)
-      }`,
-    );
-  }
-}
-
-/**
  * CUIでの差分確認（フォールバック）
  */
 export async function cuiConfirm(

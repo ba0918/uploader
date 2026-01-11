@@ -75,14 +75,14 @@ Deno.test("prepareMirrorSync - リモートにのみ存在するファイルを�
 
   const result = await prepareMirrorSync(uploader, uploadFiles, []);
 
-  // src/old.ts と dist/bundle.js が削除対象として追加される
-  assertEquals(result.length, 3);
+  // ベースディレクトリ検出により "src/" 配下のみが同期対象
+  // src/old.ts のみが削除対象として追加される（dist/bundle.js は src/ 外なので除外）
+  assertEquals(result.length, 2);
   assertEquals(result[0], uploadFiles[0]); // 元のファイル
 
   const deleteFiles = result.filter((f) => f.changeType === "delete");
-  assertEquals(deleteFiles.length, 2);
+  assertEquals(deleteFiles.length, 1);
   assertEquals(deleteFiles[0].relativePath, "src/old.ts");
-  assertEquals(deleteFiles[1].relativePath, "dist/bundle.js");
 });
 
 Deno.test("prepareMirrorSync - ignoreパターンを適用", async () => {
@@ -257,8 +257,10 @@ Deno.test("prepareMirrorSync - 複雑なケース（追加、変更、削除、i
     "node_modules/",
   ]);
 
-  // 期待: src/index.ts (modify), src/new.ts (add), src/old.ts (delete), dist/bundle.js (delete)
-  assertEquals(result.length, 4);
+  // ベースディレクトリ検出により "src/" 配下のみが同期対象
+  // 期待: src/index.ts (modify), src/new.ts (add), src/old.ts (delete)
+  // dist/bundle.js は src/ 外なので除外される
+  assertEquals(result.length, 3);
 
   assertEquals(result[0].relativePath, "src/index.ts");
   assertEquals(result[0].changeType, "modify");
@@ -267,10 +269,10 @@ Deno.test("prepareMirrorSync - 複雑なケース（追加、変更、削除、i
   assertEquals(result[1].changeType, "add");
 
   const deleteFiles = result.filter((f) => f.changeType === "delete");
-  assertEquals(deleteFiles.length, 2);
+  assertEquals(deleteFiles.length, 1);
 
   const deletePaths = deleteFiles.map((f) => f.relativePath).sort();
-  assertEquals(deletePaths, ["dist/bundle.js", "src/old.ts"]);
+  assertEquals(deletePaths, ["src/old.ts"]);
 });
 
 Deno.test("prepareMirrorSync - エッジケース: ignoreパターンで全ファイル除外", async () => {
