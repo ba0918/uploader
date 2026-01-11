@@ -13,7 +13,7 @@ import type {
 } from "../types/mod.ts";
 import { hasDiff, hasListRemoteFiles } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
-import { prepareMirrorSync } from "../upload/mirror.ts";
+import { detectBaseDirectory, prepareMirrorSync } from "../upload/mirror.ts";
 import { batchAsync } from "../utils/mod.ts";
 import { getLocalAndRemoteContents } from "./file-content.ts";
 import {
@@ -122,11 +122,57 @@ export async function checkSingleTargetDiff(
           `[CheckTarget ${targetIndex}] Running rsync getDiff() for ${target.host}... (mirror: ${isMirrorMode})`,
         );
 
+        // mirrorモードの場合、ベースディレクトリを考慮してlocalDirとremoteDirを調整
+        let adjustedLocalDir = options.localDir;
+        let adjustedRemoteDir: string | undefined = undefined;
+        if (isMirrorMode && options.uploadFiles) {
+          const baseDir = detectBaseDirectory(options.uploadFiles);
+          if (baseDir) {
+            // パス結合: 末尾のスラッシュを考慮
+            if (options.localDir) {
+              const localBase = options.localDir.endsWith("/")
+                ? options.localDir
+                : `${options.localDir}/`;
+              adjustedLocalDir = `${localBase}${baseDir}`;
+            } else {
+              adjustedLocalDir = baseDir;
+            }
+
+            // リモートパス: destの末尾スラッシュを考慮
+            const destBase = target.dest.endsWith("/")
+              ? target.dest
+              : `${target.dest}/`;
+            adjustedRemoteDir = `${destBase}${baseDir}`;
+
+            debugLog(
+              `[CheckTarget ${targetIndex}] Adjusted for mirror mode: localDir=${adjustedLocalDir}, remoteDir=${adjustedRemoteDir}`,
+            );
+          }
+        }
+
         // rsync dry-runで差分を取得
-        const rsyncDiff = await uploader.getDiff(options.localDir, filePaths, {
+        let rsyncDiff = await uploader.getDiff(adjustedLocalDir, filePaths, {
           checksum: options.checksum,
           ignorePatterns: target.ignore,
+          remoteDir: adjustedRemoteDir,
         });
+
+        // mirrorモードでベースディレクトリを調整した場合、rsyncDiffのパスにbaseDirを追加
+        if (isMirrorMode && options.uploadFiles) {
+          const baseDir = detectBaseDirectory(options.uploadFiles);
+          if (baseDir) {
+            debugLog(
+              `[CheckTarget ${targetIndex}] Adding baseDir prefix to rsync diff paths: ${baseDir}`,
+            );
+            rsyncDiff = {
+              ...rsyncDiff,
+              entries: rsyncDiff.entries.map((entry) => ({
+                ...entry,
+                path: `${baseDir}${entry.path}`,
+              })),
+            };
+          }
+        }
 
         debugLog(
           `[CheckTarget ${targetIndex}] Found ${rsyncDiff.entries.length} changed files`,
@@ -139,6 +185,31 @@ export async function checkSingleTargetDiff(
           rsyncDiff,
         );
 
+        // rsyncDiffからremoteStatusを計算（ターゲット切り替え時の正しいアイコン表示用）
+        const remoteStatusByFile: Record<
+          string,
+          { exists: boolean; hasChanges: boolean }
+        > = {};
+
+        // 全ファイルのremoteStatusを設定（rsyncDiffに含まれていないファイルは変更なし）
+        for (const file of diffResult.files) {
+          const entry = rsyncDiff.entries.find((e) => e.path === file.path);
+          if (entry) {
+            // rsyncDiffに含まれる = 変更あり
+            const exists = entry.changeType !== "A";
+            remoteStatusByFile[file.path] = {
+              exists,
+              hasChanges: true,
+            };
+          } else {
+            // rsyncDiffに含まれない = 変更なし（リモートと同じ）
+            remoteStatusByFile[file.path] = {
+              exists: true,
+              hasChanges: false,
+            };
+          }
+        }
+
         return {
           rsyncDiff,
           changedFiles: files.map((f) => f.path),
@@ -148,6 +219,7 @@ export async function checkSingleTargetDiff(
             deleted: summary.deleted,
             total: summary.total,
           },
+          remoteStatusByFile,
         };
       }
 
@@ -188,6 +260,52 @@ export async function checkSingleTargetDiff(
           ...deleteFiles,
         ];
 
+        // 全ファイルのremoteStatusを取得（ターゲット切り替え時の正しいアイコン表示用）
+        const concurrency = options.concurrency ??
+          DEFAULT_TARGET_CHECK_CONCURRENCY;
+        const remoteStatusByFile: Record<
+          string,
+          { exists: boolean; hasChanges: boolean }
+        > = {};
+
+        debugLog(
+          `[CheckTarget ${targetIndex}] Checking remoteStatus for ${diffResult.files.length} files (concurrency: ${concurrency})...`,
+        );
+
+        // uploaderを直接渡して競合状態を回避
+        await batchAsync(
+          diffResult.files,
+          async (file) => {
+            try {
+              const { remoteStatus } = await getLocalAndRemoteContents(
+                file.path,
+                state,
+                uploader, // uploaderを直接渡す
+              );
+              remoteStatusByFile[file.path] = remoteStatus;
+            } catch (error) {
+              // エラーの場合は差分ありとして扱う
+              debugError(
+                `[CheckTarget ${targetIndex}] Error checking ${file.path}:`,
+                error,
+              );
+              remoteStatusByFile[file.path] = {
+                exists: false,
+                hasChanges: true,
+              };
+            }
+          },
+          concurrency,
+        );
+
+        // 削除対象ファイルのremoteStatusも設定
+        for (const deletePath of deleteFiles) {
+          remoteStatusByFile[deletePath] = {
+            exists: true, // リモートに存在する（削除される）
+            hasChanges: true,
+          };
+        }
+
         const deleted = deleteFiles.length;
         const total = diffResult.added + diffResult.modified + deleted +
           diffResult.renamed;
@@ -202,10 +320,49 @@ export async function checkSingleTargetDiff(
             total,
           },
           deleteFiles, // 削除対象ファイルリストを追加
+          remoteStatusByFile,
         };
       }
 
       // 非mirrorモードまたはlistRemoteFiles()をサポートしていない場合
+      // 全ファイルのremoteStatusを取得（ターゲット切り替え時の正しいアイコン表示用）
+      const concurrency = options.concurrency ??
+        DEFAULT_TARGET_CHECK_CONCURRENCY;
+      const remoteStatusByFile: Record<
+        string,
+        { exists: boolean; hasChanges: boolean }
+      > = {};
+
+      debugLog(
+        `[CheckTarget ${targetIndex}] Checking remoteStatus for ${diffResult.files.length} files (concurrency: ${concurrency})...`,
+      );
+
+      // uploaderを直接渡して競合状態を回避
+      await batchAsync(
+        diffResult.files,
+        async (file) => {
+          try {
+            const { remoteStatus } = await getLocalAndRemoteContents(
+              file.path,
+              state,
+              uploader, // uploaderを直接渡す
+            );
+            remoteStatusByFile[file.path] = remoteStatus;
+          } catch (error) {
+            // エラーの場合は差分ありとして扱う
+            debugError(
+              `[CheckTarget ${targetIndex}] Error checking ${file.path}:`,
+              error,
+            );
+            remoteStatusByFile[file.path] = {
+              exists: false,
+              hasChanges: true,
+            };
+          }
+        },
+        concurrency,
+      );
+
       const total = diffResult.added + diffResult.modified +
         diffResult.deleted + diffResult.renamed;
       return {
@@ -217,6 +374,7 @@ export async function checkSingleTargetDiff(
           deleted: diffResult.deleted,
           total,
         },
+        remoteStatusByFile,
       };
     } finally {
       await uploader.disconnect();

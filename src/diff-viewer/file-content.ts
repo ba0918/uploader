@@ -47,6 +47,7 @@ export interface UploaderState {
 export async function getLocalAndRemoteContents(
   path: string,
   state: UploaderState,
+  uploader?: Uploader,
 ): Promise<{
   local: FileContent;
   remote: FileContent;
@@ -58,7 +59,7 @@ export async function getLocalAndRemoteContents(
   const localContent = await getLocalFileContent(path, state);
 
   // リモートファイル内容を取得
-  const remoteContent = await getRemoteFileContent(path, state);
+  const remoteContent = await getRemoteFileContent(path, state, uploader);
 
   // リモートファイルが存在するかどうか
   const remoteExists = remoteContent !== null && remoteContent.length > 0;
@@ -149,6 +150,7 @@ export async function getLocalFileContent(
 export async function getRemoteFileContent(
   path: string,
   state: UploaderState,
+  uploader?: Uploader,
 ): Promise<Uint8Array | null> {
   const { targets } = state.options;
 
@@ -159,12 +161,12 @@ export async function getRemoteFileContent(
   }
 
   try {
-    // Uploaderを取得または作成
+    // Uploaderを取得または作成（uploaderが渡されている場合はそれを使用）
     debugLog(`[RemoteDiff] Fetching remote file: ${path}`);
-    const uploader = await getOrCreateUploader(state);
+    const targetUploader = uploader || await getOrCreateUploader(state);
 
     // リモートファイルを読み取り
-    const remoteFile = await uploader.readFile(path);
+    const remoteFile = await targetUploader.readFile(path);
 
     if (!remoteFile) {
       // ファイルが存在しない場合

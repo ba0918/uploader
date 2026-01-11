@@ -920,10 +920,10 @@ export function getScripts(): string {
           itemDiv.style.paddingLeft = (8 + indent) + 'px';
 
           // remoteモードの場合はremoteStatusを優先
-          // remoteモードのステータス表示
-          const displayStatus = fileInState?.remoteStatus
-            ? fileInState.remoteStatus
-            : (node.status || 'U');
+          // ただし、削除ファイル（D）の場合はDのまま
+          const displayStatus = (node.status === 'D' || fileInState?.status === 'D')
+            ? 'D'
+            : (fileInState?.remoteStatus || node.status || 'U');
 
           itemDiv.innerHTML = \`
             <span class="tree-toggle empty"></span>
@@ -1012,9 +1012,10 @@ export function getScripts(): string {
         itemDiv.style.paddingLeft = (8 + indent) + 'px';
 
         // remoteモードのステータス表示
-        const displayStatus = file.remoteStatus
-          ? file.remoteStatus
-          : file.status;
+        // ただし、削除ファイル（D）の場合はDのまま
+        const displayStatus = file.status === 'D'
+          ? 'D'
+          : (file.remoteStatus || file.status);
 
         itemDiv.innerHTML = \`
           <span class="tree-toggle empty"></span>
@@ -1119,6 +1120,12 @@ export function getScripts(): string {
     function updateFileStatus(path, remoteStatus) {
       const file = state.files.find(f => f.path === path);
       if (!file) return;
+
+      // 削除ファイル（D）の場合はステータスを更新しない
+      // 削除ファイルはリモートにのみ存在するため、getLocalAndRemoteContents()の結果は意味がない
+      if (file.status === 'D') {
+        return;
+      }
 
       // ステータス更新
       if (!remoteStatus.exists) {

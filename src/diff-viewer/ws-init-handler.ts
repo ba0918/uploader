@@ -88,6 +88,28 @@ export async function sendInitMessage(
         files = [...files, ...deleteFileDiffs];
       }
 
+      // remoteStatusをキャッシュから復元（ターゲット切り替え時の正しいアイコン表示用）
+      if (cached.remoteStatusByFile) {
+        files = files.map((file) => {
+          // 削除ファイル（D）のステータスは変更しない
+          if (file.status === "D") {
+            return file;
+          }
+
+          const remoteStatus = cached.remoteStatusByFile![file.path];
+          if (remoteStatus) {
+            // remoteStatusに基づいてstatusを正しく設定
+            const status = !remoteStatus.exists
+              ? ("A" as const) // リモートに存在しない = 新規追加
+              : remoteStatus.hasChanges
+              ? ("M" as const) // リモートに存在し、変更あり
+              : ("U" as const); // リモートに存在し、変更なし
+            return { ...file, status };
+          }
+          return file;
+        });
+      }
+
       const summary = {
         added: cached.summary.added,
         modified: cached.summary.modified,

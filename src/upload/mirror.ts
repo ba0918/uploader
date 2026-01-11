@@ -10,6 +10,52 @@ import { applyIgnoreFilter } from "./filter.ts";
 import { logVerbose, logWarning } from "../ui/logger.ts";
 
 /**
+ * uploadFilesの共通ベースディレクトリを検出
+ *
+ * uploadFilesの全てのファイルパスの共通プレフィックスを検出する。
+ * 共通プレフィックスがない場合は空文字列を返す。
+ *
+ * @param uploadFiles アップロードファイル配列
+ * @returns ベースディレクトリパス（末尾スラッシュあり）または空文字列
+ *
+ * @example
+ * ```typescript
+ * detectBaseDirectory([
+ *   { relativePath: "example/a.txt", ... },
+ *   { relativePath: "example/dir1/b.txt", ... }
+ * ])
+ * // => "example/"
+ * ```
+ */
+export function detectBaseDirectory(uploadFiles: UploadFile[]): string {
+  if (uploadFiles.length === 0) {
+    return "";
+  }
+
+  // 削除ファイルは除外
+  const paths = uploadFiles
+    .filter((f) => f.changeType !== "delete")
+    .map((f) => f.relativePath);
+
+  if (paths.length === 0) {
+    return "";
+  }
+
+  // 最初のパスをベースにする
+  const firstPath = paths[0];
+  const firstDir = firstPath.includes("/")
+    ? firstPath.substring(0, firstPath.indexOf("/") + 1)
+    : "";
+
+  // 全てのパスが同じディレクトリから始まるか確認
+  if (firstDir && paths.every((p) => p.startsWith(firstDir))) {
+    return firstDir;
+  }
+
+  return "";
+}
+
+/**
  * mirrorモード用の同期準備を行う
  *
  * リモートにのみ存在するファイル（削除対象）を検出し、uploadFiles配列に追加する。
@@ -52,9 +98,35 @@ export async function prepareMirrorSync(
     // リモートファイル一覧を取得
     const remoteFiles = await uploader.listRemoteFiles();
     logVerbose(`Found ${remoteFiles.length} files on remote`);
+    if (remoteFiles.length > 0 && remoteFiles.length <= 20) {
+      logVerbose(`Remote files: ${remoteFiles.join(", ")}`);
+    }
+
+    // uploadFilesの共通プレフィックス（ベースディレクトリ）を検出
+    const baseDir = detectBaseDirectory(uploadFiles);
+    logVerbose(`Detected base directory: ${baseDir || "(root)"}`);
+
+    // uploadFilesのパスを確認（デバッグ用）
+    const uploadPaths = uploadFiles
+      .filter((f) => f.changeType !== "delete")
+      .map((f) => f.relativePath);
+    if (uploadPaths.length > 0 && uploadPaths.length <= 20) {
+      logVerbose(`Upload file paths: ${uploadPaths.join(", ")}`);
+    }
+
+    // リモートファイルをベースディレクトリでフィルタリング
+    const filteredByBase = baseDir
+      ? remoteFiles.filter((path) => path.startsWith(baseDir))
+      : remoteFiles;
+    logVerbose(
+      `${filteredByBase.length} files after base directory filtering`,
+    );
+    if (filteredByBase.length > 0 && filteredByBase.length <= 20) {
+      logVerbose(`Filtered remote files: ${filteredByBase.join(", ")}`);
+    }
 
     // ignoreパターンを適用（リモートファイルにも適用）
-    const remoteUploadFiles: UploadFile[] = remoteFiles.map((path) => ({
+    const remoteUploadFiles: UploadFile[] = filteredByBase.map((path) => ({
       relativePath: path,
       size: 0,
       isDirectory: false,

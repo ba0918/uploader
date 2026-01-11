@@ -41,14 +41,14 @@ describe("parseItemizeLine", () => {
       assertEquals(result, { path: "size-only.txt", changeType: "M" });
     });
 
-    it("should skip >f..t...... (timestamp only change)", () => {
+    it("should detect >f..t...... (timestamp only change)", () => {
       const result = parseItemizeLine(">f..t...... timestamp-only.txt");
-      assertEquals(result, null);
+      assertEquals(result, { path: "timestamp-only.txt", changeType: "M" });
     });
 
-    it("should skip .f..t...... (attribute only change)", () => {
+    it("should detect .f..t...... (timestamp change)", () => {
       const result = parseItemizeLine(".f..t...... attr-change.txt");
-      assertEquals(result, null);
+      assertEquals(result, { path: "attr-change.txt", changeType: "M" });
     });
 
     it("should parse >fc........ as modified file (checksum)", () => {
@@ -190,8 +190,7 @@ total size is 9012  speedup is 1.23
 
   it("should handle real-world rsync output", () => {
     // Simulated real rsync --itemize-changes output
-    // Note: timestamp-only changes (>f..t......, .f..t......) are skipped
-    // because they don't represent content changes
+    // Note: timestamp changes are now detected as modifications (rsync default behavior)
     const output = `>f+++++++++ src/components/NewComponent.tsx
 >f.st...... src/components/Button.tsx
 >f..t...... src/utils/helper.ts
@@ -202,10 +201,10 @@ total size is 9012  speedup is 1.23
 `;
     const result = parseItemizeChanges(output);
 
-    // helper.ts and README.md are skipped (timestamp-only changes)
-    assertEquals(result.entries.length, 4);
+    // helper.ts and README.md are now included (timestamp changes detected)
+    assertEquals(result.entries.length, 6);
     assertEquals(result.added, 2); // NewComponent.tsx, new-feature/index.ts
-    assertEquals(result.modified, 1); // Button.tsx (has size+timestamp change)
+    assertEquals(result.modified, 3); // Button.tsx, helper.ts, README.md
     assertEquals(result.deleted, 1); // old.ts
 
     // Verify specific entries
@@ -213,8 +212,8 @@ total size is 9012  speedup is 1.23
     assertEquals(paths.includes("src/components/NewComponent.tsx"), true);
     assertEquals(paths.includes("src/components/Button.tsx"), true);
     assertEquals(paths.includes("src/deprecated/old.ts"), true);
-    assertEquals(paths.includes("src/utils/helper.ts"), false); // Timestamp-only, skipped
-    assertEquals(paths.includes("README.md"), false); // Timestamp-only, skipped
+    assertEquals(paths.includes("src/utils/helper.ts"), true); // Timestamp change detected
+    assertEquals(paths.includes("README.md"), true); // Timestamp change detected
     assertEquals(paths.includes("src/new-feature/"), false); // Directory should be skipped
   });
 });

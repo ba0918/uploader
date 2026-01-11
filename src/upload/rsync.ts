@@ -360,7 +360,7 @@ export class RsyncUploader extends SshBaseUploader {
   async getDiff(
     localDir: string,
     files?: string[],
-    options?: { checksum?: boolean; ignorePatterns?: string[] },
+    options?: { checksum?: boolean; ignorePatterns?: string[]; remoteDir?: string },
   ): Promise<RsyncDiffResult> {
     if (!this.isConnected()) {
       throw new UploadError("Not connected", "CONNECTION_ERROR");
@@ -413,9 +413,11 @@ export class RsyncUploader extends SshBaseUploader {
       const srcDir = localDir.endsWith("/") ? localDir : `${localDir}/`;
       args.push(srcDir);
 
-      // 宛先
+      // 宛先（remoteDirが指定されていればそれを使用）
+      const destDir = options?.remoteDir || this.options.dest;
+      const destPath = destDir.endsWith("/") ? destDir : `${destDir}/`;
       args.push(
-        `${this.options.user}@${this.options.host}:${this.options.dest}/`,
+        `${this.options.user}@${this.options.host}:${destPath}`,
       );
 
       // デバッグ: rsync引数をログ出力
@@ -428,9 +430,7 @@ export class RsyncUploader extends SshBaseUploader {
       logVerbose(
         `[RsyncUploader.getDiff] LocalDir: ${srcDir}, Files: ${
           files?.length ?? "all"
-        }, IgnorePatterns: ${
-          options?.ignorePatterns?.length ?? 0
-        }`,
+        }, IgnorePatterns: ${options?.ignorePatterns?.length ?? 0}`,
       );
 
       const { code, stdout, stderr } = await this.runWithSshpass("rsync", args);

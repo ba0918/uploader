@@ -48,6 +48,8 @@ export interface CachedTargetDiff {
   error?: string;
   /** 削除対象ファイルリスト（mirrorモード時、非rsyncプロトコル用） */
   deleteFiles?: string[];
+  /** ファイルごとのremoteStatus（ターゲット切り替え時の正しいアイコン表示用） */
+  remoteStatusByFile?: Record<string, { exists: boolean; hasChanges: boolean }>;
 }
 
 /** サーバの状態 */
