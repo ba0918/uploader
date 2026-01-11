@@ -7,13 +7,16 @@
 import type {
   DiffFile,
   ResolvedTargetConfig,
+  RsyncDiffEntry,
   RsyncDiffResult,
   UploadFile,
 } from "../types/mod.ts";
-import { hasDiff } from "../types/mod.ts";
+import { hasDiff, hasListRemoteFiles } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
+import { applyIgnoreFilter } from "../upload/filter.ts";
 import { detectBaseDirectory } from "../upload/mirror.ts";
 import { logVerbose } from "../ui/mod.ts";
+import { batchAsync } from "../utils/mod.ts";
 
 /** ターゲットごとの差分結果 */
 export interface TargetDiffInfo {
@@ -73,10 +76,32 @@ export async function getRsyncDiffForTarget(
   target: ResolvedTargetConfig,
   localDir: string,
   filePaths: string[],
-  options?: { checksum?: boolean; ignorePatterns?: string[]; uploadFiles?: UploadFile[] },
+  options?: { checksum?: boolean; ignorePatterns?: string[]; uploadFiles?: UploadFile[]; concurrency?: number },
 ): Promise<TargetDiffInfo> {
-  // rsync以外のプロトコルはgetDiff未サポート
+  // rsync以外のプロトコルはマニュアル差分取得を試みる
   if (target.protocol !== "rsync") {
+    // uploadFilesがある場合はマニュアル差分取得を実行
+    if (options?.uploadFiles) {
+      try {
+        const diff = await getManualDiffForTarget(
+          target,
+          options.uploadFiles,
+          localDir,
+          {
+            concurrency: options.concurrency,
+            ignorePatterns: options.ignorePatterns ?? target.ignore,
+          },
+        );
+        return { target, diff };
+      } catch (error) {
+        return {
+          target,
+          diff: null,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    // uploadFilesがない場合は未サポート
     return {
       target,
       diff: null,
@@ -165,14 +190,14 @@ export async function getRemoteDiffs(
   targets: ResolvedTargetConfig[],
   uploadFiles: UploadFile[],
   localDir: string,
-  options?: { checksum?: boolean; ignorePatterns?: string[] },
+  options?: { checksum?: boolean; ignorePatterns?: string[]; concurrency?: number },
 ): Promise<TargetDiffInfo[]> {
   const filePaths = extractFilePaths(uploadFiles);
 
   logVerbose(
     `[getRemoteDiffs] localDir: ${localDir}, files: ${filePaths.length}, checksum: ${
       options?.checksum ?? false
-    }`,
+    }, concurrency: ${options?.concurrency ?? 10}`,
   );
   logVerbose(
     `[getRemoteDiffs] First 5 file paths: ${filePaths.slice(0, 5).join(", ")}`,
@@ -235,4 +260,179 @@ export function hasRemoteChanges(targetDiffs: TargetDiffInfo[]): boolean {
     // Note: 呼び出し元で uploadFiles の変更を別途チェックする必要がある
     return false;
   });
+}
+
+/**
+ * 2つのUint8Array配列が等しいかチェック
+ */
+function areBuffersEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * getDiff未サポートプロトコル向けのマニュアル差分取得
+ *
+ * 各ファイルを個別にリモートと比較して差分を検出する。
+ * scp/sftp/localなど、rsync getDiff()をサポートしないプロトコルで使用する。
+ *
+ * @param target 対象ターゲット設定
+ * @param uploadFiles アップロードファイル一覧
+ * @param localDir ローカルディレクトリパス
+ * @param options オプション（並列実行数など）
+ * @returns rsync差分結果と互換性のある形式
+ */
+export async function getManualDiffForTarget(
+  target: ResolvedTargetConfig,
+  uploadFiles: UploadFile[],
+  localDir: string,
+  options?: { concurrency?: number; ignorePatterns?: string[] },
+): Promise<RsyncDiffResult> {
+  const uploader = createUploader(target);
+  await uploader.connect();
+
+  try {
+    const concurrency = options?.concurrency ?? 10;
+    const ignorePatterns = options?.ignorePatterns ?? [];
+    const entries: RsyncDiffEntry[] = [];
+    let added = 0;
+    let modified = 0;
+    let deleted = 0;
+
+    // mirror モードの場合、ターゲット固有の削除ファイルを検出
+    const isMirrorMode = target.sync_mode === "mirror";
+    if (isMirrorMode && hasListRemoteFiles(uploader)) {
+      try {
+        const remoteFiles = await uploader.listRemoteFiles();
+        logVerbose(
+          `[getManualDiffForTarget] Found ${remoteFiles.length} remote files for ${target.host}:${target.dest}`,
+        );
+
+        // ignoreパターンを適用（リモートファイルにも適用）
+        const remoteUploadFiles: UploadFile[] = remoteFiles.map((path) => ({
+          relativePath: path,
+          size: 0,
+          isDirectory: false,
+        }));
+
+        const filteredRemoteFiles = applyIgnoreFilter(
+          remoteUploadFiles,
+          ignorePatterns,
+        );
+        logVerbose(
+          `[getManualDiffForTarget] ${filteredRemoteFiles.length} files after applying ignore patterns`,
+        );
+
+        // ローカルファイルのパスセットを作成
+        const localPaths = new Set(
+          uploadFiles
+            .filter((f) => f.changeType !== "delete" && !f.isDirectory)
+            .map((f) => f.relativePath),
+        );
+
+        // リモートにのみ存在するファイルを削除対象とする
+        for (const file of filteredRemoteFiles) {
+          if (!localPaths.has(file.relativePath)) {
+            deleted++;
+            entries.push({
+              path: file.relativePath,
+              changeType: "D",
+            });
+          }
+        }
+
+        logVerbose(
+          `[getManualDiffForTarget] Detected ${deleted} files to delete for ${target.host}:${target.dest}`,
+        );
+      } catch (error) {
+        logVerbose(
+          `[getManualDiffForTarget] Failed to list remote files: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        // エラー時は削除ファイル検出をスキップ
+      }
+    }
+
+    // 通常ファイル（追加/変更）を並列チェック
+    const normalFiles = uploadFiles.filter(
+      (f) => !f.isDirectory && f.changeType !== "delete",
+    );
+
+    logVerbose(
+      `[getManualDiffForTarget] Checking ${normalFiles.length} files for ${target.host}:${target.dest} (concurrency: ${concurrency})`,
+    );
+
+    // バッチ処理で並列実行
+    const results = await batchAsync(
+      normalFiles,
+      async (file) => {
+        try {
+          // ローカルファイルを読み込み
+          const localContent = await Deno.readFile(file.sourcePath);
+
+          // リモートファイルを読み込み
+          const remoteFile = await uploader.readFile(file.relativePath);
+
+          if (!remoteFile) {
+            // リモートに存在しない = 追加
+            return { file, changeType: "A" as const };
+          }
+
+          // バイト比較
+          const remoteContent = remoteFile.content;
+          if (!areBuffersEqual(localContent, remoteContent)) {
+            // 内容が異なる = 変更
+            return { file, changeType: "M" as const };
+          }
+
+          // 変更なし
+          return { file, changeType: null };
+        } catch (error) {
+          // エラー時は変更ありとして扱う
+          logVerbose(
+            `Error checking ${file.relativePath}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return { file, changeType: "M" as const };
+        }
+      },
+      concurrency,
+    );
+
+    // 結果を集計
+    for (const result of results) {
+      if (result.changeType === "A") {
+        added++;
+        entries.push({
+          path: result.file.relativePath,
+          changeType: "A",
+        });
+      } else if (result.changeType === "M") {
+        modified++;
+        entries.push({
+          path: result.file.relativePath,
+          changeType: "M",
+        });
+      }
+      // changeType === null の場合は変更なしなので何もしない
+    }
+
+    logVerbose(
+      `[getManualDiffForTarget] Result: ${added} added, ${modified} modified, ${deleted} deleted`,
+    );
+
+    return {
+      added,
+      modified,
+      deleted,
+      entries,
+    };
+  } finally {
+    await uploader.disconnect();
+  }
 }

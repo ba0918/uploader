@@ -25,8 +25,12 @@ import {
   collectChangedFilesByTarget,
   getRemoteDiffs,
   hasRemoteChanges,
+  rsyncDiffToFiles,
   type TargetDiffInfo,
 } from "./remote-diff.ts";
+
+/** CUIモードでのファイルリスト表示上限 */
+const CUI_FILE_LIST_LIMIT = 50;
 
 /** ブラウザ起動用コマンド実行インターフェース */
 export interface BrowserCommandRunner {
@@ -145,12 +149,11 @@ function displaySourceFiles(uploadFiles: UploadFile[]): void {
   console.log();
 
   // ファイル数が多い場合は一部のみ表示
-  const maxDisplay = 20;
-  if (files.length > maxDisplay) {
-    console.log(`   ${dim("Files")} ${dim(`(showing ${maxDisplay} of ${files.length})`)}`);
-    for (let i = 0; i < maxDisplay; i++) {
+  if (files.length > CUI_FILE_LIST_LIMIT) {
+    console.log(`   ${dim("Files")} ${dim(`(showing ${CUI_FILE_LIST_LIMIT} of ${files.length})`)}`);
+    for (let i = 0; i < CUI_FILE_LIST_LIMIT; i++) {
       const file = files[i];
-      const isLast = i === maxDisplay - 1;
+      const isLast = i === CUI_FILE_LIST_LIMIT - 1;
       const prefix = isLast ? "└─" : "├─";
       console.log(`   ${dim(prefix)} ${file.relativePath} ${dim(`(${formatFileSize(file.size)})`)}`);
     }
@@ -223,15 +226,6 @@ function displayTargetDiffSummary(info: TargetDiffInfo, index: number): void {
   const { target, diff, error, unsupported } = info;
   const label = `${target.host}:${target.dest}`;
 
-  if (unsupported) {
-    console.log(
-      `   ${dim(`[${index + 1}]`)} ${label} ${
-        dim(`(${target.protocol} - diff not supported)`)
-      }`,
-    );
-    return;
-  }
-
   if (error) {
     console.log(
       `   ${dim(`[${index + 1}]`)} ${label} ${red(`(error: ${error})`)}`,
@@ -248,6 +242,16 @@ function displayTargetDiffSummary(info: TargetDiffInfo, index: number): void {
       `       ${green("+")} ${diff.added}  ${yellow("~")} ${diff.modified}  ${
         red("-")
       } ${diff.deleted}  ${dim(`(${total} total)`)}`,
+    );
+    return;
+  }
+
+  // diff も error もない場合のみ unsupported を表示
+  if (unsupported) {
+    console.log(
+      `   ${dim(`[${index + 1}]`)} ${label} ${
+        dim(`(${target.protocol} - diff not supported)`)
+      }`,
     );
   }
 }
@@ -341,35 +345,85 @@ export async function cuiConfirm(
 
   // remoteモードでターゲットごとの差分を表示
   if (targetDiffs.length > 0) {
-    console.log(`   ${dim("Remote diff by target:")}`);
-    console.log();
+    // 各ターゲットごとにサマリーとファイルリストを表示
     for (let i = 0; i < targetDiffs.length; i++) {
-      displayTargetDiffSummary(targetDiffs[i], i);
+      const info = targetDiffs[i];
+      const label = `${info.target.host}:${info.target.dest}`;
+
+      console.log(`   ${dim(`Target ${i + 1}: ${label}`)}`);
+      console.log();
+
+      // サマリー表示
+      if (info.error) {
+        console.log(`   ${red(`Error: ${info.error}`)}`);
+      } else if (info.diff) {
+        const diff = info.diff;
+        console.log(`   ${green("+")}  ${diff.added} files added`);
+        console.log(`   ${yellow("~")}  ${diff.modified} files modified`);
+        console.log(`   ${red("-")}  ${diff.deleted} files deleted`);
+        console.log(`   ${"─".repeat(20)}`);
+        const total = diff.added + diff.modified + diff.deleted;
+        console.log(`      ${total} files total`);
+        console.log();
+
+        // 件数が多い場合の警告
+        if (total > CUI_FILE_LIST_LIMIT) {
+          console.log(`   ${yellow("⚠")}  ${yellow(`Large number of changes detected (${total} files)`)}`);
+          console.log(`   ${dim(`Showing first ${CUI_FILE_LIST_LIMIT} files per category.`)}`);
+          console.log(`   ${dim(`For detailed review, use browser mode: remove --cui flag`)}`);
+          console.log();
+        }
+
+        // ファイルリスト表示
+        const targetFiles = rsyncDiffToFiles(diff);
+        const added = targetFiles.filter((f) => f.status === "A");
+        const modified = targetFiles.filter((f) => f.status === "M");
+        const deleted = targetFiles.filter((f) => f.status === "D");
+
+        if (added.length > 0) {
+          console.log(`   ${green("Added:")}`);
+          displayFiles(added, CUI_FILE_LIST_LIMIT);
+        }
+        if (modified.length > 0) {
+          console.log(`   ${yellow("Modified:")}`);
+          displayFiles(modified, CUI_FILE_LIST_LIMIT);
+        }
+        if (deleted.length > 0) {
+          console.log(`   ${red("Deleted:")}`);
+          displayFiles(deleted, CUI_FILE_LIST_LIMIT);
+        }
+      } else if (info.unsupported) {
+        console.log(`   ${dim(`(${info.target.protocol} - diff not supported)`)}`);
+      }
+
+      console.log();
+      console.log(`   ${"─".repeat(40)}`);
+      console.log();
     }
-    console.log();
-    console.log(`   ${"─".repeat(30)}`);
+  }
+
+  // ファイルリスト表示の準備（targetDiffsがない場合用）
+  const shouldShowFileList = targetDiffs.length === 0 && summary.total > 0;
+
+  // ターゲット情報表示（targetDiffsがない場合のみ）
+  if (targetDiffs.length === 0 && targets.length > 0) {
+    if (targets.length === 1) {
+      const t = targets[0];
+      console.log(`   ${dim("Target:")} ${t.host}:${t.dest}`);
+    } else {
+      console.log(`   ${dim("Targets:")} ${targets.length} target(s)`);
+      for (let i = 0; i < targets.length; i++) {
+        const t = targets[i];
+        const isLast = i === targets.length - 1;
+        const prefix = isLast ? "└─" : "├─";
+        console.log(`   ${dim(prefix)} ${t.host}:${t.dest}`);
+      }
+    }
     console.log();
   }
 
-  // uploadFilesベースまたは差分取得できなかった場合の表示
-  if (targetDiffs.length === 0) {
-    if (targets.length > 0) {
-      // ターゲット情報を表示
-      if (targets.length === 1) {
-        const t = targets[0];
-        console.log(`   ${dim("Target:")} ${t.host}:${t.dest}`);
-      } else {
-        console.log(`   ${dim("Targets:")} ${targets.length} target(s)`);
-        for (let i = 0; i < targets.length; i++) {
-          const t = targets[i];
-          const isLast = i === targets.length - 1;
-          const prefix = isLast ? "└─" : "├─";
-          console.log(`   ${dim(prefix)} ${t.host}:${t.dest}`);
-        }
-      }
-      console.log();
-    }
-
+  // ファイルリスト表示（変更がある場合のみ）
+  if (shouldShowFileList) {
     console.log(`   ${green("+")}  ${summary.added} files added`);
     console.log(`   ${yellow("~")}  ${summary.modified} files modified`);
     console.log(`   ${red("-")}  ${summary.deleted} files deleted`);
@@ -377,26 +431,34 @@ export async function cuiConfirm(
     console.log(`      ${summary.total} files total`);
     console.log();
 
-    // ファイル一覧を表示（最大20件）
+    // 件数が多い場合の警告
+    if (summary.total > CUI_FILE_LIST_LIMIT) {
+      console.log(`   ${yellow("⚠")}  ${yellow(`Large number of changes detected (${summary.total} files)`)}`);
+      console.log(`   ${dim(`Showing first ${CUI_FILE_LIST_LIMIT} files per category.`)}`);
+      console.log(`   ${dim(`For detailed review, use browser mode: remove --cui flag`)}`);
+      console.log();
+    }
+
+    // ファイル一覧を表示
     if (summary.added > 0) {
       console.log(`   ${green("Added:")}`);
-      displayFiles(filesToDisplay.filter((f) => f.status === "A"), 20);
+      displayFiles(filesToDisplay.filter((f) => f.status === "A"), CUI_FILE_LIST_LIMIT);
     }
 
     if (summary.modified > 0) {
       console.log(`   ${yellow("Modified:")}`);
-      displayFiles(filesToDisplay.filter((f) => f.status === "M"), 20);
+      displayFiles(filesToDisplay.filter((f) => f.status === "M"), CUI_FILE_LIST_LIMIT);
     }
 
     if (summary.deleted > 0) {
       console.log(`   ${red("Deleted:")}`);
-      displayFiles(filesToDisplay.filter((f) => f.status === "D"), 20);
+      displayFiles(filesToDisplay.filter((f) => f.status === "D"), CUI_FILE_LIST_LIMIT);
     }
 
     const renamed = filesToDisplay.filter((f) => f.status === "R");
     if (renamed.length > 0) {
       console.log(`   ${cyan("Renamed:")}`);
-      displayFiles(renamed, 20);
+      displayFiles(renamed, CUI_FILE_LIST_LIMIT);
     }
   }
 
