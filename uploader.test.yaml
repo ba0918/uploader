@@ -27,6 +27,7 @@ test_update:
       rsync_path: "sudo rsync"
       rsync_options:
         - "--compress"
+      preserve_permissions: true
       sync_mode: "update"
     targets:
       - dest: "/upload/"
@@ -47,6 +48,7 @@ test_mirror:
       rsync_path: "sudo rsync"
       rsync_options:
         - "--compress"
+      preserve_permissions: true
       sync_mode: "mirror"
     targets:
       - dest: "/upload/"

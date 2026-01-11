@@ -634,6 +634,198 @@ describe("getRemoteDiffs", () => {
   });
 });
 
+describe("getManualDiffForTarget - エラー種別の判定", () => {
+  const encoder = new TextEncoder();
+
+  const createTarget = (
+    options?: Partial<ResolvedTargetConfig>,
+  ): ResolvedTargetConfig => ({
+    host: "localhost",
+    dest: "/upload/",
+    protocol: "scp",
+    user: "testuser",
+    auth_type: "ssh_key",
+    key_file: "/test/key",
+    timeout: 30000,
+    retry: 3,
+    sync_mode: "update",
+    ignore: [],
+    ...options,
+  });
+
+  it("ファイル不在エラーは追加ファイルとして扱う", async () => {
+    const target = createTarget();
+
+    // Deno.errors.NotFoundをthrowするMockUploader
+    class NotFoundErrorUploader extends MockUploader {
+      override readFile(_path: string): Promise<RemoteFileContent | null> {
+        throw new Deno.errors.NotFound("File not found on remote");
+      }
+    }
+
+    const uploader = new NotFoundErrorUploader();
+    const content = encoder.encode("content");
+    const tempFile = await Deno.makeTempFile();
+    await Deno.writeFile(tempFile, content);
+
+    const uploadFiles: UploadFile[] = [
+      {
+        relativePath: "file.txt",
+        size: content.length,
+        isDirectory: false,
+        sourcePath: tempFile,
+      },
+    ];
+
+    try {
+      const result = await getManualDiffForTarget(
+        target,
+        uploadFiles,
+        "/tmp",
+        { uploader },
+      );
+
+      // NotFoundエラーは追加ファイルとして扱う
+      assertEquals(result.added, 1);
+      assertEquals(result.modified, 0);
+      assertEquals(result.deleted, 0);
+      assertEquals(result.entries.length, 1);
+      assertEquals(result.entries[0].changeType, "A");
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  });
+
+  it("権限エラーは変更ありとして扱い警告ログを出力", async () => {
+    const target = createTarget();
+
+    // Deno.errors.PermissionDeniedをthrowするMockUploader
+    class PermissionErrorUploader extends MockUploader {
+      override readFile(_path: string): Promise<RemoteFileContent | null> {
+        throw new Deno.errors.PermissionDenied("Permission denied");
+      }
+    }
+
+    const uploader = new PermissionErrorUploader();
+    const content = encoder.encode("content");
+    const tempFile = await Deno.makeTempFile();
+    await Deno.writeFile(tempFile, content);
+
+    const uploadFiles: UploadFile[] = [
+      {
+        relativePath: "file.txt",
+        size: content.length,
+        isDirectory: false,
+        sourcePath: tempFile,
+      },
+    ];
+
+    try {
+      const result = await getManualDiffForTarget(
+        target,
+        uploadFiles,
+        "/tmp",
+        { uploader },
+      );
+
+      // 権限エラーは変更あり（M）として扱われる
+      assertEquals(result.added, 0);
+      assertEquals(result.modified, 1);
+      assertEquals(result.deleted, 0);
+      assertEquals(result.entries.length, 1);
+      assertEquals(result.entries[0].changeType, "M");
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  });
+
+  it("ネットワークエラーは変更ありとして扱い警告ログを出力", async () => {
+    const target = createTarget();
+
+    // Connection refusedエラーをthrowするMockUploader
+    class NetworkErrorUploader extends MockUploader {
+      override readFile(_path: string): Promise<RemoteFileContent | null> {
+        throw new Error("Connection refused");
+      }
+    }
+
+    const uploader = new NetworkErrorUploader();
+    const content = encoder.encode("content");
+    const tempFile = await Deno.makeTempFile();
+    await Deno.writeFile(tempFile, content);
+
+    const uploadFiles: UploadFile[] = [
+      {
+        relativePath: "file.txt",
+        size: content.length,
+        isDirectory: false,
+        sourcePath: tempFile,
+      },
+    ];
+
+    try {
+      const result = await getManualDiffForTarget(
+        target,
+        uploadFiles,
+        "/tmp",
+        { uploader },
+      );
+
+      // ネットワークエラーは変更あり（M）として扱われる
+      assertEquals(result.added, 0);
+      assertEquals(result.modified, 1);
+      assertEquals(result.deleted, 0);
+      assertEquals(result.entries.length, 1);
+      assertEquals(result.entries[0].changeType, "M");
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  });
+
+  it("未知のエラーは変更ありとして扱い警告ログを出力", async () => {
+    const target = createTarget();
+
+    // 一般的なErrorをthrowするMockUploader
+    class UnknownErrorUploader extends MockUploader {
+      override readFile(_path: string): Promise<RemoteFileContent | null> {
+        throw new Error("Unexpected error");
+      }
+    }
+
+    const uploader = new UnknownErrorUploader();
+    const content = encoder.encode("content");
+    const tempFile = await Deno.makeTempFile();
+    await Deno.writeFile(tempFile, content);
+
+    const uploadFiles: UploadFile[] = [
+      {
+        relativePath: "file.txt",
+        size: content.length,
+        isDirectory: false,
+        sourcePath: tempFile,
+      },
+    ];
+
+    try {
+      const result = await getManualDiffForTarget(
+        target,
+        uploadFiles,
+        "/tmp",
+        { uploader },
+      );
+
+      // 未知のエラーは変更あり（M）として扱われる
+      assertEquals(result.added, 0);
+      assertEquals(result.modified, 1);
+      assertEquals(result.deleted, 0);
+      assertEquals(result.entries.length, 1);
+      assertEquals(result.entries[0].changeType, "M");
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  });
+});
+
 describe("getManualDiffForTarget - エッジケース", () => {
   const encoder = new TextEncoder();
 
@@ -653,7 +845,7 @@ describe("getManualDiffForTarget - エッジケース", () => {
     ...options,
   });
 
-  it("ファイル読み込みエラー時は変更ありとして扱う", async () => {
+  it("ファイル読み込みエラー時（ローカルファイル不在）は追加ファイルとして扱う", async () => {
     const target = createTarget();
     const uploader = new MockUploader();
 
@@ -674,12 +866,12 @@ describe("getManualDiffForTarget - エッジケース", () => {
       { uploader },
     );
 
-    // エラーが発生しても変更あり（M）として扱われる
-    assertEquals(result.added, 0);
-    assertEquals(result.modified, 1);
+    // ローカルファイルが存在しない場合NotFoundエラー → 追加ファイル（A）として扱われる
+    assertEquals(result.added, 1);
+    assertEquals(result.modified, 0);
     assertEquals(result.deleted, 0);
     assertEquals(result.entries.length, 1);
-    assertEquals(result.entries[0].changeType, "M");
+    assertEquals(result.entries[0].changeType, "A");
   });
 
   it("リモートファイル一覧取得エラー時は削除検出をスキップ", async () => {

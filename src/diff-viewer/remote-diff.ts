@@ -16,8 +16,9 @@ import { hasDiff, hasListRemoteFiles } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
 import { applyIgnoreFilter } from "../upload/filter.ts";
 import { detectBaseDirectory } from "../upload/mirror.ts";
-import { logVerbose } from "../ui/mod.ts";
+import { logVerbose, logWarning } from "../ui/mod.ts";
 import { batchAsync } from "../utils/mod.ts";
+import { classifyError } from "../utils/error.ts";
 
 /** ターゲットごとの差分結果 */
 export interface TargetDiffInfo {
@@ -353,12 +354,11 @@ export async function getManualDiffForTarget(
           `[getManualDiffForTarget] Detected ${deleted} files to delete for ${target.host}:${target.dest}`,
         );
       } catch (error) {
-        logVerbose(
-          `[getManualDiffForTarget] Failed to list remote files: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+        const errorType = classifyError(error);
+        logWarning(
+          `Failed to list remote files (${errorType}): mirror mode deletion detection skipped`,
         );
-        // エラー時は削除ファイル検出をスキップ
+        logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -405,13 +405,39 @@ export async function getManualDiffForTarget(
           // 変更なし
           return { file, changeType: null };
         } catch (error) {
-          // エラー時は変更ありとして扱う
-          logVerbose(
-            `Error checking ${file.relativePath}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          return { file, changeType: "M" as const };
+          // エラー種別を判定
+          const errorType = classifyError(error);
+
+          // エラーログ出力（種別に応じて）
+          switch (errorType) {
+            case "NotFound":
+              // ファイル不在はverboseモードでのみ記録
+              logVerbose(
+                `[getManualDiffForTarget] File not found (will be treated as added): ${file.relativePath}`,
+              );
+              return { file, changeType: "A" as const };
+
+            case "PermissionDenied":
+              logWarning(
+                `Permission denied when reading file: ${file.relativePath} (will be treated as modified)`,
+              );
+              logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
+              return { file, changeType: "M" as const };
+
+            case "NetworkError":
+              logWarning(
+                `Network error when reading file: ${file.relativePath} (will be treated as modified)`,
+              );
+              logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
+              return { file, changeType: "M" as const };
+
+            case "UnknownError":
+              logWarning(
+                `Error checking file: ${file.relativePath} (will be treated as modified)`,
+              );
+              logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
+              return { file, changeType: "M" as const };
+          }
         }
       },
       concurrency,
