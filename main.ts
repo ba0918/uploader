@@ -473,12 +473,18 @@ async function main(): Promise<number> {
     };
 
     const uploadStartTime = Date.now();
+    // mirrorモードのターゲットがある場合は自動的にdeleteRemoteを有効化
+    const hasMirrorTarget = profile.to.targets.some((t) =>
+      t.sync_mode === "mirror"
+    );
+    const shouldDeleteRemote = args.delete || hasMirrorTarget;
+
     const result = await uploadToTargets(
       profile.to.targets,
       uploadFiles,
       {
         dryRun: args.dryRun,
-        deleteRemote: args.delete,
+        deleteRemote: shouldDeleteRemote,
         strict: args.strict,
         parallel: args.parallel,
         filesByTarget,

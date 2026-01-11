@@ -270,7 +270,15 @@ export abstract class SshBaseUploader
     const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, rmCmd);
 
+    logVerbose(
+      `[${this.constructor.name}.delete] Command: ssh ${args.join(" ")}`,
+    );
+
     const { code, stderr } = await this.runWithSshpass("ssh", args);
+
+    logVerbose(
+      `[${this.constructor.name}.delete] Exit code: ${code}`,
+    );
 
     // ファイルが存在しない場合はエラーにしない
     if (code !== 0) {

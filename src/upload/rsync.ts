@@ -21,6 +21,7 @@ import {
   parseItemizeChanges,
 } from "../utils/mod.ts";
 import { type SshBaseOptions, SshBaseUploader } from "./ssh-base.ts";
+import { detectBaseDirectory } from "./mirror.ts";
 
 /**
  * rsync接続オプション
@@ -203,6 +204,19 @@ export class RsyncUploader extends SshBaseUploader {
       };
     }
 
+    // mirrorモード時のベースディレクトリ調整
+    let adjustedDest: string | undefined = undefined;
+    const baseDir = detectBaseDirectory(files);
+    if (baseDir) {
+      const destBase = this.options.dest.endsWith("/")
+        ? this.options.dest
+        : `${this.options.dest}/`;
+      adjustedDest = `${destBase}${baseDir}`;
+      logVerbose(
+        `[RsyncUploader.bulkUpload] Adjusted dest for mirror mode: ${adjustedDest}`,
+      );
+    }
+
     // ステージングディレクトリを作成
     const stagingDir = await Deno.makeTempDir({ prefix: "uploader_bulk_" });
 
@@ -211,7 +225,12 @@ export class RsyncUploader extends SshBaseUploader {
       let totalSize = 0;
       for (let i = 0; i < filesToUpload.length; i++) {
         const file = filesToUpload[i];
-        const destPath = join(stagingDir, file.relativePath);
+        // ベースディレクトリがある場合は、relativePathからベースディレクトリを除去
+        let stagingPath = file.relativePath;
+        if (baseDir && file.relativePath.startsWith(baseDir)) {
+          stagingPath = file.relativePath.substring(baseDir.length);
+        }
+        const destPath = join(stagingDir, stagingPath);
 
         // 親ディレクトリを作成
         const parentDir = dirname(destPath);
@@ -227,6 +246,22 @@ export class RsyncUploader extends SshBaseUploader {
           // ファイルモード: ソースファイルをコピー
           await Deno.copyFile(file.sourcePath, destPath);
           totalSize += file.size;
+
+          // mirror mode時はタイムスタンプを保持（getDiffとの整合性のため）
+          if (baseDir) {
+            try {
+              const stat = await Deno.stat(file.sourcePath);
+              if (stat.mtime) {
+                await Deno.utime(destPath, stat.atime || stat.mtime, stat.mtime);
+              }
+            } catch (err) {
+              logVerbose(
+                `Failed to preserve timestamp for ${file.sourcePath}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            }
+          }
         }
 
         // 進捗通知（ステージング準備）
@@ -247,7 +282,7 @@ export class RsyncUploader extends SshBaseUploader {
       );
 
       // rsyncで一括転送
-      const result = await this.runBulkRsync(stagingDir, totalSize);
+      const result = await this.runBulkRsync(stagingDir, totalSize, adjustedDest);
 
       return {
         successCount: result.success ? filesToUpload.length : 0,
@@ -275,6 +310,7 @@ export class RsyncUploader extends SshBaseUploader {
   private async runBulkRsync(
     stagingDir: string,
     _totalSize: number,
+    destOverride?: string,
   ): Promise<{ success: boolean; error?: string }> {
     const args: string[] = [];
 
@@ -286,7 +322,9 @@ export class RsyncUploader extends SshBaseUploader {
     args.push("-O"); // omit-dir-times: ディレクトリのタイムスタンプを更新しない
 
     // タイムスタンプ保持
-    if (this.options.preserveTimestamps) {
+    // mirror mode（destOverrideあり）の場合は常に有効化
+    // 理由: getDiffとの整合性を保ち、正確な完全同期を実現するため
+    if (destOverride || this.options.preserveTimestamps) {
       args.push("-t");
     }
 
@@ -311,14 +349,28 @@ export class RsyncUploader extends SshBaseUploader {
     // ソース（末尾に/を付けてディレクトリの中身を転送）
     args.push(`${stagingDir}/`);
 
-    // 宛先
+    // 宛先（destOverrideがあればそれを使用、なければthis.options.dest）
+    const dest = destOverride ?? this.options.dest;
+    const destPath = dest.endsWith("/") ? dest : `${dest}/`;
     args.push(
-      `${this.options.user}@${this.options.host}:${this.options.dest}/`,
+      `${this.options.user}@${this.options.host}:${destPath}`,
+    );
+
+    // コマンドをログ出力
+    logVerbose(
+      `[RsyncUploader.bulkUpload] Command: rsync ${args.join(" ")}`,
     );
 
     const { code, stdout, stderr } = await this.runWithSshpass("rsync", args);
     const errorMsg = new TextDecoder().decode(stderr);
     const stdoutMsg = new TextDecoder().decode(stdout);
+
+    // 結果をログ出力
+    logVerbose(
+      `[RsyncUploader.bulkUpload] Exit code: ${code}, stdout lines: ${
+        stdoutMsg.split("\n").length
+      }, stderr: ${errorMsg.length > 0 ? errorMsg.substring(0, 200) : "(empty)"}`,
+    );
 
     // rsync終了コード:
     // 0: 成功

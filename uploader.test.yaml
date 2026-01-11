@@ -50,7 +50,6 @@ test_mirror:
       sync_mode: "mirror"
     targets:
       - dest: "/upload/"
-      - dest: "/upload2/"
 
 test_update_scp:
   from:
@@ -119,3 +118,29 @@ test_mirror_sftp:
       sync_mode: "mirror"
     targets:
       - dest: "/upload/"
+
+test_update_local:
+  from:
+    type: "file"
+    src:
+      - "./tests/integration/fixtures/testdata/local/example"
+  to:
+    defaults:
+      host: "localhost"
+      protocol: "local"
+      sync_mode: "update"
+    targets:
+      - dest: "/tmp/upload/"
+
+test_mirror_local:
+  from:
+    type: "file"
+    src:
+      - "./tests/integration/fixtures/testdata/local/example"
+  to:
+    defaults:
+      host: "localhost"
+      protocol: "local"
+      sync_mode: "mirror"
+    targets:
+      - dest: "/tmp/upload/"

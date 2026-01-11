@@ -107,7 +107,7 @@ export async function sendInitMessage(
             return { ...file, status };
           }
           return file;
-        });
+        }).filter((file) => file.status !== "U"); // 変更なしのファイルは除外（アップロード対象外）
       }
 
       const summary = {

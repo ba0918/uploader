@@ -306,16 +306,22 @@ export async function checkSingleTargetDiff(
           };
         }
 
+        // remoteStatusByFileから実際に変更があるファイルを抽出してカウント
+        const added = diffResult.files.filter((f) =>
+          f.status === "A" && remoteStatusByFile[f.path]?.hasChanges
+        ).length;
+        const modified = diffResult.files.filter((f) =>
+          f.status === "M" && remoteStatusByFile[f.path]?.hasChanges
+        ).length;
         const deleted = deleteFiles.length;
-        const total = diffResult.added + diffResult.modified + deleted +
-          diffResult.renamed;
+        const total = added + modified + deleted;
 
         return {
           rsyncDiff: null,
           changedFiles,
           summary: {
-            added: diffResult.added,
-            modified: diffResult.modified,
+            added,
+            modified,
             deleted,
             total,
           },
@@ -363,15 +369,30 @@ export async function checkSingleTargetDiff(
         concurrency,
       );
 
-      const total = diffResult.added + diffResult.modified +
-        diffResult.deleted + diffResult.renamed;
+      // remoteStatusByFileから実際に変更があるファイルを抽出
+      const changedFiles = diffResult.files
+        .filter((f) => remoteStatusByFile[f.path]?.hasChanges)
+        .map((f) => f.path);
+
+      // 実際の変更数をカウント
+      const added = diffResult.files.filter((f) =>
+        f.status === "A" && remoteStatusByFile[f.path]?.hasChanges
+      ).length;
+      const modified = diffResult.files.filter((f) =>
+        f.status === "M" && remoteStatusByFile[f.path]?.hasChanges
+      ).length;
+      const deleted = diffResult.files.filter((f) =>
+        f.status === "D" && remoteStatusByFile[f.path]?.hasChanges
+      ).length;
+      const total = added + modified + deleted;
+
       return {
         rsyncDiff: null,
-        changedFiles: diffResult.files.map((f) => f.path),
+        changedFiles,
         summary: {
-          added: diffResult.added,
-          modified: diffResult.modified,
-          deleted: diffResult.deleted,
+          added,
+          modified,
+          deleted,
           total,
         },
         remoteStatusByFile,
