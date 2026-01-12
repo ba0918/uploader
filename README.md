@@ -2,6 +2,107 @@
 
 Git差分またはローカルファイルをSFTP/SCPでリモートサーバにデプロイするCLIツール
 
+## Why uploader?
+
+### The Problem
+
+従来のデプロイ方法には、それぞれ以下のような課題があります。
+
+**手動FTP/SFTP操作:**
+
+- どのファイルを更新すべきか、毎回手動で確認が必要
+- 削除すべきファイルの見落とし
+- アップロード先の間違いによる事故
+
+**rsyncコマンド直接実行:**
+
+- サーバーごとにコマンドを変更・実行する手間
+- 設定が分散し、管理が煩雑
+- 複数環境への同時デプロイが困難
+
+**CI/CDパイプライン（GitHub Actions、GitLab CI等）:**
+
+- 小〜中規模プロジェクトには過剰なセットアップコスト
+- 毎回の実行に時間がかかる
+- ローカルでの検証が難しい
+
+**Git pull方式:**
+
+- 本番環境にGitリポジトリを配置するセキュリティリスク
+- `.git/`ディレクトリの公開リスク
+- ビルド成果物のみをデプロイしたい場合に不向き
+
+### The Solution
+
+uploaderは、これらの課題を解決するために設計された軽量なデプロイツールです。
+
+**Git差分ベースの安全なデプロイ:**
+
+- ブランチ間の差分を自動検出し、変更ファイルのみをアップロード
+- 不要なファイルの送信を削減し、デプロイ時間を短縮
+
+**複数サーバへの一括デプロイ:**
+
+- YAML設定ファイルで複数環境（dev/staging/prod）を一元管理
+- 1コマンドで複数サーバへ同時デプロイ可能
+
+**ブラウザUIでの事前確認:**
+
+- `--diff` オプションでブラウザベースの差分ビューアを起動
+- アップロード前に変更内容を視覚的に確認
+- Side-by-sideまたはUnified形式で差分表示
+
+**Dry-runによる安全性確保:**
+
+- `--dry-run` で実際の変更内容を事前確認
+- mirrorモード（完全同期）時の誤削除を防止
+
+**プロトコル自動選択:**
+
+- rsync / SFTP / SCP / ローカルコピーに対応
+- 環境に応じて最適なプロトコルを選択可能
+- 古いSSHサーバー向けのlegacy_mode対応
+
+### Comparison with Other Tools
+
+| 機能                     | uploader | rsync単体 | Deployer | Capistrano | Ansible |
+| ------------------------ | -------- | --------- | -------- | ---------- | ------- |
+| Git差分自動検出          | ✓        | ✗         | ✗        | ✗          | ✗       |
+| ブラウザUI差分確認       | ✓        | ✗         | ✗        | ✗          | ✗       |
+| 複数プロトコル対応       | ✓        | ✗         | ✗        | ✗          | ✓       |
+| YAML設定ファイル         | ✓        | ✗         | ✓        | ✓          | ✓       |
+| セットアップの容易さ     | ◎        | ◎         | ○        | △          | △       |
+| 実行速度                 | ◎        | ◎         | ○        | ○          | △       |
+| プログラミング言語の依存 | なし     | なし      | PHP必須  | Ruby必須   | Python  |
+
+**uploaderの位置づけ:**
+
+- **rsync単体より簡単**: 設定ファイルで管理、Git連携、ブラウザUI
+- **DeployerやCapistranoより軽量**: 言語依存なし、最小限のセットアップ
+- **Ansibleより特化**: デプロイに特化し、学習コストが低い
+
+### When to Use uploader
+
+以下はuploaderが最適なユースケースです。
+
+**適用シーン:**
+
+- 小〜中規模のWebサイト/アプリケーション
+- 複数環境（dev/staging/prod）への定期的なデプロイ
+- レンタルサーバーや古いSSHサーバーへのデプロイ
+- Git履歴ベースでの変更ファイルのみのアップロード
+- ビルド成果物（`dist/`等）のみをデプロイしたい場合
+
+**不向きなシーン:**
+
+- 超大規模アプリケーション（数万ファイル以上）
+- コンテナオーケストレーション（Kubernetes等）が必要な環境
+- 複雑なインフラ管理やプロビジョニングが必要な場合
+  - → AnsibleやTerraformの使用を推奨
+
+**uploaderは「銀の弾丸」ではありません。**
+小〜中規模プロジェクトのシンプルなデプロイに特化し、セットアップと実行の容易さを重視しています。
+
 ## Features
 
 - **Gitモード**: ブランチ間の差分ファイルのみを抽出してアップロード
@@ -13,6 +114,17 @@ Git差分またはローカルファイルをSFTP/SCPでリモートサーバに
 - **階層的なIgnore設定**:
   名前付きグループでターゲットごとに異なる除外パターンを適用
 - **モダンなCUI**: プログレスバー、ツリー表示、カラー出力
+
+## Documentation
+
+詳細なドキュメントは [docs/](docs/README.md) を参照してください。
+
+**開発者向け:**
+
+- [CLAUDE.md](CLAUDE.md) - プロジェクト概要とアーキテクチャ
+- [SPEC.md](SPEC.md) - 詳細仕様
+- [docs/implementation/](docs/implementation/) - 実装解説
+- [docs/UX_REVIEW_REPORT.md](docs/UX_REVIEW_REPORT.md) - UXレビュー
 
 ## Requirements
 
@@ -68,14 +180,26 @@ deno task build
 
 ## Quick Start
 
-1. 設定ファイル `uploader.yaml` を作成:
+初めての方は [Getting Started](docs/getting-started.md)
+（約10分のチュートリアル）を推奨します。
+
+1. 設定ファイルを生成:
+
+```sh
+uploader init
+```
+
+2. `uploader.yaml` を編集（最小限の例）:
 
 ```yaml
 _global:
-  ignore:
-    - ".git/"
-    - "node_modules/"
-    - "*.log"
+  ignore_groups:
+    common:
+      - ".git/"
+      - "node_modules/"
+      - "*.log"
+  default_ignore:
+    - common
 
 development:
   from:
@@ -94,7 +218,7 @@ development:
         dest: "/var/www/html/"
 ```
 
-2. アップロード実行:
+3. アップロード実行:
 
 ```sh
 uploader development
@@ -165,11 +289,15 @@ uploader --log-file=upload.log <profile>
 
 ```yaml
 _global:
-  # 基本的なignore設定（後方互換）
-  ignore:
-    - "*.log"
-    - ".git/"
-    - "node_modules/"
+  # 除外パターングループ定義
+  ignore_groups:
+    common:
+      - "*.log"
+      - ".git/"
+      - "node_modules/"
+  # デフォルトで適用するグループ
+  default_ignore:
+    - common
 
 # Gitモード: ブランチ間の差分をアップロード
 development:
@@ -326,17 +454,7 @@ staging:
 
 除外パターンは階層的に設定でき、ターゲットごとに異なるパターンを適用できます。
 
-#### 基本的な使い方（後方互換）
-
-```yaml
-_global:
-  ignore:
-    - ".git/"
-    - "node_modules/"
-    - "*.log"
-```
-
-#### 名前付きグループを使った設定（推奨）
+#### 名前付きグループを使った設定
 
 複数の環境で異なる除外パターンを使い分ける場合は、名前付きグループが便利です。
 
@@ -399,7 +517,6 @@ staging:
 1. **ターゲット個別の `ignore`** が最優先
 2. **`defaults.ignore`** が次に優先
 3. **`default_ignore`** がフォールバック
-4. 何も設定がなければ **`_global.ignore`**（後方互換）
 
 #### Ignore設定オプション
 
@@ -494,6 +611,310 @@ uploader --diff development
 - 複数ターゲット対応（ターゲット切り替え可能）
 - 確認後にアップロード実行
 
+## FAQ（よくある質問）
+
+### 基本
+
+**Q: uploaderとrsync/scpとの違いは？**
+
+A: uploaderは以下の点で優れています：
+
+- Git差分を自動検出してアップロード
+- YAML設定ファイルで複数環境を管理
+- ブラウザで差分を視覚的に確認
+- 複数のプロトコル（rsync/sftp/scp/local）に対応
+- mirrorモードで完全同期
+
+従来のrsync/scpは手動でファイル指定が必要ですが、uploaderは自動化されています。
+
+---
+
+**Q: どのプロトコルを選べばいいですか？**
+
+A: 用途に応じて選択してください：
+
+- **rsync**: 高速・差分同期・権限維持 → **推奨**（リモートにrsync必要）
+- **sftp**: 汎用性・多くのサーバーで利用可能 → バランス重視
+- **scp**: 古いサーバー対応 → レガシー環境向け
+- **local**: ローカルコピー → テスト・バックアップ
+
+詳細: [プロトコル](#プロトコル)
+
+---
+
+**Q: updateとmirrorの違いは？**
+
+A: 同期モードの違いです：
+
+- **update**: 追加・更新のみ（削除しない） → **安全・推奨**
+- **mirror**: 完全同期（リモート専用ファイルを削除） → 注意が必要
+
+mirrorモードは、ローカルに存在しないファイルをリモートから**自動削除**します。
+必ず `--dry-run` で確認してから実行してください。
+
+---
+
+### インストール・設定
+
+**Q: Denoのインストールが必要ですか？**
+
+A: はい、uploaderはDeno上で動作します。
+
+インストール方法:
+
+```bash
+# macOS / Linux
+curl -fsSL https://deno.land/install.sh | sh
+
+# Windows (PowerShell)
+irm https://deno.land/install.ps1 | iex
+```
+
+詳細: [Requirements](#requirements)
+
+---
+
+**Q: 設定ファイルはどこに置けばいいですか？**
+
+A: プロジェクトルートに `uploader.yaml` を配置してください。
+
+```bash
+cp uploader.example.yaml uploader.yaml
+# uploader.yaml を編集
+```
+
+uploaderは以下の順序で設定ファイルを探します：
+
+1. カレントディレクトリの `uploader.yaml`
+2. `~/.config/uploader/config.yaml`
+
+詳細: [設定ファイルの検索パス](#設定ファイルの検索パス)
+
+---
+
+**Q: 環境変数を使えますか？**
+
+A: はい、`${VAR_NAME}` 形式で使用できます。
+
+```yaml
+user: "${DEPLOY_USER}"
+password: "${DB_PASSWORD}"
+```
+
+`.env` ファイルまたはシェルで設定：
+
+```bash
+export DEPLOY_USER="myuser"
+uploader production
+```
+
+詳細: [環境変数の展開](#環境変数の展開)
+
+---
+
+### ファイル除外
+
+**Q: 特定のファイルを除外したい**
+
+A: `_global.ignore_groups` で除外パターンを定義します。
+
+```yaml
+_global:
+  ignore_groups:
+    common:
+      - "*.log"
+      - ".git/"
+      - "node_modules/"
+  default_ignore:
+    - common
+```
+
+詳細: [Ignore設定](#ignore設定)
+
+---
+
+**Q: ターゲットごとに異なる除外パターンを使いたい**
+
+A: ターゲットの `ignore` 設定を使います。
+
+```yaml
+staging:
+  to:
+    targets:
+      - host: "staging.example.com"
+        dest: "/var/www/staging/"
+        ignore:
+          use:
+            - common # デフォルトグループ
+            - development # 追加グループ
+          add:
+            - "*.cache" # 個別パターン
+```
+
+詳細: [名前付きグループを使った設定](#名前付きグループを使った設定)
+
+---
+
+### トラブルシューティング
+
+**Q: 「Permission denied」エラーが出る**
+
+A: 以下を確認してください：
+
+1. SSH鍵のパーミッション: `chmod 600 ~/.ssh/id_rsa`
+2. リモートディレクトリの書き込み権限
+3. rsyncの場合: `rsync_path: "sudo rsync"` の設定
+
+---
+
+**Q: 「Connection refused」エラーが出る**
+
+A: SSH接続を確認してください：
+
+```bash
+ssh user@your-server.example.com
+```
+
+接続できない場合：
+
+- ホスト名・IPアドレスが正しいか確認
+- ポート番号が正しいか確認（デフォルト: 22）
+- ファイアウォールでポートが開いているか確認
+
+---
+
+**Q: ファイルが予期せず削除された**
+
+A: mirrorモードで実行した可能性があります。
+
+mirrorモードは、ローカルに存在しないファイルを**自動削除**します。
+
+**対策**:
+
+1. 常に `--dry-run` で確認してから実行
+2. バックアップを取る
+3. updateモードの使用を検討
+
+---
+
+### 高度な使い方
+
+**Q: 複数のサーバーに同時にアップロードしたい**
+
+A: `defaults` と `targets` を使います。
+
+```yaml
+production:
+  to:
+    defaults:
+      protocol: "rsync"
+      user: "${DEPLOY_USER}"
+      # ... 共通設定
+    targets:
+      - host: "web1.example.com"
+        dest: "/var/www/html/"
+      - host: "web2.example.com"
+        dest: "/var/www/html/"
+      - host: "web3.example.com"
+        dest: "/var/www/html/"
+```
+
+詳細: [ターゲットのデフォルト設定](#ターゲットのデフォルト設定)
+
+---
+
+**Q: ブランチ以外の差分をアップロードしたい**
+
+A: コミットハッシュやタグを指定できます。
+
+```bash
+# 特定のコミット間
+uploader development --base abc123 --target def456
+
+# タグ間
+uploader production --base v1.0.0 --target v1.1.0
+```
+
+---
+
+**Q: 特定のファイル・ディレクトリだけアップロードしたい**
+
+A: fileモードを使います。
+
+```yaml
+staging:
+  from:
+    type: "file"
+    src:
+      - "dist/"
+      - "public/assets/"
+      - "config/*.json"
+```
+
+詳細: [Fileモード](#configuration)
+
+---
+
+**Q: dry-runの結果をファイルに保存したい**
+
+A: リダイレクトを使います。
+
+```bash
+uploader development --dry-run > dry-run-result.txt 2>&1
+```
+
+---
+
+### その他
+
+**Q: ログファイルはどこに保存されますか？**
+
+A: デフォルトではログファイルは作成されません。
+
+`--log-file` オプションで指定できます：
+
+```bash
+uploader production --log-file=upload.log
+```
+
+---
+
+**Q: プロファイル一覧を確認したい**
+
+A: `--list` オプションを使います。
+
+```bash
+uploader --list
+```
+
+出力例：
+
+```
+Available profiles:
+  - development
+  - staging
+  - production
+  - legacy
+  - local
+```
+
+---
+
+**Q: バグを見つけた・機能要望がある**
+
+A: GitHub Issuesで報告してください。
+
+- バグ報告: [GitHub Issues](https://github.com/ba0918/uploader/issues)
+- 機能要望: [GitHub Discussions](https://github.com/ba0918/uploader/discussions)
+
+---
+
+**まだ解決しない場合**
+
+- [Getting Started](docs/getting-started.md) - 基本的な使い方
+- [SPEC.md](SPEC.md) - 詳細な仕様
+- [docs/](docs/README.md) - 全ドキュメント
+
 ## Exit Codes
 
 | コード | 意味                 |
@@ -550,6 +971,57 @@ docker compose -f docker-compose.test.yml down
 
 Dockerが起動していない場合、SFTP/SCPテストは自動的にスキップされます。
 Gitテストはローカル一時リポジトリを使用するため、Dockerなしで実行可能です。
+
+### Git Hooks
+
+コミット前・プッシュ前に自動で品質チェックを実行するGit hooksを提供しています。
+
+```sh
+# Git hooksをインストール
+deno task install-hooks
+```
+
+#### Pre-commit Hook
+
+コミット時に以下のチェックが自動実行されます：
+
+1. **型チェック** (`deno check main.ts`)
+2. **Lintチェック** (`deno lint`)
+3. **フォーマットチェック** (`deno fmt --check`)
+4. **テスト実行** (`deno task test`)
+
+チェックが失敗するとコミットが中断されます。
+
+#### Pre-push Hook
+
+プッシュ時に以下のチェックが自動実行されます：
+
+1. **型チェック** (`deno check main.ts`)
+2. **Lintチェック** (`deno lint`)
+3. **全テスト実行** (`deno task test`)
+
+チェックが失敗するとプッシュが中断されます。他の開発者に影響を与える前に問題を検出します。
+
+#### Hooksを一時的にスキップする
+
+```sh
+# コミット時
+git commit --no-verify -m "WIP: 作業中のコミット"
+
+# プッシュ時
+git push --no-verify
+```
+
+#### Hooksを無効化する
+
+```sh
+# 個別に削除
+rm .git/hooks/pre-commit
+rm .git/hooks/pre-push
+
+# 全て削除
+rm .git/hooks/pre-*
+```
 
 ## License
 

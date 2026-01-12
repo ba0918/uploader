@@ -29,3 +29,4 @@ export {
   isSshAuthError,
 } from "./error.ts";
 export { BINARY_CHECK, FILE_TRANSFER } from "./constants.ts";
+export { getTargetId, type TargetId } from "./target-id.ts";

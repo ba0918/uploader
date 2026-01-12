@@ -1,47 +1,122 @@
 # uploader 設定ファイルサンプル
-# このファイルを uploader.yaml にコピーして使用してください
+#
+# セットアップ手順:
+#   1. 設定ファイルを作成:
+#      uploader init
+#      （または手動でコピー: cp uploader.example.yaml uploader.yaml）
+#
+#   2. uploader.yaml を編集して、あなたの環境に合わせて設定
+#
+#   3. 実行してみる（dry-runで安全確認）:
+#      uploader <profile> --dry-run
+#
+# 使用方法:
+#   基本: uploader <profile>
+#   例: uploader development
+#
+# オプション:
+#   --dry-run: 実行内容を確認（実際にはアップロードしない）
+#   --base <branch>: Git比較元を指定
+#   --target <branch>: Git比較先を指定
+#   --browser: ブラウザで差分確認
+#   --verbose: 詳細ログ出力
+#
+# 実行例:
+#   uploader development --dry-run --verbose
+#   uploader production --browser
+#   uploader staging --base origin/develop
+#
+# 設定ファイルの構造:
+#   _global: 全プロファイル共通設定
+#   <profile>: プロファイル固有設定
+#     from: アップロード元の設定
+#     to: アップロード先の設定
+#       defaults: 全ターゲット共通設定（省略可）
+#       targets: ターゲット一覧
 
 _global:
-  ignore: # 除外パターン（glob形式）
-    - "*.log"
-    - ".git/"
-    - ".claude/"
-    - "node_modules/"
+  # 除外パターングループ定義
+  ignore_groups:
+    # 基本的な除外ファイル
+    common:
+      - "*.log" # ログファイル
+      - ".git/" # Gitディレクトリ
+      - ".claude/" # Claude設定
+      - "node_modules/" # Node.js依存関係
+      - ".DS_Store" # macOS
+      - "Thumbs.db" # Windows
+
+    # 開発環境固有
+    development:
+      - "*.tmp"
+      - "*.cache"
+      - ".env.local"
+      - "tests/"
+      - "*.test.ts"
+
+    # ビルド成果物
+    build:
+      - "dist/"
+      - "build/"
+      - "*.min.js"
+      - "*.min.css"
+
+  # デフォルトで適用する除外グループ
+  default_ignore:
+    - common
 
 # ===========================================
 # プロファイル: development（gitモード）
 # ===========================================
+# 使い方: uploader development
+# 説明: origin/mainとHEADの差分をSFTPでweb1.example.comにアップロード
 development:
   from:
-    type: "git"
+    type: "git" # git: Git差分モード / file: ファイル指定モード
     base: "origin/main" # 比較元ブランチ（CLI: --base で上書き可能）
-    target: "HEAD" # 比較先（CLI: --target で上書き可能）
-    include_untracked: false # 未追跡ファイルを含むか
+    target: "HEAD" # 比較先（CLI: --target で上書き可能、デフォルト: HEAD）
+    include_untracked: false # 未追跡ファイルを含むか（デフォルト: false）
 
   to:
     targets:
-      - host: "web1.example.com"
+      - host: "web1.example.com" # ホスト名またはIPアドレス
         protocol: "sftp" # sftp / scp / rsync / local
-        port: 22
-        user: "${DEPLOY_USER}"
-        auth_type: "ssh_key"
-        key_file: "~/.ssh/id_rsa"
-        dest: "/var/www/html/"
-        sync_mode: "update" # update: 追加・更新のみ / mirror: 完全同期
+        port: 22 # SSHポート（デフォルト: 22）
+        user: "${DEPLOY_USER}" # 環境変数を使用可能
+        auth_type: "ssh_key" # ssh_key / password
+        key_file: "~/.ssh/id_rsa" # 秘密鍵パス（~展開可能）
+        dest: "/var/www/html/" # リモート配置先（末尾/で中身のみコピー）
+
+        # 同期モード
+        # - update: 追加・更新のみ（削除しない）
+        # - mirror: 完全同期（リモート専用ファイルを削除）
+        sync_mode: "update"
+
+        # ファイル権限・タイムスタンプを維持（rsync/localのみ有効）
         preserve_permissions: true
         preserve_timestamps: true
-        timeout: 30 # 秒
-        retry: 3
+
+        timeout: 30 # タイムアウト（秒、デフォルト: 30）
+        retry: 3 # リトライ回数（デフォルト: 3）
 
 # ===========================================
 # プロファイル: staging（fileモード）
 # ===========================================
+# 使い方: uploader staging
+# 説明: dist/とpublic/assets/をステージングサーバにアップロード
 staging:
   from:
     type: "file"
-    src: # アップロード対象（複数指定可、glob対応）
-      - "dist/" # ディレクトリ（末尾/で中身のみ）
-      - "public/assets/"
+    # glob パターン使用例:
+    # - "dist/"           # distディレクトリの中身のみ
+    # - "public/**/*.jpg" # publicディレクトリ配下の全JPGファイル
+    # - "src/**/*.{ts,js}" # src配下のTS/JSファイル
+    # - "!**/*.test.ts"   # テストファイルは除外（! は機能しない場合あり、ignore使用推奨）
+    src:
+      - "dist/" # 末尾スラッシュ: ディレクトリの中身のみアップロード
+      - "public/assets/" # 例: dist/内のファイルが直接destにアップロードされる
+      - "config/*.json" # configディレクトリのJSONファイルのみ
+  # - "dist"  # スラッシュなし: ディレクトリ自体をアップロード（dest/distになる）
 
   to:
     targets:
@@ -53,12 +128,47 @@ staging:
         key_file: "~/.ssh/deploy_key"
         dest: "/var/www/staging/"
         sync_mode: "update"
+        # ターゲット固有の除外パターン設定
+        #
+        # ignore:
+        #   use: [group1, group2, ...]
+        #     - _global.ignore_groupsで定義したグループを指定
+        #     - ⚠️ 注意: default_ignoreは無効になります（上書き）
+        #     - default_ignoreの内容も適用したい場合は明示的に指定が必要
+        #
+        #   add: [pattern1, pattern2, ...]
+        #     - 個別のパターンを追加（glob形式）
+        #     - useと併用可能
+        #
+        # 例1: default_ignore + 追加グループ
+        # ignore:
+        #   use:
+        #     - common       # default_ignoreの内容
+        #     - development  # 追加グループ
+        #
+        # 例2: グループ + 個別パターン
+        # ignore:
+        #   use:
+        #     - common
+        #   add:
+        #     - "*.tmp"
+        #     - "debug/"
+        #
+        # _global.default_ignoreに加えて、developmentグループも適用する例:
+        ignore:
+          use:
+            - common # _global.default_ignoreの内容を明示的に指定
+            - development # 追加で適用したいグループ
+          add:
+            - "*.cache" # 個別にパターンを追加することも可能
         timeout: 30
         retry: 3
 
 # ===========================================
 # プロファイル: production（defaults使用、複数ターゲット）
 # ===========================================
+# 使い方: uploader production --dry-run
+# 説明: origin/mainとの差分を複数の本番サーバにrsyncで同期デプロイ
 production:
   from:
     type: "git"
@@ -66,22 +176,28 @@ production:
 
   to:
     # defaults: 全ターゲット共通の設定
+    # 各ターゲットで個別に指定すると上書きされます
+    # 配列（rsync_options等）は完全に置き換え（マージではない）
     defaults:
       protocol: "rsync"
       port: 22
       user: "${DEPLOY_USER}"
       auth_type: "ssh_key"
       key_file: "~/.ssh/deploy_key"
+      # ⚠️ 警告: mirrorモードはリモート専用ファイルを削除します
+      # ローカルに存在しないファイルは自動的に削除されます
+      # 初回実行前に必ずdry-runで確認してください: --dry-run オプション
       sync_mode: "mirror"
       timeout: 60
       retry: 3
-      rsync_path: "sudo rsync" # リモートでsudo実行
-      rsync_options: # rsync追加オプション
-        - "--chmod=D755,F644"
-        - "--chown=www-data:www-data"
+      rsync_path: "sudo rsync" # リモート側でsudo権限でrsyncを実行
+      rsync_options: # rsync追加オプション（man rsyncで確認）
+        - "--chmod=D755,F644" # パーミッション設定（ディレクトリ755、ファイル644）
+        - "--chown=www-data:www-data" # 所有者・グループ変更
 
     targets:
-      # 各ターゲットはdestのみ必須、他はdefaultsから継承
+      # destは各ターゲットで必須（defaultsに含められない）
+      # その他の設定はdefaultsから継承される
       - host: "web1.example.com"
         dest: "/var/www/html/"
       - host: "web2.example.com"
@@ -93,6 +209,8 @@ production:
 # ===========================================
 # プロファイル: legacy（古いSSHサーバー向け）
 # ===========================================
+# 使い方: uploader legacy
+# 説明: 古いSSHサーバー（CentOS 6など）へのSCP転送
 legacy:
   from:
     type: "file"
@@ -106,13 +224,28 @@ legacy:
         port: 22
         user: "admin"
         auth_type: "password"
-        password: "${LEGACY_PASSWORD}" # 環境変数推奨
+
+        # 環境変数の使用（推奨）
+        # .env ファイルまたはシェルで設定:
+        #   export LEGACY_PASSWORD="your_password_here"
+        # または実行時に指定:
+        #   LEGACY_PASSWORD="..." uploader legacy
+        password: "${LEGACY_PASSWORD}"
+
         dest: "/home/admin/public_html/"
-        legacy_mode: true # 古いSSHアルゴリズムを有効化
+
+        # 古いSSHアルゴリズムを有効化（古いサーバー向け）
+        # 有効になるアルゴリズム:
+        # - 鍵交換: diffie-hellman-group14-sha1, diffie-hellman-group1-sha1
+        # - ホスト鍵: ssh-rsa
+        # - 暗号（SFTPのみ）: aes128-cbc, aes256-cbc, 3des-cbc
+        legacy_mode: true
 
 # ===========================================
 # プロファイル: local（ローカルコピー）
 # ===========================================
+# 使い方: uploader local
+# 説明: ローカルファイルシステムへのコピー（テスト・検証用）
 local:
   from:
     type: "file"
@@ -122,6 +255,54 @@ local:
   to:
     targets:
       - host: "localhost"
-        protocol: "local" # ローカルファイルコピー
+        protocol: "local" # ローカルファイルコピー（認証不要）
         dest: "/tmp/deploy-test/"
-        sync_mode: "mirror"
+        sync_mode: "mirror" # テスト用にmirrorモードを使用
+
+# ===========================================
+# プロトコル別の機能・制限事項
+# ===========================================
+#
+# rsync:
+#   - 高速な差分同期
+#   - preserve_permissions, preserve_timestamps が有効
+#   - sudo実行可能（rsync_path: "sudo rsync"）
+#   - リモートにrsyncコマンドが必要
+#
+# sftp:
+#   - SSHサーバーがあれば利用可能
+#   - バイナリファイルに対応
+#   - preserve_permissions は無効（無視される）
+#   - 差分比較はファイル単位（バイト比較）
+#
+# scp:
+#   - 古いSSHサーバーでも利用可能
+#   - preserve_permissions は無効（無視される）
+#   - 差分比較はファイル単位（バイト比較）
+#
+# local:
+#   - ローカルファイルシステムへのコピー
+#   - preserve_permissions, preserve_timestamps が有効
+#   - テストやバックアップに便利
+#
+# 詳細: docs/implementation/mirror-mode-protocols.md
+
+# ===========================================
+# よくある間違いと解決方法
+# ===========================================
+#
+# ❌ dest: "~/public_html/"
+# ✅ dest: "/home/username/public_html/"
+#    理由: リモート側で ~ 展開されない場合がある
+#
+# ❌ src: "dist" （末尾スラッシュなし）
+# ✅ src: "dist/"
+#    理由: 末尾/がないとdistディレクトリ自体がコピーされる
+#
+# ❌ mirror モードで--dry-run なしに実行
+# ✅ mirror モードは必ず --dry-run で確認してから実行
+#    理由: リモートファイルが予期せず削除される可能性
+#
+# ❌ password: "mypassword123"
+# ✅ password: "${MY_PASSWORD}"
+#    理由: パスワードを平文で書かない（環境変数を使用）

@@ -5,6 +5,7 @@
  */
 
 import type { DiffViewerOptions, FileContent, Uploader } from "../types/mod.ts";
+import { UploadError } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
 import { BINARY_CHECK } from "../utils/mod.ts";
@@ -47,6 +48,7 @@ export interface UploaderState {
 export async function getLocalAndRemoteContents(
   path: string,
   state: UploaderState,
+  uploader?: Uploader,
 ): Promise<{
   local: FileContent;
   remote: FileContent;
@@ -58,7 +60,7 @@ export async function getLocalAndRemoteContents(
   const localContent = await getLocalFileContent(path, state);
 
   // リモートファイル内容を取得
-  const remoteContent = await getRemoteFileContent(path, state);
+  const remoteContent = await getRemoteFileContent(path, state, uploader);
 
   // リモートファイルが存在するかどうか
   const remoteExists = remoteContent !== null && remoteContent.length > 0;
@@ -149,6 +151,7 @@ export async function getLocalFileContent(
 export async function getRemoteFileContent(
   path: string,
   state: UploaderState,
+  uploader?: Uploader,
 ): Promise<Uint8Array | null> {
   const { targets } = state.options;
 
@@ -159,12 +162,12 @@ export async function getRemoteFileContent(
   }
 
   try {
-    // Uploaderを取得または作成
+    // Uploaderを取得または作成（uploaderが渡されている場合はそれを使用）
     debugLog(`[RemoteDiff] Fetching remote file: ${path}`);
-    const uploader = await getOrCreateUploader(state);
+    const targetUploader = uploader || await getOrCreateUploader(state);
 
     // リモートファイルを読み取り
-    const remoteFile = await uploader.readFile(path);
+    const remoteFile = await targetUploader.readFile(path);
 
     if (!remoteFile) {
       // ファイルが存在しない場合
@@ -190,7 +193,7 @@ export async function getOrCreateUploader(
 ): Promise<Uploader> {
   // 既に接続エラーが発生している場合は再試行しない
   if (state.connectionError) {
-    throw new Error(state.connectionError);
+    throw new UploadError(state.connectionError, "CONNECTION_ERROR");
   }
 
   // 既にUploaderが存在する場合はそれを返す
@@ -205,7 +208,7 @@ export async function getOrCreateUploader(
   if (!targets || targets.length === 0) {
     const error = "No targets configured for remote file fetching";
     state.connectionError = error;
-    throw new Error(error);
+    throw new UploadError(error, "CONNECTION_ERROR");
   }
 
   // 現在選択中のターゲットを使用
@@ -231,7 +234,11 @@ export async function getOrCreateUploader(
     }`;
     state.connectionError = errorMessage;
     debugError(`[RemoteDiff] ${errorMessage}`);
-    throw new Error(errorMessage);
+    throw new UploadError(
+      errorMessage,
+      "CONNECTION_ERROR",
+      error instanceof Error ? error : undefined,
+    );
   }
 }
 

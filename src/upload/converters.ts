@@ -5,10 +5,15 @@
  */
 
 import type { CollectedFile, DiffFile, UploadFile } from "../types/mod.ts";
+import { GitCommandError } from "../git/diff.ts";
 import { logVerbose } from "../ui/logger.ts";
 
 /**
  * Git差分ファイルをUploadFileに変換
+ *
+ * @param files Git差分ファイル配列
+ * @param targetRef Gitリファレンス（ブランチ名など）
+ * @returns UploadFile配列
  */
 export async function diffFilesToUploadFiles(
   files: DiffFile[],
@@ -64,7 +69,12 @@ async function getGitFileContent(
 
   if (code !== 0) {
     const errorMsg = new TextDecoder().decode(stderr);
-    throw new Error(`Failed to get file content: ${errorMsg}`);
+    throw new GitCommandError(
+      `Failed to get file content: ${errorMsg}`,
+      `git show ${ref}:${path}`,
+      errorMsg,
+      code,
+    );
   }
 
   return stdout;

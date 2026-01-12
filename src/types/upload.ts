@@ -3,6 +3,7 @@
  */
 
 import type { ResolvedTargetConfig } from "./config.ts";
+import type { TargetId } from "../utils/target-id.ts";
 
 /** アップロードするファイル情報 */
 export interface UploadFile {
@@ -89,8 +90,8 @@ export interface UploadOptions {
   strict?: boolean;
   /** 複数ターゲットへの並列アップロード */
   parallel?: boolean;
-  /** ターゲットインデックスごとのファイルリスト（remote diffモード用） */
-  filesByTarget?: Map<number, UploadFile[]>;
+  /** ターゲットIDごとのファイルリスト（remote diffモード用） */
+  filesByTarget?: Map<TargetId, UploadFile[]>;
 }
 
 /** 転送進捗イベント */
@@ -228,13 +229,17 @@ export interface DiffCapable {
    * リモートとの差分を取得
    * @param localDir ローカルディレクトリのパス
    * @param files 比較対象のファイルパス（相対パス）のリスト。省略時はディレクトリ全体を比較
-   * @param options オプション
+   * @param options オプション（checksum: trueでハッシュ比較、ignorePatterns: 除外パターン、remoteDir: リモートディレクトリパス）
    * @returns 差分結果
    */
   getDiff(
     localDir: string,
     files?: string[],
-    options?: { checksum?: boolean },
+    options?: {
+      checksum?: boolean;
+      ignorePatterns?: string[];
+      remoteDir?: string;
+    },
   ): Promise<RsyncDiffResult>;
 }
 
@@ -259,6 +264,32 @@ export function hasDiff(
   uploader: Uploader,
 ): uploader is Uploader & DiffCapable {
   return typeof (uploader as unknown as DiffCapable).getDiff === "function";
+}
+
+/**
+ * リモートファイル一覧取得機能インターフェース (ISP: 拡張機能)
+ *
+ * リモートディレクトリのファイル一覧を再帰的に取得できるプロトコル用。
+ * fileモード + mirrorモード時に、削除対象ファイルを特定するために使用。
+ */
+export interface ListRemoteFilesCapable {
+  /**
+   * リモートディレクトリのファイル一覧を再帰的に取得
+   * @returns ファイルパス（相対パス）の配列
+   */
+  listRemoteFiles(): Promise<string[]>;
+}
+
+/**
+ * リモートファイル一覧取得機能を持つかどうかを判定する型ガード
+ * @param uploader アップローダー
+ * @returns ListRemoteFilesCapable を実装している場合 true
+ */
+export function hasListRemoteFiles(
+  uploader: Uploader,
+): uploader is Uploader & ListRemoteFilesCapable {
+  return typeof (uploader as unknown as ListRemoteFilesCapable)
+    .listRemoteFiles === "function";
 }
 
 /** アップローダーエラー */

@@ -11,8 +11,9 @@ import type {
   UploadOptions,
   UploadResult,
 } from "../types/mod.ts";
-import { hasBulkUpload } from "../types/mod.ts";
+import { hasBulkUpload, UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/logger.ts";
+import { getTargetId } from "../utils/mod.ts";
 import { createUploader } from "./factory.ts";
 import { TransferProgressManager } from "./progress.ts";
 
@@ -150,7 +151,7 @@ async function uploadToTargetWithoutInit(
           }, dest);
         }
         if (options.strict) {
-          throw new Error("Bulk upload failed");
+          throw new UploadError("Bulk upload failed", "TRANSFER_ERROR");
         }
       }
     } else {
@@ -247,11 +248,12 @@ export async function uploadToTargets(
       progressManager.initTarget(target);
     }
 
-    const uploadPromises = targets.map(async (target, index) => {
+    const uploadPromises = targets.map(async (target) => {
       // filesByTargetが設定されている場合、Mapに登録されていないターゲットは空配列
       // 設定されていない場合は従来通りfilesを使用
+      const targetId = getTargetId(target);
       const targetFiles = options.filesByTarget
-        ? (options.filesByTarget.get(index) ?? [])
+        ? (options.filesByTarget.get(targetId) ?? [])
         : files;
       try {
         await uploadToTargetWithoutInit(
@@ -278,12 +280,12 @@ export async function uploadToTargets(
     }
   } else {
     // 順次アップロード
-    for (let i = 0; i < targets.length; i++) {
-      const target = targets[i];
+    for (const target of targets) {
       // filesByTargetが設定されている場合、Mapに登録されていないターゲットは空配列
       // 設定されていない場合は従来通りfilesを使用
+      const targetId = getTargetId(target);
       const targetFiles = options.filesByTarget
-        ? (options.filesByTarget.get(i) ?? [])
+        ? (options.filesByTarget.get(targetId) ?? [])
         : files;
       try {
         await uploadToTarget(target, targetFiles, options, progressManager);

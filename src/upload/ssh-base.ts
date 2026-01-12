@@ -6,7 +6,12 @@
  */
 
 import { join } from "@std/path";
-import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
+import type {
+  ListRemoteFilesCapable,
+  RemoteFileContent,
+  Uploader,
+  UploadFile,
+} from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/mod.ts";
 import {
@@ -62,7 +67,8 @@ export interface CommandResult {
  * SCP/Rsyncで共通するSSH接続処理を提供する。
  * 各サブクラスはupload()メソッドを実装する必要がある。
  */
-export abstract class SshBaseUploader implements Uploader {
+export abstract class SshBaseUploader
+  implements Uploader, ListRemoteFilesCapable {
   protected options: SshBaseOptions;
   protected connected: boolean = false;
   protected tempDir: string | null = null;
@@ -264,7 +270,15 @@ export abstract class SshBaseUploader implements Uploader {
     const args = this.buildSshArgsInternal();
     args.push(`${this.options.user}@${this.options.host}`, rmCmd);
 
+    logVerbose(
+      `[${this.constructor.name}.delete] Command: ssh ${args.join(" ")}`,
+    );
+
     const { code, stderr } = await this.runWithSshpass("ssh", args);
+
+    logVerbose(
+      `[${this.constructor.name}.delete] Exit code: ${code}`,
+    );
 
     // ファイルが存在しない場合はエラーにしない
     if (code !== 0) {
@@ -442,5 +456,44 @@ export abstract class SshBaseUploader implements Uploader {
         "TRANSFER_ERROR",
       );
     }
+  }
+
+  /**
+   * リモートディレクトリのファイル一覧を再帰的に取得
+   * SSHのfindコマンドを使用
+   * @returns ファイルパス（相対パス）の配列
+   */
+  async listRemoteFiles(): Promise<string[]> {
+    if (!this.connected) {
+      throw new UploadError("Not connected", "CONNECTION_ERROR");
+    }
+
+    const escapedDest = escapeShellArg(this.options.dest);
+    // findコマンドで再帰的にファイルを一覧取得（ディレクトリは除外）
+    const findCmd =
+      `find ${escapedDest} -type f -printf '%P\\n' 2>/dev/null || find ${escapedDest} -type f | sed 's|^${this.options.dest}/||'`;
+
+    const args = this.buildSshArgsInternal();
+    args.push(`${this.options.user}@${this.options.host}`, findCmd);
+
+    const { code, stdout, stderr } = await this.runWithSshpass("ssh", args);
+
+    if (code !== 0) {
+      const errorMsg = new TextDecoder().decode(stderr);
+      // ディレクトリが存在しない場合は空配列を返す
+      if (
+        errorMsg.includes("No such file") || errorMsg.includes("not found")
+      ) {
+        return [];
+      }
+      throw new UploadError(
+        `Failed to list remote files: ${errorMsg}`,
+        "TRANSFER_ERROR",
+      );
+    }
+
+    const output = new TextDecoder().decode(stdout);
+    // 空行を除外してファイル一覧を返す
+    return output.split("\n").filter((line) => line.trim() !== "");
   }
 }

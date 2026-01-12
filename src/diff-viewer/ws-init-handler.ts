@@ -75,9 +75,40 @@ export async function sendInitMessage(
       );
 
       // キャッシュから結果を構築
-      const files = cached.rsyncDiff
+      let files = cached.rsyncDiff
         ? rsyncDiffToFiles(cached.rsyncDiff)
         : diffResult.files.filter((f) => cached.changedFiles.includes(f.path));
+
+      // 非rsyncプロトコルで削除ファイルがある場合は追加
+      if (cached.deleteFiles && cached.deleteFiles.length > 0) {
+        const deleteFileDiffs = cached.deleteFiles.map((path) => ({
+          path,
+          status: "D" as const,
+        }));
+        files = [...files, ...deleteFileDiffs];
+      }
+
+      // remoteStatusをキャッシュから復元（ターゲット切り替え時の正しいアイコン表示用）
+      if (cached.remoteStatusByFile) {
+        files = files.map((file) => {
+          // 削除ファイル（D）のステータスは変更しない
+          if (file.status === "D") {
+            return file;
+          }
+
+          const remoteStatus = cached.remoteStatusByFile![file.path];
+          if (remoteStatus) {
+            // remoteStatusに基づいてstatusを正しく設定
+            const status = !remoteStatus.exists
+              ? ("A" as const) // リモートに存在しない = 新規追加
+              : remoteStatus.hasChanges
+              ? ("M" as const) // リモートに存在し、変更あり
+              : ("U" as const); // リモートに存在し、変更なし
+            return { ...file, status };
+          }
+          return file;
+        }).filter((file) => file.status !== "U"); // 変更なしのファイルは除外（アップロード対象外）
+      }
 
       const summary = {
         added: cached.summary.added,

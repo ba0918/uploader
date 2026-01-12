@@ -122,9 +122,13 @@ export async function loadConfigFile(filePath: string): Promise<Config> {
  * オブジェクトから undefined の値を持つプロパティを除外
  */
 function removeUndefinedProps<T extends object>(obj: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([_, v]) => v !== undefined),
-  ) as Partial<T>;
+  const result: Partial<T> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key as keyof T] = value;
+    }
+  }
+  return result;
 }
 
 /**

@@ -8,7 +8,9 @@
     "lint": "deno lint",
     "fmt": "deno fmt",
     "test": "deno test --allow-read --allow-write --allow-net --allow-env --allow-run",
-    "build": "deno compile --allow-read --allow-write --allow-net --allow-run --allow-env --output bin/uploader main.ts"
+    "prebuild": "deno run --allow-read --allow-write scripts/embed-template.ts",
+    "build": "deno task prebuild && deno compile --allow-read --allow-write --allow-net --allow-run --allow-env --output bin/uploader main.ts",
+    "install-hooks": "deno run --allow-read --allow-write scripts/install-hooks.ts"
   },
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1",

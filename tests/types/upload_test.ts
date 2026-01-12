@@ -9,6 +9,8 @@ import {
   type DiffCapable,
   hasBulkUpload,
   hasDiff,
+  hasListRemoteFiles,
+  type ListRemoteFilesCapable,
   type RemoteFileContent,
   type Uploader,
   type UploadFile,
@@ -72,6 +74,14 @@ class MockFullUploader extends MockBasicUploader
   }
 }
 
+// ListRemoteFilesCapableを実装したUploader
+class MockListRemoteFilesUploader extends MockBasicUploader
+  implements ListRemoteFilesCapable {
+  listRemoteFiles() {
+    return Promise.resolve(["file1.txt", "file2.txt"]);
+  }
+}
+
 describe("hasBulkUpload", () => {
   it("BulkUploadCapableを実装していない場合はfalseを返す", () => {
     const uploader = new MockBasicUploader();
@@ -116,6 +126,28 @@ describe("hasDiff", () => {
   });
 });
 
+describe("hasListRemoteFiles", () => {
+  it("ListRemoteFilesCapableを実装していない場合はfalseを返す", () => {
+    const uploader = new MockBasicUploader();
+    assertEquals(hasListRemoteFiles(uploader), false);
+  });
+
+  it("ListRemoteFilesCapableを実装している場合はtrueを返す", () => {
+    const uploader = new MockListRemoteFilesUploader();
+    assertEquals(hasListRemoteFiles(uploader), true);
+  });
+
+  it("BulkUploadCapableのみ実装している場合はfalseを返す", () => {
+    const uploader = new MockBulkUploader();
+    assertEquals(hasListRemoteFiles(uploader), false);
+  });
+
+  it("DiffCapableのみ実装している場合はfalseを返す", () => {
+    const uploader = new MockDiffUploader();
+    assertEquals(hasListRemoteFiles(uploader), false);
+  });
+});
+
 describe("UploadOptions.filesByTarget", () => {
   // テスト用のUploadFileを作成
   function createTestFile(path: string): UploadFile {
@@ -128,9 +160,9 @@ describe("UploadOptions.filesByTarget", () => {
   }
 
   it("filesByTargetを設定できる", () => {
-    const filesByTarget = new Map<number, UploadFile[]>();
-    filesByTarget.set(0, [createTestFile("file1.txt")]);
-    filesByTarget.set(1, [
+    const filesByTarget = new Map<string, UploadFile[]>();
+    filesByTarget.set("host1:22:/var/www", [createTestFile("file1.txt")]);
+    filesByTarget.set("host2:22:/var/www", [
       createTestFile("file2.txt"),
       createTestFile("file3.txt"),
     ]);
@@ -141,8 +173,8 @@ describe("UploadOptions.filesByTarget", () => {
     };
 
     assertEquals(options.filesByTarget?.size, 2);
-    assertEquals(options.filesByTarget?.get(0)?.length, 1);
-    assertEquals(options.filesByTarget?.get(1)?.length, 2);
+    assertEquals(options.filesByTarget?.get("host1:22:/var/www")?.length, 1);
+    assertEquals(options.filesByTarget?.get("host2:22:/var/www")?.length, 2);
   });
 
   it("filesByTargetが未設定の場合はundefined", () => {
@@ -154,30 +186,33 @@ describe("UploadOptions.filesByTarget", () => {
   });
 
   it("filesByTargetで登録されていないターゲットはundefinedを返す", () => {
-    const filesByTarget = new Map<number, UploadFile[]>();
-    filesByTarget.set(0, [createTestFile("file1.txt")]);
+    const filesByTarget = new Map<string, UploadFile[]>();
+    filesByTarget.set("host1:22:/var/www", [createTestFile("file1.txt")]);
 
     const options: UploadOptions = {
       filesByTarget,
     };
 
-    // 登録されているインデックスは取得できる
-    assertEquals(options.filesByTarget?.get(0)?.length, 1);
-    // 登録されていないインデックスはundefined
-    assertEquals(options.filesByTarget?.get(1), undefined);
-    assertEquals(options.filesByTarget?.get(2), undefined);
+    // 登録されているターゲットIDは取得できる
+    assertEquals(
+      options.filesByTarget?.get("host1:22:/var/www")?.length,
+      1,
+    );
+    // 登録されていないターゲットIDはundefined
+    assertEquals(options.filesByTarget?.get("host2:22:/var/www"), undefined);
+    assertEquals(options.filesByTarget?.get("host3:22:/var/www"), undefined);
   });
 
   it("空のファイルリストも設定できる", () => {
-    const filesByTarget = new Map<number, UploadFile[]>();
-    filesByTarget.set(0, []);
-    filesByTarget.set(1, [createTestFile("file1.txt")]);
+    const filesByTarget = new Map<string, UploadFile[]>();
+    filesByTarget.set("host1:22:/var/www", []);
+    filesByTarget.set("host2:22:/var/www", [createTestFile("file1.txt")]);
 
     const options: UploadOptions = {
       filesByTarget,
     };
 
-    assertEquals(options.filesByTarget?.get(0)?.length, 0);
-    assertEquals(options.filesByTarget?.get(1)?.length, 1);
+    assertEquals(options.filesByTarget?.get("host1:22:/var/www")?.length, 0);
+    assertEquals(options.filesByTarget?.get("host2:22:/var/www")?.length, 1);
   });
 });

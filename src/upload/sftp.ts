@@ -5,7 +5,12 @@
 import { Client, type SFTPWrapper } from "ssh2";
 import { join as posixJoin } from "@std/path/posix";
 import { Buffer } from "node:buffer";
-import type { RemoteFileContent, Uploader, UploadFile } from "../types/mod.ts";
+import type {
+  ListRemoteFilesCapable,
+  RemoteFileContent,
+  Uploader,
+  UploadFile,
+} from "../types/mod.ts";
 import { UploadError } from "../types/mod.ts";
 import {
   ensureParentDir,
@@ -50,7 +55,7 @@ export interface SftpOptions {
 /**
  * SFTPアップローダー
  */
-export class SftpUploader implements Uploader {
+export class SftpUploader implements Uploader, ListRemoteFilesCapable {
   private options: SftpOptions;
   private client: Client | null = null;
   private sftp: SFTPWrapper | null = null;
@@ -571,5 +576,89 @@ export class SftpUploader implements Uploader {
         },
       );
     });
+  }
+
+  /**
+   * リモートディレクトリのファイル一覧を再帰的に取得
+   * @returns ファイルパス（相対パス）の配列
+   */
+  async listRemoteFiles(): Promise<string[]> {
+    if (!this.sftp) {
+      throw new UploadError("Not connected", "CONNECTION_ERROR");
+    }
+
+    const files: string[] = [];
+
+    const listDir = (dirPath: string): Promise<void> => {
+      return new Promise<void>((resolve, reject) => {
+        if (!this.sftp) {
+          reject(new UploadError("Not connected", "CONNECTION_ERROR"));
+          return;
+        }
+
+        this.sftp.readdir(
+          dirPath,
+          async (
+            err: Error & { code?: number } | undefined,
+            list: Array<{
+              filename: string;
+              longname: string;
+              attrs: { mode: number; size: number };
+            }>,
+          ) => {
+            if (err) {
+              // ディレクトリが存在しない場合はスキップ
+              if (err.code === 2) {
+                resolve();
+                return;
+              }
+              reject(
+                new UploadError(
+                  `Failed to list directory: ${dirPath}`,
+                  "TRANSFER_ERROR",
+                  err,
+                ),
+              );
+              return;
+            }
+
+            try {
+              for (const item of list) {
+                // "." と ".." はスキップ
+                if (item.filename === "." || item.filename === "..") {
+                  continue;
+                }
+
+                const fullPath = posixJoin(dirPath, item.filename);
+                // モードからディレクトリかファイルかを判定
+                // S_IFDIR = 0o040000
+                const isDirectory = (item.attrs.mode & 0o170000) === 0o040000;
+
+                if (isDirectory) {
+                  // ディレクトリの場合は再帰的にリスト
+                  await listDir(fullPath);
+                } else {
+                  // ファイルの場合は相対パスを追加
+                  // destの末尾スラッシュを考慮した相対パス計算
+                  const destBase = this.options.dest.endsWith("/")
+                    ? this.options.dest
+                    : this.options.dest + "/";
+                  const relativePath = fullPath.slice(destBase.length);
+                  if (relativePath) {
+                    files.push(relativePath);
+                  }
+                }
+              }
+              resolve();
+            } catch (innerErr) {
+              reject(innerErr);
+            }
+          },
+        );
+      });
+    };
+
+    await listDir(this.options.dest);
+    return files;
   }
 }

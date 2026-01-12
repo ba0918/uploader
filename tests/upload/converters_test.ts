@@ -268,4 +268,17 @@ describe("diffFilesToUploadFiles", () => {
     assertExists(added);
     assertEquals(added.changeType, "add");
   });
+
+  it("フィルタリングなしで全てのファイルを処理", async () => {
+    const files: DiffFile[] = [
+      { path: "file1.txt", status: "D" },
+      { path: "file2.txt", status: "D" },
+    ];
+
+    const result = await diffFilesToUploadFiles(files, "HEAD");
+
+    assertEquals(result.length, 2);
+    assertEquals(result[0].relativePath, "file1.txt");
+    assertEquals(result[1].relativePath, "file2.txt");
+  });
 });

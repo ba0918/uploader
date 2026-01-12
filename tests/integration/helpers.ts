@@ -2,6 +2,9 @@
  * 結合テスト用ヘルパー関数
  */
 
+import { join, relative } from "@std/path";
+import type { Uploader, UploadFile } from "../../src/types/mod.ts";
+
 /** Docker環境の設定 */
 export const DOCKER_CONFIG = {
   sftp: {
@@ -139,4 +142,138 @@ export async function shouldSkipIntegrationTests(): Promise<string | null> {
   }
 
   return null;
+}
+
+// ============================================================
+// Mirror mode test helpers (Phase I1)
+// ============================================================
+
+/** mirrorテスト用のリモートファイルを準備 */
+export async function setupRemoteFiles(
+  uploader: Uploader,
+  baseDir: string,
+  files: Array<{ path: string; content: string }>,
+): Promise<void> {
+  await uploader.connect();
+
+  try {
+    // baseDirを明示的に作成
+    await uploader.mkdir(baseDir);
+
+    // 各ファイルをアップロード（baseDir配下に配置）
+    for (const file of files) {
+      const content = new TextEncoder().encode(file.content);
+      const remotePath = `${baseDir}/${file.path}`;
+
+      const uploadFile: UploadFile = {
+        relativePath: remotePath,
+        size: content.length,
+        content,
+        isDirectory: false,
+        changeType: "add",
+      };
+
+      await uploader.upload(uploadFile, remotePath);
+    }
+  } finally {
+    await uploader.disconnect();
+  }
+}
+
+/** リモートファイルの存在確認 */
+export async function verifyRemoteFileExists(
+  uploader: Uploader,
+  path: string,
+): Promise<boolean> {
+  await uploader.connect();
+  try {
+    const result = await uploader.readFile(path);
+    return result !== null;
+  } catch {
+    return false;
+  } finally {
+    await uploader.disconnect();
+  }
+}
+
+/** リモートファイルの不存在確認 */
+export async function verifyRemoteFileNotExists(
+  uploader: Uploader,
+  path: string,
+): Promise<boolean> {
+  const exists = await verifyRemoteFileExists(uploader, path);
+  return !exists;
+}
+
+/** リモートディレクトリを再帰的に削除 */
+export async function cleanupRemoteDir(
+  uploader: Uploader,
+  baseDir: string,
+): Promise<void> {
+  await uploader.connect();
+  try {
+    // baseDirを再帰的に削除
+    await uploader.delete(baseDir);
+  } catch {
+    // 削除失敗は無視（存在しない場合など）
+  } finally {
+    await uploader.disconnect();
+  }
+}
+
+/** ローカルディレクトリからUploadFile配列を再帰的に収集 */
+export async function collectLocalFiles(
+  dir: string,
+  baseDir: string = dir,
+): Promise<UploadFile[]> {
+  const files: UploadFile[] = [];
+
+  for await (const entry of Deno.readDir(dir)) {
+    const fullPath = join(dir, entry.name);
+    const relativePath = relative(baseDir, fullPath);
+
+    if (entry.isFile) {
+      const stat = await Deno.stat(fullPath);
+      files.push({
+        sourcePath: fullPath,
+        relativePath,
+        size: stat.size,
+        isDirectory: false,
+      });
+    } else if (entry.isDirectory) {
+      // 再帰的に収集
+      const subFiles = await collectLocalFiles(fullPath, baseDir);
+      files.push(...subFiles);
+    }
+  }
+
+  return files;
+}
+
+/** UploadFile配列を実行（add/modify/delete） */
+export async function executeUploadFiles(
+  uploader: Uploader,
+  files: UploadFile[],
+  baseDest: string,
+): Promise<void> {
+  await uploader.connect();
+
+  try {
+    for (const file of files) {
+      // baseDest が空文字列の場合は、file.relativePathをそのまま使用
+      const remotePath = baseDest
+        ? `${baseDest}/${file.relativePath}`
+        : file.relativePath;
+
+      if (file.changeType === "delete") {
+        // 削除
+        await uploader.delete(remotePath);
+      } else {
+        // アップロード（add/modify）
+        await uploader.upload(file, remotePath);
+      }
+    }
+  } finally {
+    await uploader.disconnect();
+  }
 }
