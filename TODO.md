@@ -544,10 +544,10 @@ development_public:
 
 ## 進捗管理
 
-- [ ] Task 1: converters.tsのignorePatterns重複解消（0.5日）
-- [ ] Task 2: removeUndefinedPropsの型安全化（0.2日）
-- [ ] Task 3: filesByTargetのMap型改善（0.5日）
-- [ ] Task 4: エラーハンドリング統一（1.0日）
+- [x] Task 1: converters.tsのignorePatterns重複解消（0.5日）✅
+- [x] Task 2: removeUndefinedPropsの型安全化（0.2日）✅
+- [x] Task 3: filesByTargetのMap型改善（0.5日）✅
+- [x] Task 4: エラーハンドリング統一（1.0日）✅
 - [ ] Task 5-1: sftp.tsのテスト追加（1.0日）
 - [ ] Task 5-2: rsync.tsのテスト追加（1.2日）
 - [ ] Task 5-3: progress.tsのテスト追加（0.8日）
