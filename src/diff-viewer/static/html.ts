@@ -22,6 +22,10 @@ function getHtmlStructure(): string {
       &rarr;
       <span id="target-branch">target</span>
     </div>
+    <div class="transfer-info hidden" id="transfer-info">
+      <div class="transfer-direction">Local &rarr; Remote</div>
+      <div class="transfer-protocol">Protocol: <span id="protocol-value"></span></div>
+    </div>
     <div class="target-selector hidden" id="target-selector">
       <label>Target:</label>
       <select id="target-select"></select>

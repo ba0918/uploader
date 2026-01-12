@@ -89,6 +89,8 @@ export interface WsInitMessage extends WsMessageBase {
       host: string;
       dest: string;
     }>;
+    /** 転送プロトコル（全ターゲット共通） */
+    protocol?: string;
     /** ツリー構造データ（遅延読み込みモード時） */
     tree?: DiffTreeNode[];
     /** 遅延読み込みが有効か */
