@@ -1,12 +1,12 @@
 # uploader Documentation
 
-uploaderの各種ドキュメント一覧なのだ。
+uploaderの各種ドキュメント一覧です。
 
 ---
 
 ## 📚 ユーザー向けドキュメント
 
-初めての方、または日常的に使う方向けのドキュメントなのだ。
+初めての方、または日常的に使う方向けのドキュメントです。
 
 ### 必読ドキュメント
 
@@ -17,24 +17,18 @@ uploaderの各種ドキュメント一覧なのだ。
 
 ### 推奨リソース
 
-| ドキュメント                          | 説明                             | 所要時間 |
-| ------------------------------------- | -------------------------------- | -------- |
-| [Configuration](configuration.md)     | 設定ファイルの全項目リファレンス | 10分     |
-| [Troubleshooting](troubleshooting.md) | よくある問題と解決方法           | -        |
-
-今後追加予定のドキュメント:
-
-- **Getting Started** - 初めての方向け。インストールから最初のアップロードまで
-- **Use Cases** - 実践的な使用例とベストプラクティス
-
-現時点では [README.md](../README.md) と
-[uploader.example.yaml](../uploader.example.yaml) も参照してほしいのだ。
+| ドキュメント                          | 説明                               | 所要時間 |
+| ------------------------------------- | ---------------------------------- | -------- |
+| [Getting Started](getting-started.md) | 初めての方向けのチュートリアル     | 10分     |
+| [Configuration](configuration.md)     | 設定ファイルの全項目リファレンス   | 10分     |
+| [Troubleshooting](troubleshooting.md) | よくある問題と解決方法             | -        |
+| [Use Cases](use-cases.md)             | 実践的な使用例とベストプラクティス | 15分     |
 
 ---
 
 ## 🔧 開発者向けドキュメント
 
-uploaderの開発に参加する方、または内部実装を理解したい方向けなのだ。
+uploaderの開発に参加する方、または内部実装を理解したい方向けです。
 
 ### アーキテクチャ
 
@@ -44,15 +38,6 @@ uploaderの開発に参加する方、または内部実装を理解したい方
 | [SPEC.md](../SPEC.md)                                                              | 詳細仕様                                     |
 | [implementation/mirror-mode-protocols.md](implementation/mirror-mode-protocols.md) | mirrorモードのプロトコル別実装解説           |
 
-### レビュー・分析
-
-| ドキュメント                                                                                             | 説明                                  |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| [UX_REVIEW_REPORT.md](UX_REVIEW_REPORT.md)                                                               | 新規ユーザー視点のUXレビュー          |
-| [review/uploader-example-yaml-review.md](review/uploader-example-yaml-review.md)                         | uploader.example.yamlレビュー         |
-| [review/uploader-example-yaml-improvement-report.md](review/uploader-example-yaml-improvement-report.md) | uploader.example.yaml改善実施レポート |
-| [Task4-Phase1-Analysis-Report.md](Task4-Phase1-Analysis-Report.md)                                       | rsync vs manual diff 動作差異分析     |
-
 ---
 
 ## 📖 ドキュメントの読み方
@@ -60,21 +45,22 @@ uploaderの開発に参加する方、または内部実装を理解したい方
 ### 初めての方
 
 1. [README.md](../README.md) を読む（5分）
-2. [uploader.example.yaml](../uploader.example.yaml) を見て設定ファイルを作成
-3. 実際に動かしてみる
-4. 分からないことがあれば [README.md](../README.md) の該当セクションに戻る
+2. [Getting Started](getting-started.md) で基本的な使い方を学ぶ（10分）
+3. [uploader.example.yaml](../uploader.example.yaml) を見て設定ファイルを作成
+4. 実際に動かしてみる
+5. 分からないことがあれば [Troubleshooting](troubleshooting.md) を参照
 
 ### 設定を詳しく知りたい方
 
 1. [Configuration](configuration.md) で全設定項目を確認
 2. [uploader.example.yaml](../uploader.example.yaml) でコメント付き実例を参照
+3. [Use Cases](use-cases.md) で実践例を確認
 
 ### 開発に参加したい方
 
 1. [CLAUDE.md](../CLAUDE.md) でプロジェクト概要を把握
 2. [SPEC.md](../SPEC.md) で詳細仕様を理解
 3. [implementation/](implementation/) で実装の詳細を学ぶ
-4. [UX_REVIEW_REPORT.md](UX_REVIEW_REPORT.md) でUX改善の視点を知る
 
 ---
 
@@ -94,7 +80,7 @@ uploaderの開発に参加する方、または内部実装を理解したい方
 
 ## 📝 ドキュメントへの貢献
 
-ドキュメントの改善提案は大歓迎なのだ！
+ドキュメントの改善提案は大歓迎です。
 
 - タイポや間違いを見つけた → [Issue](https://github.com/ba0918/uploader/issues)
 - 新しいユースケースを追加したい → Pull Request

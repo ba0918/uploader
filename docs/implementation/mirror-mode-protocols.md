@@ -4,16 +4,16 @@
 
 ### mirrorモードとは
 
-mirrorモード（`sync_mode: mirror`）は、ローカルファイルとリモートファイルを完全に同期させる同期モードなのだ。ローカルに存在しないファイルがリモートに存在する場合、それらを削除して完全一致させるのだ。
+mirrorモード（`sync_mode: mirror`）は、ローカルファイルとリモートファイルを完全に同期させる同期モードです。ローカルに存在しないファイルがリモートに存在する場合、それらを削除して完全一致させます。
 
 ### プロトコル別の実装方針
 
-mirrorモードの実装は、プロトコルの特性に応じて2つの異なるアプローチを採用しているのだ。
+mirrorモードの実装は、プロトコルの特性に応じて2つの異なるアプローチを採用しています。
 
 1. **rsyncプロトコル**: ディレクトリ単位での差分同期（`--delete`オプション使用）
 2. **manual diff プロトコル (scp/sftp/local)**: ファイル単位での1対1比較
 
-両方のアプローチとも同じ`uploadFiles`配列を使用し、最終的なアップロード結果は一致するのだ。
+両方のアプローチとも同じ`uploadFiles`配列を使用し、最終的なアップロード結果は一致します。
 
 ## プロトコルの特性と実装の違い
 
@@ -21,11 +21,11 @@ mirrorモードの実装は、プロトコルの特性に応じて2つの異な�
 
 #### 動作原理
 
-rsyncはディレクトリ単位で動作するプロトコルなのだ。`--delete`オプションを使用することで、ローカルディレクトリとリモートディレクトリを完全に同期できるのだ。
+rsyncはディレクトリ単位で動作するプロトコルです。`--delete`オプションを使用することで、ローカルディレクトリとリモートディレクトリを完全に同期できます。
 
 #### baseDirectory処理: 必須
 
-rsyncがディレクトリ単位で動作するため、`uploadFiles`から共通のベースディレクトリを検出し、そのディレクトリに対して差分取得を実行する必要があるのだ。
+rsyncがディレクトリ単位で動作するため、`uploadFiles`から共通のベースディレクトリを検出し、そのディレクトリに対して差分取得を実行する必要があります。
 
 **例**:
 
@@ -109,7 +109,7 @@ if (isMirrorMode && options?.uploadFiles) {
 
 #### なぜbaseDirectory調整が必要なのか
 
-rsyncコマンドの動作特性により、**ディレクトリを指定してその配下をすべて比較**する必要があるのだ。
+rsyncコマンドの動作特性により、**ディレクトリを指定してその配下をすべて比較**する必要があります。
 
 **シナリオ**:
 
@@ -139,11 +139,11 @@ rsync --delete /path/to/local/src/ /remote/dest/src/
 
 #### 動作原理
 
-scp/sftp/localプロトコルは、ファイル単位で1対1比較を行うアプローチなのだ。各ファイルを個別に読み込んでバイト比較することで、変更を検出するのだ。
+scp/sftp/localプロトコルは、ファイル単位で1対1比較を行うアプローチです。各ファイルを個別に読み込んでバイト比較することで、変更を検出します。
 
 #### baseDirectory処理: 不要
 
-`uploadFiles`の`relativePath`を直接使用してリモートファイルと比較するため、baseDirectory調整は不要なのだ。
+`uploadFiles`の`relativePath`を直接使用してリモートファイルと比較するため、baseDirectory調整は不要です。
 
 #### 実装箇所
 
@@ -236,7 +236,7 @@ const results = await batchAsync(
 
 #### なぜbaseDirectory調整が不要なのか
 
-ファイル単位で比較する実装では、`uploadFiles`の`relativePath`がそのままリモートファイルパスとして使用されるのだ。
+ファイル単位で比較する実装では、`uploadFiles`の`relativePath`がそのままリモートファイルパスとして使用されます。
 
 **シナリオ**:
 
@@ -254,7 +254,7 @@ uploader.readFile("src/foo.ts") → リモートの /remote/dest/src/foo.ts を�
 uploader.readFile("src/bar.ts") → リモートの /remote/dest/src/bar.ts を読み込み
 ```
 
-`relativePath`が既に正しいパスを持っているため、baseDirectoryを検出してパスを調整する必要がないのだ。
+`relativePath`が既に正しいパスを持っているため、baseDirectoryを検出してパスを調整する必要がないです。
 
 ## なぜ実装が異なるのか
 
@@ -274,7 +274,7 @@ uploader.readFile("src/bar.ts") → リモートの /remote/dest/src/bar.ts を�
 
 ### 結果の一貫性
 
-両方の実装は異なるアプローチを取るが、**最終的な結果は一致**するのだ。
+両方の実装は異なるアプローチを取るが、**最終的な結果は一致**します。
 
 **共通点**:
 
@@ -292,7 +292,7 @@ uploader.readFile("src/bar.ts") → リモートの /remote/dest/src/bar.ts を�
 
 ### 使用箇所
 
-`detectBaseDirectory()`は以下の4箇所で使用されているのだ。
+`detectBaseDirectory()`は以下の4箇所で使用されています。
 
 #### 1. `src/upload/mirror.ts` - prepareMirrorSync()（line 106）
 
@@ -309,7 +309,7 @@ if (baseDir) {
 ```
 
 **目的**:
-リモートファイル一覧から、uploadFilesのbaseDirectory配下のファイルのみを抽出する。無関係なディレクトリのファイルを削除対象から除外するのだ。
+リモートファイル一覧から、uploadFilesのbaseDirectory配下のファイルのみを抽出する。無関係なディレクトリのファイルを削除対象から除外します。
 
 #### 2. `src/upload/rsync.ts` - bulkUpload()（line 209）
 
@@ -323,7 +323,7 @@ if (baseDir) {
 ```
 
 **目的**:
-rsyncの`--delete`オプションを使用する際に、destパスをbaseDirectory分だけ調整する。これにより、rsyncがbaseDirectory配下のみを同期するようにするのだ。
+rsyncの`--delete`オプションを使用する際に、destパスをbaseDirectory分だけ調整する。これにより、rsyncがbaseDirectory配下のみを同期するようにします。
 
 #### 3. `src/diff-viewer/remote-diff.ts` - getRsyncDiffForTarget()（lines 130, 161）
 
@@ -342,18 +342,18 @@ if (baseDir) {
 ```
 
 **目的**: rsync
-getDiff()実行前にパスを調整し、実行後に結果パスを復元する。uploadFilesと一致する形式で差分結果を返すのだ。
+getDiff()実行前にパスを調整し、実行後に結果パスを復元する。uploadFilesと一致する形式で差分結果を返します。
 
 #### 4. `src/diff-viewer/ws-target-checker.ts` - WebSocket Diff取得（lines 129, 162）
 
 **役割**: remote-diff.tsのgetRsyncDiffForTarget()と同じ処理を実行
 
 **目的**:
-WebSocket経由で差分取得する際も、CUIモードと同じロジックを適用する。GUIとCUIの完全一致を保証するのだ。
+WebSocket経由で差分取得する際も、CUIモードと同じロジックを適用する。GUIとCUIの完全一致を保証します。
 
 ### 各箇所での一貫性
 
-すべての使用箇所で、以下の一貫した目的を持つのだ。
+すべての使用箇所で、以下の一貫した目的を持ちます。
 
 **共通目的**:
 
@@ -374,7 +374,7 @@ WebSocket経由で差分取得する際も、CUIモードと同じロジック�
 **`tests/integration/5_mirror_mode_test.ts`** (501行)
 
 全プロトコル（rsync, sftp, scp,
-local）でmirrorモードの動作確認が実施されているのだ。
+local）でmirrorモードの動作確認が実施されています。
 
 ### カバーされているケース
 
@@ -420,8 +420,8 @@ local）でmirrorモードの動作確認が実施されているのだ。
 
 ### カバレッジの評価
 
-既存テストは**機能的な動作を十分に確認**しているのだ。rsyncとmanual
-diffの内部実装差異は明示的に検証していないが、以下の理由で問題ないと判断されるのだ。
+既存テストは**機能的な動作を十分に確認**しているです。rsyncとmanual
+diffの内部実装差異は明示的に検証していないが、以下の理由で問題ないと判断されます。
 
 1. 両方とも同じuploadFilesから同じ結果を生成することがテストで確認済み
 2. プロトコル別の実装差異はカプセル化されている
@@ -431,7 +431,7 @@ diffの内部実装差異は明示的に検証していないが、以下の理�
 
 ### 新しいプロトコルを追加する場合
 
-新しいプロトコルを追加する際は、以下のチェックリストに従うのだ。
+新しいプロトコルを追加する際は、以下のチェックリストに従います。
 
 #### チェックリスト
 
@@ -478,7 +478,7 @@ class NewProtocolUploader implements Uploader, HasListRemoteFiles {
 
 #### 問題: rsyncでuploadFilesの範囲外のファイルが削除される
 
-**原因**: baseDirectory調整が正しく動作していない可能性があるのだ。
+**原因**: baseDirectory調整が正しく動作していない可能性があります。
 
 **確認ポイント**:
 
@@ -498,7 +498,7 @@ class NewProtocolUploader implements Uploader, HasListRemoteFiles {
 #### 問題: manual diffでリモートファイルが正しく削除されない
 
 **原因**: `listRemoteFiles()`
-が正しくファイル一覧を返していない可能性があるのだ。
+が正しくファイル一覧を返していない可能性があります。
 
 **確認ポイント**:
 
@@ -518,7 +518,7 @@ class NewProtocolUploader implements Uploader, HasListRemoteFiles {
 #### 問題: baseDirectoryが正しく検出されない
 
 **原因**:
-uploadFilesのrelativePathが一貫性のない形式になっている可能性があるのだ。
+uploadFilesのrelativePathが一貫性のない形式になっている可能性があります。
 
 **確認ポイント**:
 
@@ -538,7 +538,7 @@ uploadFilesのrelativePathが一貫性のない形式になっている可能性
 #### 問題: CUIとGUIで差分結果が異なる
 
 **原因**:
-WebSocketハンドラとCUIモードで異なる処理ロジックが使用されている可能性があるのだ。
+WebSocketハンドラとCUIモードで異なる処理ロジックが使用されている可能性があります。
 
 **確認ポイント**:
 
