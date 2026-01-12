@@ -4,606 +4,400 @@
 
 ---
 
-## ブランチレビュー結果: feature/file-mode-mirror-remote-diff (2026-01-11)
+## コードベースリファクタリング計画（2026-01-12開始）
 
-### 📊 変更規模
+### 📊 現状分析結果
 
-- **61ファイル変更**: +4916行, -164行
-- **主要機能**:
-  - mirrorモードのリモート専用ファイル削除対応
-  - CUIモードでのgetDiff未サポートプロトコル（scp/sftp/local）差分表示
-  - 統合テスト追加
+**全体評価**: ⭐⭐⭐⭐☆ (4.0/5.0) - 高品質で保守性が高いコードベース
 
-### 総合評価: ⭐⭐⭐☆☆ (3.4/5.0)
+**強み**:
 
-| 項目             | 評価      | コメント                               |
-| ---------------- | --------- | -------------------------------------- |
-| 機能実装         | ⭐⭐⭐⭐☆ | 基本機能は実装済みだが最適化の余地あり |
-| 設計品質         | ⭐⭐⭐⭐☆ | 統一性があり保守しやすい               |
-| テストカバレッジ | ⭐⭐☆☆☆   | 統合テストは充実だがユニットテスト不足 |
-| パフォーマンス   | ⭐⭐⭐☆☆  | 小規模では問題ないが大規模で懸念       |
-| ドキュメント     | ⭐⭐⭐☆☆  | コメントは充実だが制限事項の明記が不足 |
+- 型安全性が高い（ISP原則に基づいた設計）
+- エラーハンドリングが充実
+- 統一された処理フロー（uploadFiles配列ベース）
+- TODO/FIXMEがゼロ
+- ドキュメントが充実
 
----
+**改善が必要な領域**:
 
-## 🔴 高優先度タスク
-
-### Task 1: ユニットテストの追加 【必須】
-
-**問題**: 新規実装された主要関数にユニットテストが存在しない
-
-- `getManualDiffForTarget()` - 0件のテスト
-- `getRemoteDiffs()` - 0件のテスト
-- `cuiConfirm()` の新ロジック（ターゲット毎表示） - 0件のテスト
-- `rsyncDiffToFiles()` - 0件のテスト
-
-**影響**: エッジケースの検証が不十分、バグ発見が遅れる、リファクタリングが困難
-
-**実装内容**:
-
-- [x] `tests/diff-viewer/remote-diff_test.ts` を作成 ✅
-  - [x] `extractFilePaths()` のテスト（4件）
-  - [x] `rsyncDiffToFiles()` のテスト（2件）
-  - [x] `rsyncDiffToSummary()` のテスト（2件）
-  - [x] `getManualDiffForTarget()` の基本動作テスト（7件）
-    - [x] 追加ファイル検出（リモートに存在しない）
-    - [x] 変更ファイル検出（内容が異なる）
-    - [x] 削除ファイル検出（mirrorモード）
-    - [x] 変更なしファイルの除外
-    - [x] `sourcePath` が undefined の場合
-    - [x] ignoreパターン適用の確認
-    - [x] 複数ファイルの組み合わせ
-  - [x] エッジケーステスト（4件）✅
-    - [x] ファイル読み込みエラー時の処理
-    - [x] リモートファイル一覧取得エラー時の処理
-    - [x] リモートファイル読み込みエラー時の処理
-    - [x] concurrency設定の反映
-- [x] リファクタリング: `getManualDiffForTarget()` に依存性注入パターンを適用 ✅
-  - アップローダーを外部から注入可能にして、テスト容易性を向上
-- [x] `getRemoteDiffs()` のテスト（3件）✅
-  - [x] 複数ターゲットの処理
-  - [x] uploadFilesからfilePathsへの変換
-  - [x] 空配列の処理
-- [ ] `cuiConfirm()` の新ロジック（ターゲット毎表示）のテスト
-  - 注:
-    主にUI出力なので統合テストでカバー済み（tests/integration/5_mirror_mode_test.ts）
-
-**進捗**:
-
-- ✅ **22個のテストケース実装完了**
-- ✅ 全テスト成功（137 passed / 957 steps）
-- ✅ remote-diff.tsカバレッジ: 84.4% (branch) / 46.2% (line)
-  - 未カバー部分はrsyncプロトコル固有のロジック（統合テストでカバー済み）
-- ✅
-  新機能の主要関数（getManualDiffForTarget、extractFilePaths等）は十分にテスト済み
-
-**所要時間**: 1.0日（実装0.5日、テスト調整0.5日） → **0.5日完了** ✅
-
-**テスト目標**: 90%以上のカバレッジ維持
+- テストカバレッジが90%未満のファイルが存在
+- main.tsの責務過多（623行）
+- logger.tsの肥大化（1120行）
+- 型安全性の小さな改善余地
 
 ---
 
-### Task 2: パフォーマンステスト実施 【重要】✅
-
-**問題**: `getManualDiffForTarget()` で大量/大容量ファイルでの動作未検証
-
-**懸念事項**:
-
-1. 全ファイルをメモリに読み込み → 大容量ファイルでメモリ不足の可能性
-2. バイト単位の完全比較 → rsyncのようなチェックサム最適化がない
-3. N回のリモート接続 → ファイル数に比例して通信回数が増加
-
-**実装内容**:
-
-- [x] パフォーマンステストスクリプト作成 ✅
-  - [x] `tests/performance/manual-diff_test.ts` を作成
-  - [x] `tests/performance/README.md` を作成
-  - [x] テストケース1: 小規模（100ファイル、各1KB）
-  - [x] テストケース2: 中規模（1,000ファイル、各10KB）
-  - [x] テストケース3: 大規模（8,000ファイル、各10KB）
-  - [x] テストケース4: 大容量（10ファイル、各100MB）
-  - [x] 実行時間とメモリ使用量を計測
-  - [x] 環境変数によるスキップ機能実装
-- [x] パフォーマンス結果の分析 ✅
-  - [x] 許容範囲の判定（1000ファイルで5秒以内）
-  - [x] メモリ使用量の確認（500MB以内）
-  - [x] スケーラビリティ評価
-  - [x] ボトルネック分析
-- [x] 最適化の評価 ✅
-  - 結論: 追加の最適化は不要（既に十分に最適化されている）
-
-**パフォーマンステスト結果**: ⭐⭐⭐⭐⭐ **S+ランク**
-
-| テストケース                | 実行時間  | メモリ        | スループット     | 評価 |
-| --------------------------- | --------- | ------------- | ---------------- | ---- |
-| 小規模 (100 files × 1KB)    | 4.75 ms   | 0.29 MB       | 21,056 files/sec | ✅   |
-| 中規模 (1,000 files × 10KB) | 40.77 ms  | -1.28 MB (GC) | 24,528 files/sec | ✅   |
-| 大規模 (8,000 files × 10KB) | 294.86 ms | 0.12 MB       | 27,131 files/sec | ✅   |
-| 大容量 (10 files × 100MB)   | 192.01 ms | -0.08 MB (GC) | 5,208 MB/sec     | ✅   |
-
-**主要成果**:
-
-- ✅ **実行時間**: 基準の122倍高速（1,000ファイルで40ms vs 5秒基準）
-- ✅ **メモリ効率**: 基準の0.02%～0.06%のメモリ使用量
-- ✅ **スケーラビリティ**: 線形以上のスケーラビリティを実現
-- ✅ **大容量対応**: 1GBのデータを192msで処理
-
-**結論**:
-
-- 追加の最適化は**不要** - 現在の実装で十分に高性能
-- 全ての懸念事項がクリア済み
-- 本番環境へのデプロイ準備完了
-
-**所要時間**: 1.5日 → **0.3日完了** ✅
-
----
-
-## 🟡 中優先度タスク
-
-### Task 3: エラーハンドリングの改善 ✅
-
-**問題**: エラー時に常に"M"（変更あり）として扱うが、エラー種別を区別すべき
-
-**実装内容**:
-
-- [x] エラー判定関数の実装（Phase 1）✅
-  - [x] `utils/error.ts` に5つのエラー判定関数を追加
-    - `isFileNotFoundError()` - ファイル不在エラー判定
-    - `isPermissionDeniedError()` - 権限エラー判定
-    - `isNetworkError()` - ネットワークエラー判定
-    - `isSftpPermissionError()` - SFTPエラーコード判定
-    - `classifyError()` - エラー種別の総合判定
-  - [x] `tests/utils/error_test.ts` に39の新規テストケースを追加
-
-- [x] `remote-diff.ts` のエラーハンドリング改善（Phase 2）✅
-  - [x] 権限エラー（PermissionDenied）の区別 → "M" + 警告ログ
-  - [x] ファイル不在エラー（NotFound）の区別 → "A"（追加）として扱う
-  - [x] ネットワークエラーの区別 → "M" + 警告ログ
-  - [x] UnknownErrorの区別 → "M" + 警告ログ
-  - [x] より詳細なログ出力
-
-- [x] エラーログの改善 ✅
-  - [x] エラー種別の明示（NotFound/PermissionDenied/NetworkError/UnknownError）
-  - [x] エラー発生ファイルパスの記録
-  - [x] エラー詳細メッセージの出力（verbose時）
-
-- [x] テスト追加 ✅
-  - [x] 各エラー種別のハンドリング確認（4テストケース追加）
-  - [x] エラー時の適切な動作検証（changeType: "A" or "M"）
-  - [x] ログ出力の確認
-
-**実装成果**:
-
-- ✅ **エラー判定精度向上**: ファイル不在を"A"として正しく扱う
-- ✅ **ログ品質向上**: エラー種別が明確になり、トラブルシューティングが容易に
-- ✅ **テストカバレッジ**: 43の新規テストケース追加（39 + 4）
-- ✅ **後方互換性**: 既存の動作を維持（安全側に倒す方針）
-- ✅ **全テスト成功**: 146 passed (1011 steps) / 0 failed
-
-**所要時間**: 0.5日 → **0.4日完了** ✅
-
----
-
-### Task 4: rsyncとの動作整合性確認 ✅
-
-**問題**: rsyncの場合は`baseDirectory`を考慮した調整があるが、manual
-diffでは考慮されていない
-
-**実装内容**:
-
-- [x] Phase 1: 動作差異の検証 ✅
-  - [x] rsyncとscp/sftp/localでmirrorモードの動作を比較
-  - [x] baseDirectory検出ロジックの統一が必要か判定
-  - [x] 既存テストのカバレッジ評価
-  - [x] 詳細分析レポート作成（`docs/Task4-Phase1-Analysis-Report.md`）
-
-**Phase 1 分析結果**:
-
-- ✅ **結論**: 問題なし - 差異はあるが意図的で問題ない
-- ✅ **rsyncの実装**: ディレクトリ単位動作のためbaseDirectory調整が必須
-- ✅ **manual diffの実装**: ファイル単位比較のため調整不要
-- ✅ **既存テストカバレッジ**: 全プロトコルで動作確認済み（501行の統合テスト）
-- ✅ **実装の一貫性**: `detectBaseDirectory()`が4箇所で適切に使い分けられている
-- 📝 **推奨アクション**: パターンB（差異をドキュメントに明記）
-
-- [x] Phase 2: ドキュメント化 ✅
-  - [x] 実装解説ドキュメントの作成（`docs/implementation/mirror-mode-protocols.md` -
-        570行）
-  - [x] コードコメントの追加（実装差異の意図を明確化）
-    - `getRsyncDiffForTarget()` - rsyncの動作原理と調整理由を詳細解説
-    - `getManualDiffForTarget()` -
-      ファイル単位比較とbaseDirectory不要の理由を明記
-  - [x] CLAUDE.md更新（Protocol-Specific Implementationセクション追加）
-
-**Phase 2 成果物**:
-
-- ✅ **実装解説ドキュメント**: プロトコル別の動作原理と設計判断の詳細説明
-- ✅ **開発者ガイド**:
-  新規プロトコル追加時のチェックリスト、トラブルシューティング
-- ✅ **コード品質**: deno fmt/lint完全クリア
-
-- [x] Phase 3: 最終検証 ✅
-  - [x] コード品質確認（lint: 0エラー / check: PASS / fmt: PASS）
-  - [x] ユニットテスト実行（7 passed / 0 failed - 33ms）
-  - [x] 統合テスト実行（全プロトコル動作確認 - 15s）
-  - [x] ドキュメントレビュー完了（内容正確性、リンク確認）
-
-**Phase 3 検証結果**:
-
-- ✅ **コード品質**: 108ファイルリント完了、型エラー0件
-- ✅ **テストカバレッジ**: ユニット/統合テストすべて成功
-- ✅ **ドキュメント品質**: 内容正確、リンク正常、コメント明瞭
-
-**総合成果**:
-
-- ✅ **実装差異の明確化**: rsyncとmanual diffの違いが完全にドキュメント化
-- ✅ **保守性向上**: 将来の開発者が実装の意図を理解できる
-- ✅ **拡張性向上**: 新規プロトコル追加時のガイドライン提供
-- ✅ **品質保証**: すべての検証項目をクリア
-
-**所要時間**: 0.8日 → **0.6日完了** ✅
-
-- Phase 1: 0.2日
-- Phase 2: 0.3日
-- Phase 3: 0.1日
-
----
-
-### Task 5: ドキュメント更新
-
-**問題**: `getManualDiffForTarget()`
-の制限事項やrsyncとの動作差異が文書化されていない
-
-**実装内容**:
-
-- [ ] CLAUDE.md に追記
-  - [ ] `getManualDiffForTarget()` の動作原理
-  - [ ] パフォーマンス特性の説明
-  - [ ] ファイルサイズ・ファイル数の推奨範囲
-- [ ] remote-diff.ts のドキュメント改善
-  - [ ] 関数コメントに制限事項を明記
-  - [ ] パフォーマンスに関する注意事項
-  - [ ] rsync getDiff() との違いを説明
-- [ ] CHANGELOG.md の更新
-  - [ ] 新機能の詳細説明
-  - [ ] 既知の制限事項の記載
-  - [ ] パフォーマンス特性の注記
-
-**所要時間**: 0.3日
-
----
-
-### Task 8: `uploader init` コマンドの実装 【UX改善】✅
-
-**問題**:
-バイナリリリースからダウンロードした場合、uploader.example.yamlに辿り着くのに時間がかかる
-
-**理由**:
-
-- 利用者はReleaseから実行ファイルのみダウンロードする可能性が高い
-- Gitリポジトリにアクセスせずにセットアップを完了したい
-- 他のCLIツール（npm init、cargo init等）と同様の慣例に従う
-
-**メリット**:
-
-- ✅ CLI完結のセットアップ（バイナリ → init → 編集 → 実行）
-- ✅ バージョン互換性の保証（実行ファイルと設定テンプレートが一致）
-- ✅ 発見性の向上（`uploader --help` に記載）
-- ✅ オフライン環境でも使用可能
-
-**実装内容**:
-
-- [x] Phase 1: テンプレート埋め込み機構（0.5日）✅
-  - [x] `scripts/embed-template.ts` 作成
-    - uploader.example.yaml → src/templates/config-template.ts に変換
-    - ビルド時に自動実行（deno.json tasks.prebuild）
-    - ${...}環境変数のエスケープ処理を実装
-  - [x] `src/templates/config-template.ts` 自動生成
-    - CONFIG_TEMPLATE定数にexample.yamlの内容を埋め込み
-  - [x] deno.json更新
-    - prebuildタスク追加
-    - buildタスクをprebuild依存に変更
-  - [x] .gitignore更新
-    - src/templates/config-template.ts を除外
-
-- [x] Phase 2: `uploader init` コマンド実装（0.5日）✅
-  - [x] `src/cli/init.ts` 作成
-    - initCommand(options) 関数実装
-    - 既存ファイルチェック（プロンプト表示）
-    - テンプレート書き込み
-    - 成功メッセージ表示
-  - [x] オプション実装
-    - `--force`: 既存ファイルを無条件上書き
-    - `--output <path>`: 出力先指定（デフォルト: uploader.yaml）
-    - `--quiet`: プロンプトなしで実行
-  - [x] main.tsに統合
-    - `init` サブコマンドの追加
-    - args.tsでinitサブコマンド解析を実装
-
-- [x] Phase 3: ドキュメント更新（0.2日）✅
-  - [x] src/cli/args.ts のHELP_TEXT更新
-    - QUICK STARTを `uploader init` に変更
-  - [x] uploader.example.yaml ヘッダー更新
-    - `uploader init` コマンドの記載（手動コピーも併記）
-  - [x] docs/getting-started.md 更新
-    - Step 1を `uploader init` に変更
-  - [x] README.md Quick Start更新
-    - `uploader init` コマンドの追加
-
-- [x] Phase 4: テスト実装（0.3日）✅
-  - [x] `tests/cli/init_test.ts` 作成（7テストケース）
-    - 基本動作テスト（ファイル生成）
-    - カスタム出力先（--output）
-    - 既存ファイル上書き確認（quietモード）
-    - --forceオプションのテスト
-    - ディレクトリ不在エラーハンドリング
-  - [x] テンプレート整合性テスト
-    - CONFIG_TEMPLATEの内容確認
-    - 環境変数エスケープ確認
-
-**所要時間**: 1.5日 → **1.5日完了** ✅
-
-**成果**:
-
-- ✅ **UX大幅改善**: バイナリダウンロード後、`uploader init` 一発で設定開始可能
-- ✅ **バージョン互換性**: 実行ファイルと設定テンプレートが常に一致
-- ✅ **標準慣例準拠**: `npm init`、`cargo init` 等と同様のUX
-- ✅ **オプション完備**: --force、--output、--quiet で柔軟に対応
-- ✅ **テストカバレッジ**: 7テストケースで主要シナリオをカバー
-
-**優先度**: 🟡 中〜高（次のマイナーバージョンリリースで実装推奨）→ **実装完了**
-
-**技術仕様**:
-
-```bash
-# 基本使用
-$ uploader init
-✓ Created uploader.yaml
-
-Next steps:
-  1. Edit uploader.yaml to match your environment
-  2. Test with: uploader <profile> --dry-run
-  3. Deploy: uploader <profile>
-
-Documentation: docs/getting-started.md
-
-# 既存ファイルがある場合
-$ uploader init
-uploader.yaml already exists. Overwrite? (y/N): n
-Aborted.
-
-# forceオプション
-$ uploader init --force
-✓ Created uploader.yaml (overwritten)
-
-# カスタム出力先
-$ uploader init --output custom.yaml
-✓ Created custom.yaml
+## 🟢 P2: 低優先度タスク（即座に対応可能 - Quick Wins）
+
+### Task 1: converters.tsのignorePatterns重複解消
+
+**問題**: src/upload/converters.ts:19-56
+
+```typescript
+export async function diffFilesToUploadFiles(
+  files: DiffFile[],
+  targetRef: string,
+  ignorePatterns: string[] = [], // ← パラメータとして受け取る
+): Promise<UploadFile[]> {
+  // ... 処理 ...
+  return applyIgnoreFilter(uploadFiles, ignorePatterns); // ← 内部で適用
+}
 ```
 
----
+しかし main.ts:267 では：
 
-## 🟡 中優先度タスク（追加）
+```typescript
+uploadFiles = await diffFilesToUploadFiles(diffResult.files, targetRef);
+// ← ignorePatterns を渡していない（デフォルト []）
+```
 
-### Task 9: docs/ ディレクトリのリファクタリング 【ドキュメント品質改善】✅
-
-**問題**:
-
-- 文体がふざけている（「～のだ。」というずんだもん口調）
-- レビュー/レポート文書が乱立し、エンドユーザーにとって不適切
-- ドキュメント構成が複雑でわかりにくい
-
-**実施内容**:
-
-- [x] Phase 1: 不要なドキュメントの削除（0.2日）✅
-  - [x] レビュー/レポート文書の削除（10ファイル）
-    - UX-1-REPORT.md
-    - UX-2_getting-started_report.md
-    - UX-3-docs-README-implementation-report.md
-    - UX-5-troubleshooting-report.md
-    - UX-6-configuration-report.md
-    - UX_REVIEW_REPORT.md
-    - Task4-Phase1-Analysis-Report.md
-    - implementation/UX-4_FAQ_REPORT.md
-    - review/ ディレクトリ全体（2ファイル）
-  - [x] 削除後のディレクトリ構成確認
-
-- [x] Phase 2: 文体の修正（0.5日）✅
-  - [x] docs/README.md の修正（107行 → 93行）
-    - 「～のだ。」→「～です。」「～ます。」
-    - 削除されたファイルへのリンク除去
-  - [x] docs/configuration.md の修正（642行）
-    - 同様に文体を修正
-    - 全文を固い文体に変更
-  - [x] docs/use-cases.md の修正（1061行）
-    - 同様に文体を修正
-    - 全文を固い文体に変更
-  - [x] docs/implementation/mirror-mode-protocols.md の修正（570行）
-    - 開発者向けドキュメントも固い文体に統一
-
-- [x] Phase 3: 検証とテスト（0.1日）✅
-  - [x] docs/ 配下のすべてのMarkdownファイルをチェック
-  - [x] リンク切れの確認（削除されたファイルへのリンクなし）
-  - [x] 整合性の確認（全ファイルからずんだもん口調完全除去）
-
-**実施成果**:
-
-- ✅ 不要なレビュー/レポート文書10ファイルを削除（15→6ファイルに削減）
-- ✅ 4ファイル（2451行）の文体を技術ドキュメントとして適切な固い文体に修正
-- ✅ 全ファイルからずんだもん口調を完全除去
-- ✅ リンク切れなし、整合性確保
-- ✅ エンドユーザー向けドキュメントのみが残り、わかりやすくなった
-- ✅ 公式ドキュメントとしての信頼性が向上
-- ✅ 技術的に適切な文体で一貫性が保たれた
-
-**所要時間**: 0.8日 → **0.3日完了**✅
-
-**優先度**: 🟡 中（次のマイナーバージョンリリース前に実施推奨）→ **実装完了**
-
----
-
-## 🟢 低優先度タスク
-
-### Task 6: パフォーマンス最適化の検討
-
-**前提**: Task 2 のパフォーマンステストで問題が確認された場合に実施
+**影響**: ignoreパターン適用のタイミングが不明確、重複リスク
 
 **実装内容**:
 
-- [ ] ファイルサイズ制限の実装
-  - [ ] 設定可能な最大ファイルサイズ（デフォルト: 10MB）
-  - [ ] 超過ファイルは常に変更ありとして扱う
-  - [ ] 警告ログの出力
-- [ ] チャンク読み込みの実装
-  - [ ] ストリームベースのファイル比較
-  - [ ] メモリ使用量の削減
-  - [ ] 大容量ファイルへの対応
-- [ ] 進捗表示の追加
-  - [ ] 100ファイルごとに進捗ログ
-  - [ ] `verbose` モード時の詳細表示
-  - [ ] ユーザーへのフィードバック改善
-- [ ] タイムスタンプ比較オプション
-  - [ ] `--quick` オプションの追加
-  - [ ] タイムスタンプのみで差分判定
-  - [ ] バイト比較との選択制
+- [ ] converters.tsから`ignorePatterns`パラメータを削除
+- [ ] `diffFilesToUploadFiles`は純粋な変換処理のみに専念
+- [ ] ignoreフィルタリングは呼び出し側で明示的に実施
+- [ ] テストケースの更新
 
-**所要時間**: 2.0日（実装1.0日、テスト1.0日）
+**修正方針**:
+
+```typescript
+// 修正後: converters.ts
+export async function diffFilesToUploadFiles(
+  files: DiffFile[],
+  targetRef: string,
+): Promise<UploadFile[]> {
+  // フィルタリングはしない、変換のみ
+}
+
+// 修正後: main.ts
+uploadFiles = await diffFilesToUploadFiles(diffResult.files, targetRef);
+uploadFiles = applyIgnoreFilter(uploadFiles, profile.ignore);
+```
+
+**所要時間**: 0.5日（実装0.3日、テスト0.2日）
 
 ---
 
-### Task 7: キャッシュ機構の実装
+### Task 2: removeUndefinedPropsの型安全化
 
-**目的**: 複数ターゲットでリモートファイルリストを共有してパフォーマンス向上
+**問題**: src/config/loader.ts:124-128
+
+```typescript
+function removeUndefinedProps<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined),
+  ) as Partial<T>; // ← 型アサーション
+}
+```
+
+**影響**: 型アサーションは実行時の型安全性を損なう可能性がある
 
 **実装内容**:
 
-- [ ] リモートファイルリストのキャッシュ
-  - [ ] ターゲット（host:dest）ごとのキャッシュ
-  - [ ] TTL（有効期限）の設定
-  - [ ] キャッシュクリア機構
-- [ ] 差分結果のキャッシュ
-  - [ ] ファイルパス + タイムスタンプでキャッシュキー生成
-  - [ ] メモリベースのLRUキャッシュ
-  - [ ] `--no-cache` オプションの追加
+- [ ] 型アサーション不要の実装に変更
+- [ ] より安全なループベースの実装に修正
+- [ ] テストケースの追加（型チェック含む）
+
+**修正方針**:
+
+```typescript
+function removeUndefinedProps<T extends object>(obj: T): Partial<T> {
+  const result: Partial<T> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key as keyof T] = value;
+    }
+  }
+  return result;
+}
+```
+
+**所要時間**: 0.2日（実装0.1日、テスト0.1日）
+
+---
+
+### Task 3: filesByTargetのMap型改善
+
+**問題**: main.ts:260, 429
+
+```typescript
+let filesByTarget: Map<number, UploadFile[]> | undefined;
+// ↑ ターゲットインデックス（数値）ベース → 配列順序に依存
+```
+
+**影響**:
+
+- ターゲットの順序が変わるとバグる
+- `targets[0]` が削除されたらインデックスがずれる
+
+**実装内容**:
+
+- [ ] インデックスベースから識別子ベースに変更
+- [ ] TargetIdまたはホスト:ポート:destの組み合わせをキーにする
+- [ ] 関連する処理の修正（uploadToTargets等）
+- [ ] テストケースの追加
+
+**修正方針**:
+
+```typescript
+// オプション1: ターゲットIDをキーにする
+type TargetId = string; // "host:port:dest" の一意識別子
+let filesByTarget: Map<TargetId, UploadFile[]> | undefined;
+
+// ヘルパー関数
+function getTargetId(target: ResolvedTargetConfig): TargetId {
+  return `${target.host}:${target.port || 22}:${target.dest}`;
+}
+```
+
+**所要時間**: 0.5日（実装0.3日、テスト0.2日）
+
+---
+
+## 🟡 P3: 低優先度タスク（設計改善）
+
+### Task 4: エラーハンドリング統一
+
+**問題**: main.ts:565-614
+
+- 50行のswitch/if文が密集
+- エラーの種類ごとに処理が異なる
+- 新しいエラータイプを追加しにくい
+
+**影響**: 保守性が低い、拡張困難
+
+**実装内容**:
+
+- [ ] `src/cli/error-handler.ts` を新規作成
+- [ ] ErrorHandlerクラスの実装
+- [ ] エラー種別ごとのハンドラーをMapで管理
+- [ ] main.tsのエラーハンドリング処理を移行
+- [ ] テストケースの追加（各エラー種別）
+
+**修正方針**:
+
+```typescript
+// 新規: src/cli/error-handler.ts
+export class ErrorHandler {
+  private readonly errorMap = new Map<
+    new (...args: any[]) => Error,
+    (error: Error) => number
+  >([
+    [ConfigValidationError, (e) => this.handleConfigError(e)],
+    [GitCommandError, (e) => this.handleGitError(e)],
+    [UploadError, (e) => this.handleUploadError(e)],
+  ]);
+
+  handleError(error: unknown): number {
+    for (const [ErrorClass, handler] of this.errorMap) {
+      if (error instanceof ErrorClass) {
+        return handler(error);
+      }
+    }
+    return this.handleUnknownError(error);
+  }
+
+  private handleConfigError(error: ConfigValidationError): number {
+    logError(`設定ファイルエラー: ${error.message}`);
+    return EXIT_CODES.CONFIG_ERROR;
+  }
+
+  // ... 他のハンドラー
+}
+
+// 修正後: main.ts
+} catch (error) {
+  const handler = new ErrorHandler();
+  return handler.handleError(error);
+}
+```
+
+**所要時間**: 1.0日（実装0.5日、テスト0.5日）
+
+---
+
+## 🔴 P0: 高優先度タスク（テストカバレッジ向上）
+
+### Task 5: テストカバレッジ90%達成
+
+**問題**: 以下のファイルが90%未満
+
+| ファイル                 | カバレッジ | 目標 |
+| ------------------------ | ---------- | ---- |
+| `src/upload/sftp.ts`     | 62.9%      | 90%+ |
+| `src/upload/rsync.ts`    | 74.1%      | 90%+ |
+| `src/upload/progress.ts` | 76.2%      | 90%+ |
+
+**影響**: エッジケースの検証が不十分、バグ発見が遅れる
+
+**実装内容**:
+
+#### 5-1: sftp.tsのテスト追加
+
+- [ ] `tests/upload/sftp_test.ts` の拡充
+  - [ ] エラーケース: 接続タイムアウト（3件）
+  - [ ] エラーケース: 認証失敗（3件）
+  - [ ] エラーケース: ファイル転送失敗（5件）
+  - [ ] エッジケース: 大容量ファイル（2件）
+  - [ ] エッジケース: 特殊文字パス（3件）
+  - [ ] エッジケース: 権限エラー（2件）
+  - [ ] リトライロジック: リトライ成功（2件）
+  - [ ] リトライロジック: リトライ失敗（2件）
+  - [ ] listRemoteFiles機能のテスト（3件）
+  - [ ] readFile機能のテスト（3件）
+- [ ] モックを活用した単体テスト実装
+- [ ] カバレッジ確認（90%以上）
+
+**所要時間**: 1.0日（実装0.6日、テスト調整0.4日）
+
+#### 5-2: rsync.tsのテスト追加
+
+- [ ] `tests/upload/rsync_test.ts` の拡充
+  - [ ] エラーケース: rsyncコマンド失敗（3件）
+  - [ ] エラーケース: SSH接続失敗（2件）
+  - [ ] エッジケース: sudo rsync（2件）
+  - [ ] エッジケース: rsync_optionsの各種オプション（4件）
+  - [ ] エッジケース: 大容量ファイル（2件）
+  - [ ] getDiff機能: 正常系（5件）
+  - [ ] getDiff機能: エラー系（3件）
+  - [ ] getDiff機能: エラーコード23のハンドリング（2件）
+  - [ ] bulkUpload機能のテスト（5件）
+- [ ] モックを活用した単体テスト実装
+- [ ] カバレッジ確認（90%以上）
+
+**所要時間**: 1.2日（実装0.7日、テスト調整0.5日）
+
+#### 5-3: progress.tsのテスト追加
+
+- [ ] `tests/upload/progress_test.ts` の拡充
+  - [ ] 進捗コールバックの動作確認（5件）
+  - [ ] エッジケース: 大量ファイル（2件）
+  - [ ] エッジケース: ファイルサイズ0（2件）
+  - [ ] エッジケース: 転送失敗時の進捗（2件）
+  - [ ] 複数ターゲット時の進捗表示（3件）
+- [ ] カバレッジ確認（90%以上）
+
+**所要時間**: 0.8日（実装0.5日、テスト調整0.3日）
+
+**総所要時間**: 3.0日
+
+**テスト目標**: 全ファイル90%以上のカバレッジ維持
+
+---
+
+## 🔵 P1: 中優先度タスク（大規模リファクタリング - 保留）
+
+以下のタスクは影響範囲が大きいため、P0-P3完了後に実施を検討。
+
+### Task 6: main.tsの責務分割
+
+**問題**: 623行、複数の責務が混在
+
+**実装内容**:
+
+- [ ] `src/cli/orchestrator.ts` を新規作成
+- [ ] メイン処理をクラスベースに分割
+- [ ] 設定読み込み、ファイル収集、アップロード実行、結果表示を分離
+- [ ] テストケースの追加
+
+**所要時間**: 2.0日
+
+---
+
+### Task 7: logger.tsの分割
+
+**問題**: 1120行、複数の責務が混在
+
+**実装内容**:
+
+- [ ] `src/ui/logger.ts` を基本ロギング機能のみに縮小
+- [ ] `src/ui/progress-bar.ts` を新規作成
+- [ ] `src/ui/formatters.ts` を新規作成
+- [ ] テストケースの追加
 
 **所要時間**: 1.5日
 
 ---
 
-## 保留中のタスク
+## 実施順序
 
-### logger.ts の分割 【次回PRで対応】
+1. **P2タスク（Quick Wins）**: Task 1-3を順次実施（1.2日）
+2. **P3タスク（設計改善）**: Task 4を実施（1.0日）
+3. **P0タスク（最優先）**: Task 5を実施（3.0日）
+4. **P1タスク（大規模リファクタリング）**: Task 6-7は必要に応じて実施
 
-**背景**: 1,123行と大きいが、内部状態（config, ファイルハンドル等）の共有が複雑
-
-**理由**: 慎重に設計する必要があるため、別PRで対応予定
-
----
-
-### Phase I2: CUI/GUI差分表示の統合テスト 【必要に応じて実施】
-
-**目的**: CUIモードとGUIモードで同じ差分が表示されることを検証
-
-**実装内容**:
-
-- [ ] Docker環境でのCUI差分表示テスト
-- [ ] GUI WebSocket経由の差分表示テスト
-- [ ] 結果の一致を確認
-
-**所要時間**: 1.0日
+**総所要時間**: 5.2日（P2-P0完了まで）
 
 ---
 
-### Phase I3: 大規模パフォーマンステスト 【ユーザー報告時に実施】
+## 進捗管理
 
-**目的**: 大規模プロジェクト（10,000ファイル以上）でのパフォーマンス検証
-
-**実施タイミング**: ユーザーからパフォーマンス問題の報告があった場合
-
----
-
-### diff viewer 仮想スクロール 【将来的な改善】
-
-**目的**: 大量ファイル表示時のブラウザパフォーマンス改善
-
-**実装内容**:
-
-- [ ] 表示範囲のDOMのみ生成
-- [ ] スクロール位置に応じて動的にDOM更新
-- [ ] または: ページネーション（100件ずつ表示）
+- [ ] Task 1: converters.tsのignorePatterns重複解消（0.5日）
+- [ ] Task 2: removeUndefinedPropsの型安全化（0.2日）
+- [ ] Task 3: filesByTargetのMap型改善（0.5日）
+- [ ] Task 4: エラーハンドリング統一（1.0日）
+- [ ] Task 5-1: sftp.tsのテスト追加（1.0日）
+- [ ] Task 5-2: rsync.tsのテスト追加（1.2日）
+- [ ] Task 5-3: progress.tsのテスト追加（0.8日）
 
 ---
 
-## 良い点
+## アーカイブ管理方針
 
-### 1. 統合テストの充実
+### 現状
 
-- `tests/integration/5_mirror_mode_test.ts`
-  で全プロトコル（rsync/sftp/scp/local）をテスト
-- 501行の包括的なテストケース
-- ignoreパターン、削除検出、ベースディレクトリなど重要シナリオをカバー
+- TODO_ARCHIVE.md: 1215行（膨大）
+- 古い完了タスクが蓄積
 
-### 2. 設計の整合性
+### 提案する管理方針
 
-- `applyIgnoreFilter()` を使った統一的なignore処理
-- `prepareMirrorSync()` による削除ファイル検出の一元化
-- エラーハンドリングの一貫性
+**オプションA: 定期的な圧縮**
 
-### 3. UXの改善
+- 6ヶ月以上前の完了タスクを削除
+- 設計判断の記録など、重要なもののみ残す
+- 削除基準: 単純な機能追加タスク、バグ修正タスク
 
-- CUI表示の50件制限と警告メッセージ
-- ターゲット毎の独立表示で混乱を回避
-- ブラウザモード推奨の適切なガイダンス
+**オプションB: 年単位での分割**
+
+- TODO_ARCHIVE_2025.md、TODO_ARCHIVE_2026.mdのように分割
+- 各年の完了タスクを別ファイルで管理
+- メリット: 履歴が残る、参照しやすい
+
+**オプションC: 重要度別の分割**
+
+- TODO_ARCHIVE_IMPORTANT.md（設計判断、アーキテクチャ変更）
+- TODO_ARCHIVE_MINOR.md（小規模な機能追加、バグ修正）
+- 後者は定期的に削除
+
+**推奨**: **オプションB + C のハイブリッド**
+
+1. 年単位で分割（TODO_ARCHIVE_2026.md）
+2. 各年のアーカイブ内で重要度をマーク（## 重要な設計判断、## 通常のタスク）
+3. 2年以上前の「通常のタスク」は削除対象として検討
 
 ---
 
 ## 技術メモ
 
-### 依存関係
-
-```json
-{
-  "imports": {
-    "@std/yaml": "jsr:@std/yaml@^1",
-    "@std/path": "jsr:@std/path@^1",
-    "@std/fs": "jsr:@std/fs@^1",
-    "@std/fmt": "jsr:@std/fmt@^1",
-    "@std/cli": "jsr:@std/cli@^1",
-    "ssh2": "npm:ssh2@^1"
-  }
-}
-```
-
-### 終了コード
-
-| コード | 意味                 |
-| ------ | -------------------- |
-| 0      | 成功                 |
-| 1      | 一般エラー           |
-| 2      | 設定ファイルエラー   |
-| 3      | 認証エラー           |
-| 4      | 接続エラー           |
-| 5      | 一部ファイル転送失敗 |
-
-### 統合テストの実行方法
+### テストカバレッジの確認方法
 
 ```bash
-# 1. SSH鍵を生成（初回のみ）
-./tests/integration/scripts/setup-ssh-keys.sh
-
-# 2. Dockerコンテナを起動
-docker compose -f docker-compose.test.yml up -d
-
-# 3. テストを実行
-deno test tests/integration/
-
-# 4. コンテナを停止
-docker compose -f docker-compose.test.yml down
-```
-
-### テストカバレッジの確認
-
-```bash
+# カバレッジ測定
 deno task test --coverage=coverage
+
+# レポート生成
 deno coverage coverage --lcov --output=coverage.lcov
+
+# ファイル別カバレッジ確認
+deno coverage coverage | grep "src/upload"
+```
+
+### 型チェック
+
+```bash
+deno check main.ts
+deno lint
+deno fmt --check
 ```
