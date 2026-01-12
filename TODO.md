@@ -1,6 +1,17 @@
 # uploader 実装TODO
 
-完了済みタスクは [TODO_ARCHIVE.md](./TODO_ARCHIVE.md) を参照。
+過去の完了タスクはgit履歴を参照してください。
+
+```bash
+# 過去のTODO.mdを見る
+git log -p TODO.md
+
+# 特定のコミットを見る
+git show <commit-hash>:TODO.md
+
+# 削除前の最後のアーカイブを見る
+git show c37630c:TODO_ARCHIVE.md
+```
 
 ---
 
