@@ -269,69 +269,16 @@ describe("diffFilesToUploadFiles", () => {
     assertEquals(added.changeType, "add");
   });
 
-  it("ignoreパターンを適用してファイルをフィルタリング", async () => {
-    const files: DiffFile[] = [
-      { path: "src/index.ts", status: "A" },
-      { path: "debug.log", status: "A" },
-      { path: "node_modules/foo/index.js", status: "A" },
-    ];
-
-    // ignoreパターンを適用
-    const result = await diffFilesToUploadFiles(files, "HEAD", [
-      "*.log",
-      "node_modules/",
-    ]);
-
-    // debug.log と node_modules/ 配下が除外される
-    // src/index.ts が存在しない場合はスキップされるため、結果は空か1つ
-    const logFile = result.find((f) => f.relativePath === "debug.log");
-    assertEquals(logFile, undefined);
-
-    const nodeModulesFile = result.find((f) =>
-      f.relativePath.startsWith("node_modules/")
-    );
-    assertEquals(nodeModulesFile, undefined);
-  });
-
-  it("ignoreパターンが空の場合は全てのファイルを処理", async () => {
-    const files: DiffFile[] = [
-      { path: "deleted1.txt", status: "D" },
-      { path: "deleted2.txt", status: "D" },
-    ];
-
-    const result = await diffFilesToUploadFiles(files, "HEAD", []);
-
-    assertEquals(result.length, 2);
-    assertEquals(result[0].relativePath, "deleted1.txt");
-    assertEquals(result[1].relativePath, "deleted2.txt");
-  });
-
-  it("ignoreパターンを省略した場合はフィルタリングなし", async () => {
+  it("フィルタリングなしで全てのファイルを処理", async () => {
     const files: DiffFile[] = [
       { path: "file1.txt", status: "D" },
       { path: "file2.txt", status: "D" },
     ];
 
-    // ignorePatterns を省略
     const result = await diffFilesToUploadFiles(files, "HEAD");
 
     assertEquals(result.length, 2);
-  });
-
-  it("削除ファイルもignoreパターンで除外される", async () => {
-    const files: DiffFile[] = [
-      { path: "src/index.ts", status: "D" },
-      { path: "debug.log", status: "D" },
-      { path: "node_modules/foo/index.js", status: "D" },
-    ];
-
-    const result = await diffFilesToUploadFiles(files, "HEAD", [
-      "*.log",
-      "node_modules/",
-    ]);
-
-    // src/index.ts のみ残る
-    assertEquals(result.length, 1);
-    assertEquals(result[0].relativePath, "src/index.ts");
+    assertEquals(result[0].relativePath, "file1.txt");
+    assertEquals(result[1].relativePath, "file2.txt");
   });
 });

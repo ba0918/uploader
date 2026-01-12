@@ -20,6 +20,7 @@ import {
 import { collectFiles, FileCollectError } from "./src/file/mod.ts";
 import { getDiff, GitCommandError } from "./src/git/mod.ts";
 import {
+  applyIgnoreFilter,
   collectedFilesToUploadFiles,
   diffFilesToUploadFiles,
   uploadToTargets,
@@ -265,6 +266,8 @@ async function main(): Promise<number> {
         ? (profile.from.target || "HEAD")
         : "HEAD";
       uploadFiles = await diffFilesToUploadFiles(diffResult.files, targetRef);
+      // ignoreパターンを適用
+      uploadFiles = applyIgnoreFilter(uploadFiles, profile.ignore);
     } else if (fileResult) {
       // ファイルモード: 収集ファイルをアップロードファイルに変換
       uploadFiles = collectedFilesToUploadFiles(fileResult.files);

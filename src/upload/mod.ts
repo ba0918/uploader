@@ -20,5 +20,8 @@ export {
   diffFilesToUploadFiles,
 } from "./converters.ts";
 
+// フィルタリング
+export { applyIgnoreFilter } from "./filter.ts";
+
 // アップロード実行
 export { uploadToTarget, uploadToTargets } from "./executor.ts";
