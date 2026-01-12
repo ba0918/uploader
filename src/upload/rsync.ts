@@ -514,23 +514,36 @@ export class RsyncUploader extends SshBaseUploader {
 
       if (code !== 0) {
         const errorMsg = new TextDecoder().decode(stderr);
-        // 接続/認証エラーの場合は例外をスロー
-        if (isSshAuthError(errorMsg)) {
+
+        // エラーコード23 (RERR_PARTIAL): 一部のファイル/属性が転送されなかった
+        // getDiff()の場合、これは致命的なエラーではない（差分情報は取得できている）
+        if (code === 23) {
+          logVerbose(
+            `[RsyncUploader.getDiff] Partial transfer (code 23): ${
+              errorMsg.substring(0, 200)
+            }`,
+          );
+          // 警告のみ表示して続行（差分情報は有効）
+        } else {
+          // その他のエラーは例外をスロー
+          // 接続/認証エラーの場合は例外をスロー
+          if (isSshAuthError(errorMsg)) {
+            throw new UploadError(
+              `Authentication failed: ${this.options.host}`,
+              "AUTH_ERROR",
+            );
+          }
+          if (isConnectionRefusedError(errorMsg)) {
+            throw new UploadError(
+              `Connection refused: ${this.options.host}`,
+              "CONNECTION_ERROR",
+            );
+          }
           throw new UploadError(
-            `Authentication failed: ${this.options.host}`,
-            "AUTH_ERROR",
+            `rsync diff failed: ${errorMsg}`,
+            "TRANSFER_ERROR",
           );
         }
-        if (isConnectionRefusedError(errorMsg)) {
-          throw new UploadError(
-            `Connection refused: ${this.options.host}`,
-            "CONNECTION_ERROR",
-          );
-        }
-        throw new UploadError(
-          `rsync diff failed: ${errorMsg}`,
-          "TRANSFER_ERROR",
-        );
       }
 
       // 出力をパース
