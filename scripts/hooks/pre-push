@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+# Pre-push hook for uploader project
+# このフックはpush前に以下のチェックを実行します:
+#   1. 型チェック (deno check)
+#   2. Lintチェック (deno lint)
+#   3. 全テスト実行 (deno task test)
+#
+# インストール方法:
+#   deno task install-hooks
+#
+# 一時的にスキップする方法:
+#   git push --no-verify
+#
+
+set -e
+
+echo "🚀 Running pre-push checks..."
+echo ""
+
+# 色の定義
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# push対象のブランチ情報を取得
+remote="$1"
+url="$2"
+
+echo -e "${BLUE}ℹ️  Pushing to: ${remote} (${url})${NC}"
+echo ""
+
+# 1. 型チェック
+echo "📝 Type checking..."
+if ! deno check main.ts > /dev/null 2>&1; then
+    echo -e "${RED}❌ Type check failed!${NC}"
+    echo "Fix type errors before pushing."
+    echo "Run 'deno check main.ts' to see errors."
+    exit 1
+fi
+echo -e "${GREEN}✓ Type check passed${NC}"
+echo ""
+
+# 2. Lintチェック
+echo "🔎 Running lint..."
+if ! deno lint --quiet; then
+    echo -e "${RED}❌ Lint check failed!${NC}"
+    echo "Run 'deno lint' to see errors and fix them."
+    exit 1
+fi
+echo -e "${GREEN}✓ Lint check passed${NC}"
+echo ""
+
+# 3. 全テスト実行
+echo "🧪 Running all tests..."
+echo "This may take a few minutes..."
+if ! deno task test --quiet 2>&1 | tail -5; then
+    echo ""
+    echo -e "${RED}❌ Tests failed!${NC}"
+    echo "Fix failing tests before pushing."
+    echo "Run 'deno task test' to see details."
+    exit 1
+fi
+echo -e "${GREEN}✓ All tests passed${NC}"
+echo ""
+
+echo -e "${GREEN}✅ All pre-push checks passed!${NC}"
+echo "Proceeding with push..."

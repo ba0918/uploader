@@ -972,6 +972,57 @@ docker compose -f docker-compose.test.yml down
 Dockerが起動していない場合、SFTP/SCPテストは自動的にスキップされます。
 Gitテストはローカル一時リポジトリを使用するため、Dockerなしで実行可能です。
 
+### Git Hooks
+
+コミット前・プッシュ前に自動で品質チェックを実行するGit hooksを提供しています。
+
+```sh
+# Git hooksをインストール
+deno task install-hooks
+```
+
+#### Pre-commit Hook
+
+コミット時に以下のチェックが自動実行されます：
+
+1. **型チェック** (`deno check main.ts`)
+2. **Lintチェック** (`deno lint`)
+3. **フォーマットチェック** (`deno fmt --check`)
+4. **テスト実行** (`deno task test`)
+
+チェックが失敗するとコミットが中断されます。
+
+#### Pre-push Hook
+
+プッシュ時に以下のチェックが自動実行されます：
+
+1. **型チェック** (`deno check main.ts`)
+2. **Lintチェック** (`deno lint`)
+3. **全テスト実行** (`deno task test`)
+
+チェックが失敗するとプッシュが中断されます。他の開発者に影響を与える前に問題を検出します。
+
+#### Hooksを一時的にスキップする
+
+```sh
+# コミット時
+git commit --no-verify -m "WIP: 作業中のコミット"
+
+# プッシュ時
+git push --no-verify
+```
+
+#### Hooksを無効化する
+
+```sh
+# 個別に削除
+rm .git/hooks/pre-commit
+rm .git/hooks/pre-push
+
+# 全て削除
+rm .git/hooks/pre-*
+```
+
 ## License
 
 MIT

@@ -1,0 +1,80 @@
+#!/bin/bash
+#
+# Pre-commit hook for uploader project
+# このフックは以下のチェックを実行します:
+#   1. 型チェック (deno check)
+#   2. Lintチェック (deno lint)
+#   3. フォーマットチェック (deno fmt --check)
+#   4. テスト実行 (deno task test)
+#
+# インストール方法:
+#   deno task install-hooks
+#
+# 一時的にスキップする方法:
+#   git commit --no-verify
+#
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+echo ""
+
+# 色の定義
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# 1. 型チェック
+echo "📝 Type checking..."
+if ! deno check main.ts > /dev/null 2>&1; then
+    echo -e "${RED}❌ Type check failed!${NC}"
+    echo "Fix type errors before committing."
+    echo "Run 'deno check main.ts' to see errors."
+    exit 1
+fi
+echo -e "${GREEN}✓ Type check passed${NC}"
+echo ""
+
+# 2. Lintチェック
+echo "🔎 Running lint..."
+if ! deno lint --quiet; then
+    echo -e "${RED}❌ Lint check failed!${NC}"
+    echo "Run 'deno lint' to see errors and fix them."
+    exit 1
+fi
+echo -e "${GREEN}✓ Lint check passed${NC}"
+echo ""
+
+# 3. フォーマットチェック
+echo "💅 Checking code format..."
+if ! deno fmt --check --quiet; then
+    echo -e "${YELLOW}⚠️  Code formatting issues found${NC}"
+    echo "Run 'deno fmt' to fix formatting."
+    echo ""
+    read -p "Do you want to auto-format and continue? (y/N) " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        deno fmt
+        echo -e "${GREEN}✓ Code formatted${NC}"
+    else
+        echo -e "${RED}❌ Commit aborted${NC}"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓ Code format check passed${NC}"
+fi
+echo ""
+
+# 4. テスト実行
+echo "🧪 Running tests..."
+if ! deno task test --quiet 2>&1 | tail -5; then
+    echo -e "${RED}❌ Tests failed!${NC}"
+    echo "Fix failing tests before committing."
+    exit 1
+fi
+echo -e "${GREEN}✓ All tests passed${NC}"
+echo ""
+
+echo -e "${GREEN}✅ All pre-commit checks passed!${NC}"
+echo "Proceeding with commit..."
