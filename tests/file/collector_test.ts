@@ -139,7 +139,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["file.txt"], {
+      const result = await collectFiles("file.txt", {
         baseDir: "/project",
         fs,
       });
@@ -157,7 +157,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["/project/file.txt"], {
+      const result = await collectFiles("/project/file.txt", {
         baseDir: "/project",
         fs,
       });
@@ -184,7 +184,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["dist"], {
+      const result = await collectFiles("dist", {
         baseDir: "/project",
         fs,
       });
@@ -213,7 +213,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["dist/"], {
+      const result = await collectFiles("dist/", {
         baseDir: "/project",
         fs,
       });
@@ -242,7 +242,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["src/"], {
+      const result = await collectFiles("src/", {
         baseDir: "/project",
         fs,
       });
@@ -271,7 +271,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["src/"], {
+      const result = await collectFiles("src/", {
         baseDir: "/project",
         ignorePatterns: ["*.log"],
         fs,
@@ -298,7 +298,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["src/"], {
+      const result = await collectFiles("src/", {
         baseDir: "/project",
         ignorePatterns: ["node_modules"],
         fs,
@@ -307,54 +307,6 @@ describe("collectFiles", () => {
       assertEquals(result.fileCount, 1);
       assertEquals(result.directoryCount, 0);
       assertEquals(result.files[0].relativePath, "index.ts");
-    });
-  });
-
-  describe("複数ソース", () => {
-    it("複数ソースからファイルを収集する", async () => {
-      const fs = createMockFileSystem(
-        new Map([
-          [
-            "/project",
-            mockDir({
-              src: mockDir({ "index.ts": mockFile(100) }),
-              docs: mockDir({ "README.md": mockFile(200) }),
-            }),
-          ],
-        ]),
-      );
-
-      const result = await collectFiles(["src/", "docs/"], {
-        baseDir: "/project",
-        fs,
-      });
-
-      assertEquals(result.fileCount, 2);
-      const paths = result.files.map((f) => f.relativePath).sort();
-      assertEquals(paths, ["README.md", "index.ts"]);
-    });
-
-    it("重複するファイルは除去される", async () => {
-      const fs = createMockFileSystem(
-        new Map([
-          [
-            "/project",
-            mockDir({
-              src: mockDir({
-                "index.ts": mockFile(100),
-              }),
-            }),
-          ],
-        ]),
-      );
-
-      // 同じソースを2回指定
-      const result = await collectFiles(["src/", "src/"], {
-        baseDir: "/project",
-        fs,
-      });
-
-      assertEquals(result.fileCount, 1);
     });
   });
 
@@ -368,7 +320,7 @@ describe("collectFiles", () => {
 
       await assertRejects(
         () =>
-          collectFiles(["nonexistent"], {
+          collectFiles("nonexistent", {
             baseDir: "/project",
             fs,
           }),
@@ -397,7 +349,7 @@ describe("collectFiles", () => {
         ]),
       );
 
-      const result = await collectFiles(["dist/"], {
+      const result = await collectFiles("dist/", {
         baseDir: "/project",
         fs,
       });
@@ -583,7 +535,7 @@ describe("シンボリックリンク対応", () => {
 
     const fs = createSymlinkMockFileSystem(structure, symlinks);
 
-    const result = await collectFiles(["src/"], {
+    const result = await collectFiles("src/", {
       baseDir: "/project",
       followSymlinks: true,
       fs,
@@ -618,7 +570,7 @@ describe("シンボリックリンク対応", () => {
 
     const fs = createSymlinkMockFileSystem(structure, symlinks);
 
-    const result = await collectFiles(["src/"], {
+    const result = await collectFiles("src/", {
       baseDir: "/project",
       followSymlinks: true,
       fs,
@@ -647,7 +599,7 @@ describe("シンボリックリンク対応", () => {
 
     const fs = createSymlinkMockFileSystem(structure, symlinks);
 
-    const result = await collectFiles(["src/"], {
+    const result = await collectFiles("src/", {
       baseDir: "/project",
       followSymlinks: false,
       fs,
@@ -683,7 +635,7 @@ describe("エラーハンドリング追加ケース", () => {
 
     await assertRejects(
       () =>
-        collectFiles(["file.txt"], {
+        collectFiles("file.txt", {
           baseDir: "/project",
           fs,
         }),
@@ -693,9 +645,8 @@ describe("エラーハンドリング追加ケース", () => {
   });
 });
 
-describe("重複除去の詳細ケース", () => {
-  it("同じファイルがディレクトリとしても存在する場合、ファイルが優先される", async () => {
-    // この挙動はcollectFilesの重複除去ロジックをテスト
+describe("単一ソース収集の検証", () => {
+  it("ディレクトリパスでファイルを収集できる", async () => {
     const fs = createMockFileSystem(
       new Map([
         [
@@ -709,8 +660,7 @@ describe("重複除去の詳細ケース", () => {
       ]),
     );
 
-    // 同じソースを2回指定しても重複は除去される
-    const result = await collectFiles(["dist/", "dist/"], {
+    const result = await collectFiles("dist/", {
       baseDir: "/project",
       fs,
     });

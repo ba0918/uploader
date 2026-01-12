@@ -40,7 +40,7 @@ function formatProfileDetail(profile: ProfileConfig): string[] {
     }
   } else {
     lines.push(`  ${dim("type:")} ${green("file")}`);
-    lines.push(`  ${dim("src:")} ${profile.from.src.join(", ")}`);
+    lines.push(`  ${dim("src:")} ${profile.from.src}`);
   }
 
   // ターゲット情報

@@ -156,7 +156,7 @@ describe("validateConfig", () => {
     const validFileProfile = {
       from: {
         type: "file",
-        src: ["dist/", "public/"],
+        src: "dist/",
       },
       to: {
         targets: [
@@ -185,93 +185,30 @@ describe("validateConfig", () => {
             },
           }),
         ConfigValidationError,
-        "file モードでは src (配列) は必須です",
+        "file モードでは src (文字列) は必須です",
       );
     });
 
-    it("srcが配列でない場合は無効", () => {
+    it("srcが文字列でない場合は無効", () => {
       assertThrows(
         () =>
           validateConfig({
             staging: {
-              from: { type: "file", src: "not-array" },
+              from: { type: "file", src: 123 },
               to: validFileProfile.to,
             },
           }),
         ConfigValidationError,
-        "file モードでは src (配列) は必須です",
+        "file モードでは src (文字列) は必須です",
       );
     });
 
-    it("src要素が文字列でない場合は無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            staging: {
-              from: { type: "file", src: [123] },
-              to: validFileProfile.to,
-            },
-          }),
-        ConfigValidationError,
-        "src の各要素は文字列である必要があります",
-      );
-    });
-
-    it("複数srcでsync_mode=mirrorは無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            staging: {
-              from: {
-                type: "file",
-                src: ["/path/to/bbs", "/path/to/scripts"],
-              },
-              to: {
-                targets: [
-                  {
-                    host: "localhost",
-                    protocol: "local",
-                    dest: "/tmp/deploy/",
-                    sync_mode: "mirror",
-                  },
-                ],
-              },
-            },
-          }),
-        ConfigValidationError,
-        '複数のsrcでsync_mode="mirror"は使用できません',
-      );
-    });
-
-    it("複数srcでsync_mode=updateは有効", () => {
+    it("srcでsync_mode=mirrorは有効", () => {
       const result = validateConfig({
         staging: {
           from: {
             type: "file",
-            src: ["/path/to/bbs", "/path/to/scripts"],
-          },
-          to: {
-            targets: [
-              {
-                host: "localhost",
-                protocol: "local",
-                dest: "/tmp/deploy/",
-                sync_mode: "update",
-              },
-            ],
-          },
-        },
-      });
-      const profile = getProfile(result, "staging");
-      assertEquals(profile?.from.type, "file");
-    });
-
-    it("単一srcでsync_mode=mirrorは有効", () => {
-      const result = validateConfig({
-        staging: {
-          from: {
-            type: "file",
-            src: ["/path/to/bbs"],
+            src: "/path/to/bbs",
           },
           to: {
             targets: [
@@ -280,59 +217,6 @@ describe("validateConfig", () => {
                 protocol: "local",
                 dest: "/tmp/deploy/",
                 sync_mode: "mirror",
-              },
-            ],
-          },
-        },
-      });
-      const profile = getProfile(result, "staging");
-      assertEquals(profile?.from.type, "file");
-    });
-
-    it("複数srcでdefaults.sync_mode=mirrorは無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            staging: {
-              from: {
-                type: "file",
-                src: ["/path/to/bbs", "/path/to/scripts"],
-              },
-              to: {
-                defaults: {
-                  host: "localhost",
-                  protocol: "local",
-                  sync_mode: "mirror",
-                },
-                targets: [
-                  {
-                    dest: "/tmp/deploy/",
-                  },
-                ],
-              },
-            },
-          }),
-        ConfigValidationError,
-        '複数のsrcでsync_mode="mirror"は使用できません',
-      );
-    });
-
-    it("複数srcでdefaults.sync_mode=updateは有効", () => {
-      const result = validateConfig({
-        staging: {
-          from: {
-            type: "file",
-            src: ["/path/to/bbs", "/path/to/scripts"],
-          },
-          to: {
-            defaults: {
-              host: "localhost",
-              protocol: "local",
-              sync_mode: "update",
-            },
-            targets: [
-              {
-                dest: "/tmp/deploy/",
               },
             ],
           },
@@ -363,7 +247,7 @@ describe("validateConfig", () => {
 
   describe("ターゲット検証", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
     };
 
     it("有効なSFTPターゲットは通過する", () => {
@@ -583,21 +467,21 @@ describe("validateConfig", () => {
 });
 
 describe("hasProfile", () => {
-  const config = {
+  const config = validateConfig({
     _global: {},
     development: {
-      from: { type: "git" as const, base: "main" },
+      from: { type: "git", base: "main" },
       to: {
-        targets: [{ host: "localhost", protocol: "local" as const, dest: "/" }],
+        targets: [{ host: "localhost", protocol: "local", dest: "/" }],
       },
     },
     staging: {
-      from: { type: "file" as const, src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
       to: {
-        targets: [{ host: "localhost", protocol: "local" as const, dest: "/" }],
+        targets: [{ host: "localhost", protocol: "local", dest: "/" }],
       },
     },
-  };
+  });
 
   it("存在するプロファイルはtrueを返す", () => {
     assertEquals(hasProfile(config, "development"), true);
@@ -653,7 +537,7 @@ describe("getProfileNames", () => {
         },
       },
       staging: {
-        from: { type: "file" as const, src: ["dist/"] },
+        from: { type: "file" as const, src: "dist/" },
         to: {
           targets: [
             { host: "localhost", protocol: "local" as const, dest: "/" },
@@ -722,7 +606,7 @@ describe("エラーパス検証", () => {
         () =>
           validateConfig({
             test: {
-              from: { type: "file", src: ["dist/"] },
+              from: { type: "file", src: "dist/" },
               to: "not-object",
             },
           }),
@@ -736,7 +620,7 @@ describe("エラーパス検証", () => {
         () =>
           validateConfig({
             test: {
-              from: { type: "file", src: ["dist/"] },
+              from: { type: "file", src: "dist/" },
               to: { targets: "not-array" },
             },
           }),
@@ -748,7 +632,7 @@ describe("エラーパス検証", () => {
 
   describe("ターゲットの検証", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
     };
 
     it("ターゲットがオブジェクトでない場合は無効", () => {
@@ -770,7 +654,7 @@ describe("エラーパス検証", () => {
 
   describe("defaultsの検証", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
     };
 
     it("defaultsがオブジェクトでない場合は無効", () => {
@@ -1084,7 +968,7 @@ describe("ignore_groups バリデーション", () => {
 
   describe("ターゲットの ignore 設定", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
     };
 
     it("有効なignore設定（use）は通過する", () => {

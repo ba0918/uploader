@@ -41,7 +41,7 @@ export interface GitSource {
 /** File ソース設定 */
 export interface FileSource {
   type: "file";
-  src: string[];
+  src: string;
 }
 
 /** ソース設定 */

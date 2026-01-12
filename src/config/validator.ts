@@ -237,58 +237,6 @@ function validateProfile(
     globalConfig,
   );
 
-  // 複数srcでmirrorモードは禁止
-  if (
-    validatedFrom.type === "file" &&
-    validatedFrom.src.length > 1
-  ) {
-    // defaults.sync_mode をチェック
-    if (validatedTo.defaults?.sync_mode === "mirror") {
-      throw new ConfigValidationError(
-        `複数のsrcでsync_mode="mirror"は使用できません。
-
-理由: 複数srcからのファイルが混在する場合、リモート専用ファイルを
-正しく判定できないため、意図しないファイル削除が発生する可能性があります。
-
-対処法:
-1. sync_mode="update"を使用（追加・更新のみ、削除なし）
-2. 各srcごとに別プロファイルを作成
-   例:
-     profile_bbs:
-       from: { type: file, src: ["/path/to/bbs"] }
-       to: { targets: [{ dest: "/upload/bbs", sync_mode: mirror }] }
-     profile_scripts:
-       from: { type: file, src: ["/path/to/scripts"] }
-       to: { targets: [{ dest: "/upload/scripts", sync_mode: mirror }] }`,
-        `${name}.to.defaults.sync_mode`,
-      );
-    }
-
-    // 各ターゲットの sync_mode をチェック
-    for (const target of validatedTo.targets) {
-      if (target.sync_mode === "mirror") {
-        throw new ConfigValidationError(
-          `複数のsrcでsync_mode="mirror"は使用できません。
-
-理由: 複数srcからのファイルが混在する場合、リモート専用ファイルを
-正しく判定できないため、意図しないファイル削除が発生する可能性があります。
-
-対処法:
-1. sync_mode="update"を使用（追加・更新のみ、削除なし）
-2. 各srcごとに別プロファイルを作成
-   例:
-     profile_bbs:
-       from: { type: file, src: ["/path/to/bbs"] }
-       to: { targets: [{ dest: "/upload/bbs", sync_mode: mirror }] }
-     profile_scripts:
-       from: { type: file, src: ["/path/to/scripts"] }
-       to: { targets: [{ dest: "/upload/scripts", sync_mode: mirror }] }`,
-          `${name}.to.targets`,
-        );
-      }
-    }
-  }
-
   return {
     from: validatedFrom,
     to: validatedTo,
@@ -325,23 +273,15 @@ function validateSource(value: unknown, path: string): SourceConfig {
   }
 
   if (source.type === "file") {
-    if (!source.src || !Array.isArray(source.src)) {
+    if (!source.src || typeof source.src !== "string") {
       throw new ConfigValidationError(
-        "file モードでは src (配列) は必須です",
+        "file モードでは src (文字列) は必須です",
         `${path}.src`,
       );
     }
     return {
       type: "file",
-      src: source.src.map((item, i) => {
-        if (typeof item !== "string") {
-          throw new ConfigValidationError(
-            "src の各要素は文字列である必要があります",
-            `${path}.src[${i}]`,
-          );
-        }
-        return item;
-      }),
+      src: String(source.src),
     };
   }
 

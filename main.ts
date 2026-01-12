@@ -178,7 +178,7 @@ async function main(): Promise<number> {
     if (profile.from.type === "git") {
       fromDetail = `${profile.from.base} → ${profile.from.target || "HEAD"}`;
     } else {
-      fromDetail = profile.from.src.join(", ");
+      fromDetail = profile.from.src;
     }
 
     const targets = profile.to.targets.map((t) => ({
@@ -231,7 +231,7 @@ async function main(): Promise<number> {
       });
     } else {
       // ファイルモード: ファイルを収集
-      logVerbose(`Collecting files from: ${profile.from.src.join(", ")}`);
+      logVerbose(`Collecting files from: ${profile.from.src}`);
       const startTime = Date.now();
       fileResult = await collectFiles(profile.from.src, {
         ignorePatterns: profile.ignore,

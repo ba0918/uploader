@@ -123,7 +123,7 @@ describe("showProfileList", () => {
     it("fileモードのプロファイルを正しく表示する", () => {
       const config: Config = {
         staging: {
-          from: { type: "file", src: ["dist/", "public/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             targets: [
               {
@@ -150,7 +150,7 @@ describe("showProfileList", () => {
     it("複数ターゲットがある場合はサーバー数を表示する", () => {
       const config: Config = {
         production: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             targets: [
               { host: "web1.example.com", protocol: "sftp", dest: "/var/www/" },
@@ -182,7 +182,7 @@ describe("showProfileList", () => {
           },
         },
         staging: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             targets: [
               {
@@ -249,7 +249,7 @@ describe("showProfileList", () => {
     it("defaultsがある場合に表示する", () => {
       const config: Config = {
         production: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             defaults: {
               sync_mode: "mirror",
@@ -279,7 +279,7 @@ describe("showProfileList", () => {
     it("auth_typeがある場合に表示する", () => {
       const config: Config = {
         production: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             defaults: {
               auth_type: "ssh_key",
@@ -303,7 +303,7 @@ describe("showProfileList", () => {
     it("空のdefaultsは表示されない", () => {
       const config: Config = {
         production: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             defaults: {},
             targets: [
@@ -327,7 +327,7 @@ describe("showProfileList", () => {
     it("単一ターゲットでdefaultsからhost/user/protocolを継承する", () => {
       const config: Config = {
         production: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             defaults: {
               host: "default-host.com",
@@ -351,7 +351,7 @@ describe("showProfileList", () => {
     it("複数ターゲットでdefaultsからhost/user/protocolを継承する", () => {
       const config: Config = {
         production: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             defaults: {
               host: "default-host.com",
@@ -376,7 +376,7 @@ describe("showProfileList", () => {
     it("localプロトコルでもターゲット情報は表示される", () => {
       const config: Config = {
         local: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             targets: [
               { host: "localhost", protocol: "local", dest: "/tmp/deploy/" },
@@ -398,7 +398,7 @@ describe("showProfileList", () => {
     it("rsyncプロトコルでターゲット情報が表示される", () => {
       const config: Config = {
         rsync: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             targets: [
               {
@@ -424,7 +424,7 @@ describe("showProfileList", () => {
     it("カスタムポートが正しく表示される", () => {
       const config: Config = {
         custom: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             targets: [
               {
@@ -452,7 +452,7 @@ describe("showProfileList", () => {
     it("環境変数形式のユーザー名がそのまま表示される", () => {
       const config: Config = {
         env_test: {
-          from: { type: "file", src: ["dist/"] },
+          from: { type: "file", src: "dist/" },
           to: {
             targets: [
               {
