@@ -51,13 +51,16 @@ export interface GlobalConfig {
 
 **🔴 緊急度: 高**
 
-`uploader.example.yaml` の `_global.ignore` は現在の実装では**動作しない**のだ。以下の理由によるのだ:
+`uploader.example.yaml` の `_global.ignore`
+は現在の実装では**動作しない**のだ。以下の理由によるのだ:
 
 1. `TODO_ARCHIVE.md` に「後方互換性機能は削除されました」と明記されているのだ
 2. `GlobalConfig` 型定義に `ignore` プロパティが存在しないのだ
-3. バリデーション処理(`src/config/validator.ts`)でも `ignore` 配列は処理されないのだ
+3. バリデーション処理(`src/config/validator.ts`)でも `ignore`
+   配列は処理されないのだ
 
 **必須対応**:
+
 - `_global.ignore` → `_global.ignore_groups` + `default_ignore` に変更
 
 **推奨される構文**:
@@ -81,10 +84,12 @@ _global:
 ### development プロファイル
 
 **ユースケース**: ⭐⭐⭐⭐⭐
+
 - gitモードの典型的な使用例を示しているのだ
 - `origin/main`との差分をSFTPでデプロイする実用的なシナリオなのだ
 
 **設定の完全性**: ⭐⭐⭐⭐☆
+
 - 必要な設定項目はすべて揃っているのだ
 - 環境変数の使用例(`${DEPLOY_USER}`)も示されているのだ
 - ただし、以下の新機能が紹介されていないのだ:
@@ -92,29 +97,35 @@ _global:
   - `sync_mode: "mirror"` の使用例
 
 **ベストプラクティス**: ⭐⭐⭐⭐☆
+
 - 環境変数の使用を示しているのはgoodなのだ
 - SSH鍵認証を推奨しているのもgoodなのだ
 
 **改善提案**:
+
 1. コメントで`sync_mode: "update"`の意味を説明（現在はupdateのみ記載）
 2. `include_untracked`の説明をもう少し詳しく
 
 ### staging プロファイル
 
 **ユースケース**: ⭐⭐⭐⭐⭐
+
 - fileモードの基本的な使用例を示しているのだ
 - ビルド成果物のデプロイという実用的なシナリオなのだ
 
 **設定の完全性**: ⭐⭐⭐☆☆
+
 - 基本設定は揃っているのだ
 - しかし、以下の重要な説明が不足しているのだ:
   - `src: ["dist/"]` の末尾 `/` の意味（ディレクトリ中身のみ）
   - globパターンの使用例が不足
 
 **ベストプラクティス**: ⭐⭐⭐⭐☆
+
 - SSH鍵を使用しているのはgoodなのだ
 
 **改善提案**:
+
 1. `dist/` の末尾スラッシュの説明を追加
 2. globパターンの使用例を追加（例: `"src/**/*.js"`）
 3. 複数ソースの実用的な例を示す
@@ -122,57 +133,69 @@ _global:
 ### production プロファイル
 
 **ユースケース**: ⭐⭐⭐⭐⭐
+
 - **defaults** 機能の優れた使用例なのだ
 - 複数ターゲットへの同時デプロイという実用的なシナリオなのだ
 - rsyncプロトコルの高度な機能（sudo、chmod、chown）を示しているのだ
 
 **設定の完全性**: ⭐⭐⭐⭐⭐
+
 - defaultsとtargetsの継承関係が明確なのだ
 - rsync固有のオプションも網羅されているのだ
 - 個別上書きの例(`timeout: 120`)も示されているのだ
 
 **ベストプラクティス**: ⭐⭐⭐⭐⭐
+
 - パーミッション管理を示しているのだ
 - sudo実行の例を示しているのだ
 - 環境変数の使用を推奨しているのだ
 
 **改善提案**:
+
 1. `sync_mode: "mirror"` の危険性についての警告コメント追加
 2. rsync固有の機能についての説明を充実
 
 ### legacy プロファイル
 
 **ユースケース**: ⭐⭐⭐⭐☆
+
 - 古いサーバー対応という特殊なケースを示しているのだ
 - SCPプロトコルの使用例でもあるのだ
 
 **設定の完全性**: ⭐⭐⭐⭐☆
+
 - `legacy_mode`、パスワード認証の例を示しているのだ
 - セキュリティ面での注意喚起（環境変数推奨）があるのだ
 
 **ベストプラクティス**: ⭐⭐⭐⭐⭐
+
 - パスワードを直接書かず環境変数を使うよう推奨しているのだ
 
 **改善提案**:
+
 1. SCPプロトコルの制限事項を説明（mirrorモード対応など）
 2. `legacy_mode`が具体的に何を有効化するかの説明
 
 ### local プロファイル
 
 **ユースケース**: ⭐⭐⭐⭐⭐
+
 - テスト・検証用の実用的な例なのだ
 - localプロトコルの使用例なのだ
 
 **設定の完全性**: ⭐⭐⭐☆☆
+
 - 基本設定は揃っているのだ
 - しかし、以下の説明が不足しているのだ:
   - localプロトコルで不要な設定項目（port、user、auth_type等）
   - `sync_mode: "mirror"`の使用例
 
 **ベストプラクティス**: ⭐⭐⭐⭐☆
+
 - テスト用途を明確にしているのだ
 
 **改善提案**:
+
 1. localプロトコルでは認証不要であることを明記
 2. mirror modeの例を追加（ローカルコピーでの完全同期）
 3. テスト用途であることをコメントで強調
@@ -210,12 +233,14 @@ _global:
 #### 1. ファイル冒頭部分
 
 現在:
+
 ```yaml
 # uploader 設定ファイルサンプル
 # このファイルを uploader.yaml にコピーして使用してください
 ```
 
 推奨:
+
 ```yaml
 # uploader 設定ファイルサンプル
 #
@@ -234,6 +259,7 @@ _global:
 #### 2. `_global` セクション
 
 現在:
+
 ```yaml
 _global:
   ignore: # 除外パターン（glob形式）
@@ -241,21 +267,22 @@ _global:
 ```
 
 推奨:
+
 ```yaml
 _global:
   # 名前付き除外パターングループ
   # 環境ごとに異なる除外パターンを定義できます
   ignore_groups:
     common:
-      - "*.log"          # ログファイル
-      - ".git/"          # Gitディレクトリ
-      - ".claude/"       # Claudeディレクトリ
-      - "node_modules/"  # Node.js依存関係
+      - "*.log" # ログファイル
+      - ".git/" # Gitディレクトリ
+      - ".claude/" # Claudeディレクトリ
+      - "node_modules/" # Node.js依存関係
 
     development:
-      - "tests/"         # テストファイル
-      - "*.test.ts"      # テストコード
-      - ".env.local"     # ローカル環境変数
+      - "tests/" # テストファイル
+      - "*.test.ts" # テストコード
+      - ".env.local" # ローカル環境変数
 
   # デフォルトで適用するグループ（ignore未指定時）
   default_ignore:
@@ -265,34 +292,38 @@ _global:
 #### 3. 各プロファイルの設定項目
 
 **sync_mode**:
+
 ```yaml
-sync_mode: "update"  # update: 追加・更新のみ / mirror: 完全同期（リモート専用ファイルを削除）
+sync_mode: "update" # update: 追加・更新のみ / mirror: 完全同期（リモート専用ファイルを削除）
 ```
 
 **src**:
+
 ```yaml
 src:
-  - "dist/"           # 末尾スラッシュ: ディレクトリの中身のみアップロード
-  - "public/assets/"  # 例: dist/内のファイルが直接destにアップロードされる
+  - "dist/" # 末尾スラッシュ: ディレクトリの中身のみアップロード
+  - "public/assets/" # 例: dist/内のファイルが直接destにアップロードされる
   # - "dist"          # スラッシュなし: ディレクトリ自体をアップロード（dest/distになる）
 ```
 
 **rsync関連**:
+
 ```yaml
-rsync_path: "sudo rsync"  # リモート側でsudo権限でrsyncを実行
-rsync_options:            # rsync追加オプション（man rsyncで確認）
-  - "--chmod=D755,F644"   # パーミッション設定（ディレクトリ755、ファイル644）
-  - "--chown=www-data:www-data"  # 所有者・グループ変更
+rsync_path: "sudo rsync" # リモート側でsudo権限でrsyncを実行
+rsync_options: # rsync追加オプション（man rsyncで確認）
+  - "--chmod=D755,F644" # パーミッション設定（ディレクトリ755、ファイル644）
+  - "--chown=www-data:www-data" # 所有者・グループ変更
 ```
 
 **defaults**:
+
 ```yaml
 to:
   # 全ターゲット共通の設定
   # 各ターゲットで個別に指定すると上書きされます
   # 配列（rsync_options等）は完全に置き換え（マージではない）
   defaults:
-    # ...
+  # ...
 
   targets:
     # destは各ターゲットで必須（defaultsに含められない）
@@ -312,7 +343,7 @@ to:
 # 使い方: uploader development
 # 説明: origin/mainとHEADの差分をSFTPでweb1.example.comにアップロード
 development:
-  # ...
+# ...
 ```
 
 ---
@@ -322,21 +353,25 @@ development:
 ### uploader.test.yaml との比較
 
 **構文の違い**:
+
 - `uploader.example.yaml`: `_global.ignore` (旧構文)
 - `uploader.test.yaml`: `_global.ignore_groups` + `default_ignore` (新構文)
 
 **判定**: **更新漏れ**
+
 - これは意図的な違いではなく、example.yamlの更新が追いついていないのだ
 - test.yamlは最新の実装に基づいているのだ
 
 ### CLAUDE.md との整合性
 
 CLAUDE.mdの記述:
+
 ```markdown
 - `_global.ignore`: グローバル除外パターン
 ```
 
 **矛盾点**:
+
 - CLAUDE.mdも旧構文を記載しているのだ
 - 最新の仕様(`ignore_groups` + `default_ignore`)に更新が必要なのだ
 
@@ -345,6 +380,7 @@ CLAUDE.mdの記述:
 README.mdには新旧両方の記述があるのだ:
 
 **旧構文の記述**（後方互換として記載）:
+
 ```yaml
 _global:
   # 基本的なignore設定（後方互換）
@@ -353,6 +389,7 @@ _global:
 ```
 
 **新構文の記述**（推奨として記載）:
+
 ```yaml
 _global:
   # 名前付きignoreグループを定義
@@ -362,12 +399,14 @@ _global:
 ```
 
 **問題点**:
+
 - README.mdは「後方互換」と記載しているが、実装は削除済みなのだ
 - ユーザーが誤解する可能性があるのだ
 
 ### SPEC.md との整合性
 
 SPEC.mdにも同様の記述があるのだ:
+
 ```yaml
 # 後方互換: 旧来のignore（非推奨）
 # ignore:
@@ -381,6 +420,7 @@ SPEC.mdにも同様の記述があるのだ:
 **使用可能な設定項目**（`src/types/config.ts`より）:
 
 `TargetConfig`で定義されているすべての項目:
+
 - ✅ host, protocol, port, user, auth_type, key_file, password
 - ✅ dest, sync_mode, preserve_permissions, preserve_timestamps
 - ✅ timeout, retry
@@ -421,6 +461,7 @@ SPEC.mdにも同様の記述があるのだ:
 - **総合**: ⭐⭐⭐☆☆
 
 **主な問題点**:
+
 1. 🔴 **critical**: `_global.ignore`が動作しない（旧構文）
 2. 🟡 ターゲット固有の`ignore`設定の例がない
 3. 🟡 mirrorモードの危険性についての警告がない
@@ -446,7 +487,7 @@ SPEC.mdにも同様の記述があるのだ:
 
 2. **mirrorモードの危険性について警告を追加**
    ```yaml
-   sync_mode: "mirror"  # ⚠️ 注意: リモート専用ファイルを削除します！
+   sync_mode: "mirror" # ⚠️ 注意: リモート専用ファイルを削除します！
    ```
 
 3. **CLAUDE.mdの更新**
@@ -552,9 +593,9 @@ SPEC.mdにも同様の記述があるのだ:
 13. **glob パターンの使用例を追加**
     ```yaml
     src:
-      - "src/**/*.js"       # src/以下のすべての.jsファイル
-      - "public/assets/**"  # public/assets/以下のすべてのファイル
-      - "dist/"             # dist/の中身のみ
+      - "src/**/*.js" # src/以下のすべての.jsファイル
+      - "public/assets/**" # public/assets/以下のすべてのファイル
+      - "dist/" # dist/の中身のみ
     ```
 
 ---
@@ -640,6 +681,7 @@ SPEC.mdにも同様の記述があるのだ:
 
 `uploader.example.yaml`は実用的なプロファイル例を提供しているものの、**致命的な問題として旧構文を使用しており、現在の実装では動作しない**のだ。
 
-最優先で`_global.ignore`を`_global.ignore_groups` + `default_ignore`に更新する必要があるのだ。また、関連ドキュメント（CLAUDE.md、README.md、SPEC.md）との整合性も取る必要があるのだ。
+最優先で`_global.ignore`を`_global.ignore_groups` +
+`default_ignore`に更新する必要があるのだ。また、関連ドキュメント（CLAUDE.md、README.md、SPEC.md）との整合性も取る必要があるのだ。
 
 中優先度の改善として、ターゲット固有の`ignore`設定や各設定項目の詳細な説明を追加することで、ユーザーがより理解しやすいサンプルファイルになるのだ。

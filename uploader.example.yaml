@@ -1,6 +1,13 @@
 # uploader 設定ファイルサンプル
 #
-# このファイルを uploader.yaml にコピーして使用してください
+# セットアップ手順:
+#   1. このファイルをコピー:
+#      cp uploader.example.yaml uploader.yaml
+#
+#   2. uploader.yaml を編集して、あなたの環境に合わせて設定
+#
+#   3. 実行してみる（dry-runで安全確認）:
+#      uploader <profile> --dry-run
 #
 # 使用方法:
 #   基本: uploader <profile>

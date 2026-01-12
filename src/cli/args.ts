@@ -7,18 +7,33 @@ import type { CliArgs, DiffMode, DiffOption } from "../types/mod.ts";
 import { logWarning, showVersion } from "../ui/mod.ts";
 
 const HELP_TEXT = `
-Usage: uploader [options] <profile>
+uploader - Git差分またはローカルファイルをSFTP/SCPでリモートサーバにデプロイ
 
-Git-based deployment tool - Git差分またはローカルファイルをSFTP/SCPでリモートサーバにデプロイ
+USAGE
+  uploader [options] <profile>
 
-Arguments:
-  profile                  プロファイル名
+QUICK START
+  1. 設定ファイルを作成:
+     cp uploader.example.yaml uploader.yaml
 
-Options:
+  2. uploader.yaml を編集して、あなたの環境に合わせて設定
+
+  3. 実行してみる（dry-runで安全確認）:
+     uploader <profile> --dry-run
+
+  4. 実際にアップロード:
+     uploader <profile>
+
+  詳細: docs/getting-started.md (近日公開予定)
+  設定: uploader.example.yaml（コメント付きサンプル）
+
+OPTIONS
   -c, --config <path>      設定ファイルのパス
   -d, --diff               アップロード前にdiff viewerで確認（リモートとの差分を表示）
   -n, --dry-run            dry-run（実際のアップロードは行わない）
+                           ⚠ 最初は必ず --dry-run で確認してください
       --delete             リモートの余分なファイルを削除（mirror同期）
+                           ⚠ 危険: リモートファイルが削除されます
   -b, --base <branch>      比較元ブランチ（gitモード用）
   -t, --target <branch>    比較先ブランチ（gitモード用）
   -v, --verbose            詳細ログ出力
@@ -35,12 +50,21 @@ Options:
   -V, --version            バージョン表示
   -h, --help               このヘルプを表示
 
-Examples:
-  uploader --list                         プロファイル一覧を表示
-  uploader development                    基本的な使い方
-  uploader --diff staging                 diff確認してからアップロード
-  uploader --dry-run production           dry-run モード
+EXAMPLES
+  uploader --list                                      プロファイル一覧を表示
+  uploader development --dry-run                       dry-runで安全確認
+  uploader development                                 基本的な使い方
+  uploader --diff staging                              diff確認してからアップロード
   uploader --base=main --target=feature/xxx development  ブランチを指定
+
+CONFIGURATION
+  設定ファイル: uploader.yaml
+  サンプル: uploader.example.yaml
+  詳細: README.md (Configuration セクション)
+
+MORE INFO
+  GitHub: https://github.com/yourusername/uploader
+  Docs: README.md
 `.trim();
 
 /** 有効なdiffモード */
