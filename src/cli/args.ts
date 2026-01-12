@@ -4,6 +4,7 @@
 
 import { parseArgs as stdParseArgs } from "@std/cli/parse-args";
 import type { CliArgs, DiffMode, DiffOption } from "../types/mod.ts";
+import type { InitOptions } from "./init.ts";
 import { logWarning, showVersion } from "../ui/mod.ts";
 
 const HELP_TEXT = `
@@ -14,7 +15,7 @@ USAGE
 
 QUICK START
   1. 設定ファイルを作成:
-     cp uploader.example.yaml uploader.yaml
+     uploader init
 
   2. uploader.yaml を編集して、あなたの環境に合わせて設定
 
@@ -24,7 +25,7 @@ QUICK START
   4. 実際にアップロード:
      uploader <profile>
 
-  詳細: docs/getting-started.md (近日公開予定)
+  詳細: docs/getting-started.md
   設定: uploader.example.yaml（コメント付きサンプル）
 
 OPTIONS
@@ -103,6 +104,63 @@ function parseDiffOption(value: boolean | string | undefined): DiffOption {
 }
 
 /**
+ * init サブコマンドを処理
+ *
+ * `uploader init [options]` の形式で InitOptions を返す、またはヘルプ表示時は null
+ *
+ * @param args - init の後の引数
+ * @returns InitOptions または null
+ */
+function handleInitCommand(args: string[]): { init: InitOptions } | null {
+  const parsed = stdParseArgs(args, {
+    string: ["output"],
+    boolean: ["force", "quiet", "help"],
+    default: {
+      force: false,
+      quiet: false,
+    },
+    alias: {
+      o: "output",
+      f: "force",
+      q: "quiet",
+      h: "help",
+    },
+  });
+
+  // init --help
+  if (parsed.help) {
+    console.log(`
+uploader init - 設定ファイルテンプレートを生成
+
+USAGE
+  uploader init [options]
+
+OPTIONS
+  -o, --output <path>  出力先ファイルパス（デフォルト: uploader.yaml）
+  -f, --force          既存ファイルを無条件で上書き
+  -q, --quiet          プロンプトなしで実行（CI環境向け）
+  -h, --help           このヘルプを表示
+
+EXAMPLES
+  uploader init                    uploader.yaml を生成
+  uploader init --force            既存ファイルを上書き
+  uploader init --output custom.yaml  カスタムファイル名で生成
+  uploader init --quiet            プロンプトなしで生成（既存ファイルがある場合はエラー）
+`.trim());
+    return null;
+  }
+
+  // InitOptions を返す
+  return {
+    init: {
+      force: parsed.force,
+      output: parsed.output,
+      quiet: parsed.quiet,
+    },
+  };
+}
+
+/**
  * --diff オプションを前処理して抽出
  *
  * `--diff` を string として定義すると、`--diff profile` で profile が
@@ -146,8 +204,20 @@ function preprocessDiffOption(
 
 /**
  * CLI引数をパース
+ *
+ * @returns CliArgs | { init: InitOptions } | null
+ *   - CliArgs: 通常のアップロードコマンド
+ *   - { init: InitOptions }: init サブコマンド
+ *   - null: ヘルプ/バージョン表示時
  */
-export function parseArgs(args: string[]): CliArgs | null {
+export function parseArgs(
+  args: string[],
+): CliArgs | { init: InitOptions } | null {
+  // init サブコマンドの処理（早期return）
+  if (args[0] === "init") {
+    return handleInitCommand(args.slice(1));
+  }
+
   // diffオプションを先に抽出（後続の引数を誤って取り込むのを防ぐ）
   const [preprocessedArgs, diffValue] = preprocessDiffOption(args);
 

@@ -1,8 +1,9 @@
 # uploader 設定ファイルサンプル
 #
 # セットアップ手順:
-#   1. このファイルをコピー:
-#      cp uploader.example.yaml uploader.yaml
+#   1. 設定ファイルを作成:
+#      uploader init
+#      （または手動でコピー: cp uploader.example.yaml uploader.yaml）
 #
 #   2. uploader.yaml を編集して、あなたの環境に合わせて設定
 #

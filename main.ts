@@ -4,7 +4,12 @@
  * Git差分またはローカルファイルをSFTP/SCPでリモートサーバにデプロイするCLIツール
  */
 
-import { parseArgs, showHelp, showProfileList } from "./src/cli/mod.ts";
+import {
+  initCommand,
+  parseArgs,
+  showHelp,
+  showProfileList,
+} from "./src/cli/mod.ts";
 import {
   ConfigLoadError,
   ConfigValidationError,
@@ -96,14 +101,23 @@ async function main(): Promise<number> {
       return EXIT_CODES.SUCCESS;
     }
 
+    // init サブコマンドの処理
+    if ("init" in args) {
+      await initCommand(args.init);
+      return EXIT_CODES.SUCCESS;
+    }
+
+    // 以降は CliArgs として処理（init は既にチェック済み）
+    const cliArgs = args;
+
     // ログレベルを設定
     let logLevel: LogLevel = "normal";
-    if (args.verbose) {
+    if (cliArgs.verbose) {
       logLevel = "verbose";
-    } else if (args.quiet) {
+    } else if (cliArgs.quiet) {
       logLevel = "quiet";
     }
-    await initLogger({ level: logLevel, logFile: args.logFile });
+    await initLogger({ level: logLevel, logFile: cliArgs.logFile });
 
     // バナー表示（quiet モード以外）
     if (logLevel !== "quiet") {
@@ -111,8 +125,8 @@ async function main(): Promise<number> {
     }
 
     // プロファイル一覧表示
-    if (args.list) {
-      const configPath = await findConfigFile(args.config);
+    if (cliArgs.list) {
+      const configPath = await findConfigFile(cliArgs.config);
       if (!configPath) {
         logError(
           "設定ファイルが見つかりません。uploader.yaml を作成するか --config で指定してください",
@@ -125,16 +139,16 @@ async function main(): Promise<number> {
     }
 
     // プロファイル名がない場合はヘルプを表示
-    if (!args.profile) {
+    if (!cliArgs.profile) {
       showHelp();
       return EXIT_CODES.SUCCESS;
     }
 
     // 設定ファイルを読み込み
-    logVerbose(`Loading profile "${args.profile}" from config...`);
+    logVerbose(`Loading profile "${cliArgs.profile}" from config...`);
     const { profile, configPath } = await loadAndResolveProfile(
-      args.profile,
-      args.config,
+      cliArgs.profile,
+      cliArgs.config,
     );
     logVerbose(`Config loaded from: ${configPath}`);
     logVerbose(`Profile type: ${profile.from.type}`);
@@ -148,11 +162,11 @@ async function main(): Promise<number> {
 
     // CLI引数で設定を上書き
     if (profile.from.type === "git") {
-      if (args.base) {
-        profile.from.base = args.base;
+      if (cliArgs.base) {
+        profile.from.base = cliArgs.base;
       }
-      if (args.target) {
-        profile.from.target = args.target;
+      if (cliArgs.target) {
+        profile.from.target = cliArgs.target;
       }
     }
 
@@ -171,7 +185,7 @@ async function main(): Promise<number> {
     }));
 
     logProfileInfo(
-      args.profile,
+      cliArgs.profile,
       fromType,
       fromDetail,
       targets.length,
@@ -310,7 +324,7 @@ async function main(): Promise<number> {
     }
 
     // dry-run モードの場合
-    if (args.dryRun) {
+    if (cliArgs.dryRun) {
       logSection("DRY RUN MODE");
       logSectionLine(dim("(no files will be uploaded)"), true);
       console.log();
@@ -333,9 +347,9 @@ async function main(): Promise<number> {
     // diff viewer (--diff オプション)
     let diffViewerController: DiffViewerProgressController | undefined;
 
-    if (args.diff !== false) {
+    if (cliArgs.diff !== false) {
       // diffオプションを解決（常にremoteモード）
-      const { mode: diffMode } = resolveDiffMode(args.diff);
+      const { mode: diffMode } = resolveDiffMode(cliArgs.diff);
 
       if (diffMode !== false) {
         // diff viewerに渡すGitDiffResultを準備
@@ -381,9 +395,9 @@ async function main(): Promise<number> {
 
         // diff viewerを起動
         const viewerResult = await startDiffViewer(viewerDiffResult, {
-          port: args.port,
-          openBrowser: !args.noBrowser,
-          cui: args.cui,
+          port: cliArgs.port,
+          openBrowser: !cliArgs.noBrowser,
+          cui: cliArgs.cui,
           base: profile.from.type === "git" ? profile.from.base : "Local",
           target: profile.from.type === "git"
             ? (profile.from.target || "HEAD")
@@ -391,9 +405,9 @@ async function main(): Promise<number> {
           diffMode,
           targets: profile.to.targets,
           uploadFiles,
-          concurrency: args.concurrency,
+          concurrency: cliArgs.concurrency,
           localDir,
-          checksum: args.checksum,
+          checksum: cliArgs.checksum,
         });
 
         if (!viewerResult.confirmed) {
@@ -444,7 +458,7 @@ async function main(): Promise<number> {
       `Starting upload: ${uploadFiles.length} files, ${totalSize} bytes to ${profile.to.targets.length} target(s)`,
     );
     logVerbose(
-      `Upload options: dryRun=${args.dryRun}, delete=${args.delete}, strict=${args.strict}, parallel=${args.parallel}`,
+      `Upload options: dryRun=${cliArgs.dryRun}, delete=${cliArgs.delete}, strict=${cliArgs.strict}, parallel=${cliArgs.parallel}`,
     );
     logUploadStart(
       profile.to.targets.length,
@@ -477,16 +491,16 @@ async function main(): Promise<number> {
     const hasMirrorTarget = profile.to.targets.some((t) =>
       t.sync_mode === "mirror"
     );
-    const shouldDeleteRemote = args.delete || hasMirrorTarget;
+    const shouldDeleteRemote = cliArgs.delete || hasMirrorTarget;
 
     const result = await uploadToTargets(
       profile.to.targets,
       uploadFiles,
       {
-        dryRun: args.dryRun,
+        dryRun: cliArgs.dryRun,
         deleteRemote: shouldDeleteRemote,
-        strict: args.strict,
-        parallel: args.parallel,
+        strict: cliArgs.strict,
+        parallel: cliArgs.parallel,
         filesByTarget,
       },
       onProgress,

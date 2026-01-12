@@ -273,6 +273,116 @@ diffでは考慮されていない
 
 ---
 
+### Task 8: `uploader init` コマンドの実装 【UX改善】✅
+
+**問題**:
+バイナリリリースからダウンロードした場合、uploader.example.yamlに辿り着くのに時間がかかる
+
+**理由**:
+
+- 利用者はReleaseから実行ファイルのみダウンロードする可能性が高い
+- Gitリポジトリにアクセスせずにセットアップを完了したい
+- 他のCLIツール（npm init、cargo init等）と同様の慣例に従う
+
+**メリット**:
+
+- ✅ CLI完結のセットアップ（バイナリ → init → 編集 → 実行）
+- ✅ バージョン互換性の保証（実行ファイルと設定テンプレートが一致）
+- ✅ 発見性の向上（`uploader --help` に記載）
+- ✅ オフライン環境でも使用可能
+
+**実装内容**:
+
+- [x] Phase 1: テンプレート埋め込み機構（0.5日）✅
+  - [x] `scripts/embed-template.ts` 作成
+    - uploader.example.yaml → src/templates/config-template.ts に変換
+    - ビルド時に自動実行（deno.json tasks.prebuild）
+    - ${...}環境変数のエスケープ処理を実装
+  - [x] `src/templates/config-template.ts` 自動生成
+    - CONFIG_TEMPLATE定数にexample.yamlの内容を埋め込み
+  - [x] deno.json更新
+    - prebuildタスク追加
+    - buildタスクをprebuild依存に変更
+  - [x] .gitignore更新
+    - src/templates/config-template.ts を除外
+
+- [x] Phase 2: `uploader init` コマンド実装（0.5日）✅
+  - [x] `src/cli/init.ts` 作成
+    - initCommand(options) 関数実装
+    - 既存ファイルチェック（プロンプト表示）
+    - テンプレート書き込み
+    - 成功メッセージ表示
+  - [x] オプション実装
+    - `--force`: 既存ファイルを無条件上書き
+    - `--output <path>`: 出力先指定（デフォルト: uploader.yaml）
+    - `--quiet`: プロンプトなしで実行
+  - [x] main.tsに統合
+    - `init` サブコマンドの追加
+    - args.tsでinitサブコマンド解析を実装
+
+- [x] Phase 3: ドキュメント更新（0.2日）✅
+  - [x] src/cli/args.ts のHELP_TEXT更新
+    - QUICK STARTを `uploader init` に変更
+  - [x] uploader.example.yaml ヘッダー更新
+    - `uploader init` コマンドの記載（手動コピーも併記）
+  - [x] docs/getting-started.md 更新
+    - Step 1を `uploader init` に変更
+  - [x] README.md Quick Start更新
+    - `uploader init` コマンドの追加
+
+- [x] Phase 4: テスト実装（0.3日）✅
+  - [x] `tests/cli/init_test.ts` 作成（7テストケース）
+    - 基本動作テスト（ファイル生成）
+    - カスタム出力先（--output）
+    - 既存ファイル上書き確認（quietモード）
+    - --forceオプションのテスト
+    - ディレクトリ不在エラーハンドリング
+  - [x] テンプレート整合性テスト
+    - CONFIG_TEMPLATEの内容確認
+    - 環境変数エスケープ確認
+
+**所要時間**: 1.5日 → **1.5日完了** ✅
+
+**成果**:
+
+- ✅ **UX大幅改善**: バイナリダウンロード後、`uploader init` 一発で設定開始可能
+- ✅ **バージョン互換性**: 実行ファイルと設定テンプレートが常に一致
+- ✅ **標準慣例準拠**: `npm init`、`cargo init` 等と同様のUX
+- ✅ **オプション完備**: --force、--output、--quiet で柔軟に対応
+- ✅ **テストカバレッジ**: 7テストケースで主要シナリオをカバー
+
+**優先度**: 🟡 中〜高（次のマイナーバージョンリリースで実装推奨）→ **実装完了**
+
+**技術仕様**:
+
+```bash
+# 基本使用
+$ uploader init
+✓ Created uploader.yaml
+
+Next steps:
+  1. Edit uploader.yaml to match your environment
+  2. Test with: uploader <profile> --dry-run
+  3. Deploy: uploader <profile>
+
+Documentation: docs/getting-started.md
+
+# 既存ファイルがある場合
+$ uploader init
+uploader.yaml already exists. Overwrite? (y/N): n
+Aborted.
+
+# forceオプション
+$ uploader init --force
+✓ Created uploader.yaml (overwritten)
+
+# カスタム出力先
+$ uploader init --output custom.yaml
+✓ Created custom.yaml
+```
+
+---
+
 ## 🟢 低優先度タスク
 
 ### Task 6: パフォーマンス最適化の検討

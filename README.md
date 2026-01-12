@@ -180,7 +180,16 @@ deno task build
 
 ## Quick Start
 
-1. 設定ファイル `uploader.yaml` を作成:
+初めての方は [Getting Started](docs/getting-started.md)
+（約10分のチュートリアル）を推奨します。
+
+1. 設定ファイルを生成:
+
+```sh
+uploader init
+```
+
+2. `uploader.yaml` を編集（最小限の例）:
 
 ```yaml
 _global:
@@ -209,7 +218,7 @@ development:
         dest: "/var/www/html/"
 ```
 
-2. アップロード実行:
+3. アップロード実行:
 
 ```sh
 uploader development

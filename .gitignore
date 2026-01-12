@@ -31,3 +31,6 @@ uploader.yaml
 # Coverage
 coverage
 .coverage
+
+# Generated files
+src/templates/config-template.ts

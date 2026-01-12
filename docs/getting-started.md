@@ -57,19 +57,29 @@ uploader --help
 
 ## 設定ファイルの作成
 
-### ステップ1: サンプルファイルをダウンロード
+### ステップ1: 設定ファイルを生成
 
 プロジェクトのルートディレクトリで以下を実行します。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ba0918/uploader/main/uploader.example.yaml -o uploader.yaml
+uploader init
 ```
 
-または、リポジトリをクローンしている場合はコピーします。
+これで `uploader.yaml` が生成されます（コメント付きのテンプレート）。
 
-```bash
-cp uploader.example.yaml uploader.yaml
-```
+> **手動で作成する場合**
+>
+> リポジトリから直接ダウンロード:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/ba0918/uploader/main/uploader.example.yaml -o uploader.yaml
+> ```
+>
+> またはローカルファイルをコピー:
+>
+> ```bash
+> cp uploader.example.yaml uploader.yaml
+> ```
 
 ### ステップ2: 設定を編集
 
