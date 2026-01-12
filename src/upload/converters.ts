@@ -5,6 +5,7 @@
  */
 
 import type { CollectedFile, DiffFile, UploadFile } from "../types/mod.ts";
+import { GitCommandError } from "../git/diff.ts";
 import { logVerbose } from "../ui/logger.ts";
 
 /**
@@ -68,7 +69,12 @@ async function getGitFileContent(
 
   if (code !== 0) {
     const errorMsg = new TextDecoder().decode(stderr);
-    throw new Error(`Failed to get file content: ${errorMsg}`);
+    throw new GitCommandError(
+      `Failed to get file content: ${errorMsg}`,
+      `git show ${ref}:${path}`,
+      errorMsg,
+      code,
+    );
   }
 
   return stdout;

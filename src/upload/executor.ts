@@ -11,7 +11,7 @@ import type {
   UploadOptions,
   UploadResult,
 } from "../types/mod.ts";
-import { hasBulkUpload } from "../types/mod.ts";
+import { hasBulkUpload, UploadError } from "../types/mod.ts";
 import { logVerbose } from "../ui/logger.ts";
 import { getTargetId } from "../utils/mod.ts";
 import { createUploader } from "./factory.ts";
@@ -151,7 +151,7 @@ async function uploadToTargetWithoutInit(
           }, dest);
         }
         if (options.strict) {
-          throw new Error("Bulk upload failed");
+          throw new UploadError("Bulk upload failed", "TRANSFER_ERROR");
         }
       }
     } else {

@@ -5,6 +5,7 @@
  */
 
 import type { DiffViewerOptions, FileContent, Uploader } from "../types/mod.ts";
+import { UploadError } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
 import { isVerbose } from "../ui/mod.ts";
 import { BINARY_CHECK } from "../utils/mod.ts";
@@ -192,7 +193,7 @@ export async function getOrCreateUploader(
 ): Promise<Uploader> {
   // 既に接続エラーが発生している場合は再試行しない
   if (state.connectionError) {
-    throw new Error(state.connectionError);
+    throw new UploadError(state.connectionError, "CONNECTION_ERROR");
   }
 
   // 既にUploaderが存在する場合はそれを返す
@@ -207,7 +208,7 @@ export async function getOrCreateUploader(
   if (!targets || targets.length === 0) {
     const error = "No targets configured for remote file fetching";
     state.connectionError = error;
-    throw new Error(error);
+    throw new UploadError(error, "CONNECTION_ERROR");
   }
 
   // 現在選択中のターゲットを使用
@@ -233,7 +234,11 @@ export async function getOrCreateUploader(
     }`;
     state.connectionError = errorMessage;
     debugError(`[RemoteDiff] ${errorMessage}`);
-    throw new Error(errorMessage);
+    throw new UploadError(
+      errorMessage,
+      "CONNECTION_ERROR",
+      error instanceof Error ? error : undefined,
+    );
   }
 }
 
