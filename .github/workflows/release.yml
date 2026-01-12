@@ -32,6 +32,10 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Prebuild
+        shell: bash
+        run: deno task prebuild
+
       - name: Build
         shell: bash
         run: deno compile --allow-read --allow-write --allow-net --allow-run --allow-env --target ${{ matrix.target }} --output ${{ matrix.artifact }} main.ts
