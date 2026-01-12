@@ -12,9 +12,9 @@
  *   3. ビルド時に自動実行されることで、バイナリに設定テンプレートが埋め込まれる
  */
 
-import { dirname, join } from "@std/path";
+import { dirname, fromFileUrl, join } from "@std/path";
 
-const PROJECT_ROOT = dirname(new URL(import.meta.url).pathname);
+const PROJECT_ROOT = dirname(fromFileUrl(import.meta.url));
 const EXAMPLE_YAML_PATH = join(PROJECT_ROOT, "..", "uploader.example.yaml");
 const OUTPUT_PATH = join(
   PROJECT_ROOT,
