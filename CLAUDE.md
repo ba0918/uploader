@@ -98,11 +98,14 @@ deno test --allow-read --allow-write --allow-net --allow-env --allow-run path/to
 
 設定ファイル: `uploader.yaml` (YAML形式)
 
-- `_global.ignore`: グローバル除外パターン
+- `_global.ignore_groups`: 除外パターングループ定義
+- `_global.default_ignore`: デフォルト適用グループ
 - `<profile>.from`: ソース設定 (git/file)
 - `<profile>.to.targets`: アップロード先サーバ設定
 - `<target>.sync_mode`: 同期モード (update/mirror)
-- `<target>.ignore`: ターゲット固有の除外パターン
+- `<target>.ignore`: ターゲット固有の除外パターン設定
+  - `use`: 使用するグループ指定（**上書き**、default_ignoreは無効）
+  - `add`: 個別パターン追加（useと併用可能）
 
 ### CLI Priority
 

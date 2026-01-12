@@ -72,10 +72,13 @@ deno task build
 
 ```yaml
 _global:
-  ignore:
-    - ".git/"
-    - "node_modules/"
-    - "*.log"
+  ignore_groups:
+    common:
+      - ".git/"
+      - "node_modules/"
+      - "*.log"
+  default_ignore:
+    - common
 
 development:
   from:
@@ -165,11 +168,15 @@ uploader --log-file=upload.log <profile>
 
 ```yaml
 _global:
-  # 基本的なignore設定（後方互換）
-  ignore:
-    - "*.log"
-    - ".git/"
-    - "node_modules/"
+  # 除外パターングループ定義
+  ignore_groups:
+    common:
+      - "*.log"
+      - ".git/"
+      - "node_modules/"
+  # デフォルトで適用するグループ
+  default_ignore:
+    - common
 
 # Gitモード: ブランチ間の差分をアップロード
 development:
@@ -326,17 +333,7 @@ staging:
 
 除外パターンは階層的に設定でき、ターゲットごとに異なるパターンを適用できます。
 
-#### 基本的な使い方（後方互換）
-
-```yaml
-_global:
-  ignore:
-    - ".git/"
-    - "node_modules/"
-    - "*.log"
-```
-
-#### 名前付きグループを使った設定（推奨）
+#### 名前付きグループを使った設定
 
 複数の環境で異なる除外パターンを使い分ける場合は、名前付きグループが便利です。
 
@@ -399,7 +396,6 @@ staging:
 1. **ターゲット個別の `ignore`** が最優先
 2. **`defaults.ignore`** が次に優先
 3. **`default_ignore`** がフォールバック
-4. 何も設定がなければ **`_global.ignore`**（後方互換）
 
 #### Ignore設定オプション
 
