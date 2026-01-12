@@ -21,6 +21,7 @@ export function getScripts(): string {
       diffMode: 'remote', // remoteモードのみサポート
       currentDiffTab: 'remote', // remoteモードのみ
       remoteTargets: [], // [{host, dest}]
+      protocol: null, // 転送プロトコル（全ターゲット共通）
       currentTargetIndex: 0, // 現在選択中のターゲットインデックス
       // 遅延読み込み対応
       lazyLoading: false, // 遅延読み込みモードか
@@ -53,6 +54,8 @@ export function getScripts(): string {
       tabGitDiff: document.getElementById('tab-git-diff'),
       tabRemoteDiff: document.getElementById('tab-remote-diff'),
       remoteTargetBadge: document.getElementById('remote-target-badge'),
+      transferInfo: document.getElementById('transfer-info'),
+      protocolValue: document.getElementById('protocol-value'),
       targetSelector: document.getElementById('target-selector'),
       targetSelect: document.getElementById('target-select'),
       uploadTooltip: document.getElementById('upload-tooltip'),
@@ -594,6 +597,7 @@ export function getScripts(): string {
       state.files = data.files;
       state.diffMode = 'remote'; // remoteモードのみサポート
       state.remoteTargets = data.remoteTargets || [];
+      state.protocol = data.protocol || null;
       // 遅延読み込み設定を反映
       state.lazyLoading = data.lazyLoading || false;
       state.tree = data.tree || null;
@@ -617,6 +621,14 @@ export function getScripts(): string {
 
       // タブ表示を更新
       updateTabVisibility();
+
+      // 転送情報を更新
+      if (state.protocol) {
+        elements.protocolValue.textContent = state.protocol.toUpperCase();
+        elements.transferInfo.classList.remove('hidden');
+      } else {
+        elements.transferInfo.classList.add('hidden');
+      }
 
       // ターゲットセレクターを初期化（初回のみ）または選択状態を維持
       if (isReinit) {

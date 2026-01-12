@@ -68,10 +68,12 @@ describe("validateConfig", () => {
         target: "HEAD",
       },
       to: {
+        defaults: {
+          protocol: "sftp",
+        },
         targets: [
           {
             host: "example.com",
-            protocol: "sftp",
             user: "deploy",
             dest: "/var/www/",
           },
@@ -156,13 +158,15 @@ describe("validateConfig", () => {
     const validFileProfile = {
       from: {
         type: "file",
-        src: ["dist/", "public/"],
+        src: "dist/",
       },
       to: {
+        defaults: {
+          protocol: "local",
+        },
         targets: [
           {
             host: "localhost",
-            protocol: "local",
             dest: "/tmp/deploy/",
           },
         ],
@@ -185,153 +189,39 @@ describe("validateConfig", () => {
             },
           }),
         ConfigValidationError,
-        "file モードでは src (配列) は必須です",
+        "file モードでは src (文字列) は必須です",
       );
     });
 
-    it("srcが配列でない場合は無効", () => {
+    it("srcが文字列でない場合は無効", () => {
       assertThrows(
         () =>
           validateConfig({
             staging: {
-              from: { type: "file", src: "not-array" },
+              from: { type: "file", src: 123 },
               to: validFileProfile.to,
             },
           }),
         ConfigValidationError,
-        "file モードでは src (配列) は必須です",
+        "file モードでは src (文字列) は必須です",
       );
     });
 
-    it("src要素が文字列でない場合は無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            staging: {
-              from: { type: "file", src: [123] },
-              to: validFileProfile.to,
-            },
-          }),
-        ConfigValidationError,
-        "src の各要素は文字列である必要があります",
-      );
-    });
-
-    it("複数srcでsync_mode=mirrorは無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            staging: {
-              from: {
-                type: "file",
-                src: ["/path/to/bbs", "/path/to/scripts"],
-              },
-              to: {
-                targets: [
-                  {
-                    host: "localhost",
-                    protocol: "local",
-                    dest: "/tmp/deploy/",
-                    sync_mode: "mirror",
-                  },
-                ],
-              },
-            },
-          }),
-        ConfigValidationError,
-        '複数のsrcでsync_mode="mirror"は使用できません',
-      );
-    });
-
-    it("複数srcでsync_mode=updateは有効", () => {
+    it("srcでsync_mode=mirrorは有効", () => {
       const result = validateConfig({
         staging: {
           from: {
             type: "file",
-            src: ["/path/to/bbs", "/path/to/scripts"],
-          },
-          to: {
-            targets: [
-              {
-                host: "localhost",
-                protocol: "local",
-                dest: "/tmp/deploy/",
-                sync_mode: "update",
-              },
-            ],
-          },
-        },
-      });
-      const profile = getProfile(result, "staging");
-      assertEquals(profile?.from.type, "file");
-    });
-
-    it("単一srcでsync_mode=mirrorは有効", () => {
-      const result = validateConfig({
-        staging: {
-          from: {
-            type: "file",
-            src: ["/path/to/bbs"],
-          },
-          to: {
-            targets: [
-              {
-                host: "localhost",
-                protocol: "local",
-                dest: "/tmp/deploy/",
-                sync_mode: "mirror",
-              },
-            ],
-          },
-        },
-      });
-      const profile = getProfile(result, "staging");
-      assertEquals(profile?.from.type, "file");
-    });
-
-    it("複数srcでdefaults.sync_mode=mirrorは無効", () => {
-      assertThrows(
-        () =>
-          validateConfig({
-            staging: {
-              from: {
-                type: "file",
-                src: ["/path/to/bbs", "/path/to/scripts"],
-              },
-              to: {
-                defaults: {
-                  host: "localhost",
-                  protocol: "local",
-                  sync_mode: "mirror",
-                },
-                targets: [
-                  {
-                    dest: "/tmp/deploy/",
-                  },
-                ],
-              },
-            },
-          }),
-        ConfigValidationError,
-        '複数のsrcでsync_mode="mirror"は使用できません',
-      );
-    });
-
-    it("複数srcでdefaults.sync_mode=updateは有効", () => {
-      const result = validateConfig({
-        staging: {
-          from: {
-            type: "file",
-            src: ["/path/to/bbs", "/path/to/scripts"],
+            src: "/path/to/bbs",
           },
           to: {
             defaults: {
-              host: "localhost",
               protocol: "local",
-              sync_mode: "update",
+              sync_mode: "mirror",
             },
             targets: [
               {
+                host: "localhost",
                 dest: "/tmp/deploy/",
               },
             ],
@@ -351,7 +241,8 @@ describe("validateConfig", () => {
             test: {
               from: { type: "invalid" },
               to: {
-                targets: [{ host: "example.com", protocol: "sftp", dest: "/" }],
+                defaults: { protocol: "sftp" },
+                targets: [{ host: "example.com", dest: "/" }],
               },
             },
           }),
@@ -363,7 +254,7 @@ describe("validateConfig", () => {
 
   describe("ターゲット検証", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
     };
 
     it("有効なSFTPターゲットは通過する", () => {
@@ -371,16 +262,18 @@ describe("validateConfig", () => {
         test: {
           ...baseProfile,
           to: {
+            defaults: {
+              protocol: "sftp",
+              sync_mode: "update",
+            },
             targets: [
               {
                 host: "example.com",
-                protocol: "sftp",
                 port: 22,
                 user: "deploy",
                 auth_type: "ssh_key",
                 key_file: "~/.ssh/id_rsa",
                 dest: "/var/www/",
-                sync_mode: "update",
                 timeout: 30,
                 retry: 3,
               },
@@ -390,7 +283,7 @@ describe("validateConfig", () => {
       });
       const profile = getProfile(result, "test");
       const target = profile?.to.targets[0];
-      assertEquals(target?.protocol, "sftp");
+      assertEquals(profile?.to.defaults?.protocol, "sftp");
       assertEquals(target?.port, 22);
     });
 
@@ -401,7 +294,8 @@ describe("validateConfig", () => {
             test: {
               ...baseProfile,
               to: {
-                targets: [{ protocol: "sftp", dest: "/" }],
+                defaults: { protocol: "sftp" },
+                targets: [{ dest: "/" }],
               },
             },
           }),
@@ -433,8 +327,9 @@ describe("validateConfig", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: { protocol: "ftp" },
                 targets: [
-                  { host: "example.com", protocol: "ftp", dest: "/" },
+                  { host: "example.com", dest: "/" },
                 ],
               },
             },
@@ -451,7 +346,8 @@ describe("validateConfig", () => {
             test: {
               ...baseProfile,
               to: {
-                targets: [{ host: "example.com", protocol: "local" }],
+                defaults: { protocol: "local" },
+                targets: [{ host: "example.com" }],
               },
             },
           }),
@@ -467,8 +363,9 @@ describe("validateConfig", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: { protocol: "sftp" },
                 targets: [
-                  { host: "example.com", protocol: "sftp", dest: "/" },
+                  { host: "example.com", dest: "/" },
                 ],
               },
             },
@@ -483,7 +380,8 @@ describe("validateConfig", () => {
         test: {
           ...baseProfile,
           to: {
-            targets: [{ host: "localhost", protocol: "local", dest: "/tmp/" }],
+            defaults: { protocol: "local" },
+            targets: [{ host: "localhost", dest: "/tmp/" }],
           },
         },
       });
@@ -498,10 +396,10 @@ describe("validateConfig", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: { protocol: "sftp" },
                 targets: [
                   {
                     host: "example.com",
-                    protocol: "sftp",
                     user: "deploy",
                     auth_type: "invalid",
                     dest: "/",
@@ -522,12 +420,11 @@ describe("validateConfig", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: { protocol: "sftp", sync_mode: "invalid" },
                 targets: [
                   {
                     host: "example.com",
-                    protocol: "sftp",
                     user: "deploy",
-                    sync_mode: "invalid",
                     dest: "/",
                   },
                 ],
@@ -560,10 +457,10 @@ describe("validateConfig", () => {
         test: {
           ...baseProfile,
           to: {
+            defaults: { protocol: "local" },
             targets: [
               {
                 host: "localhost",
-                protocol: "local",
                 dest: "/tmp/",
               },
             ],
@@ -583,21 +480,23 @@ describe("validateConfig", () => {
 });
 
 describe("hasProfile", () => {
-  const config = {
+  const config = validateConfig({
     _global: {},
     development: {
-      from: { type: "git" as const, base: "main" },
+      from: { type: "git", base: "main" },
       to: {
-        targets: [{ host: "localhost", protocol: "local" as const, dest: "/" }],
+        defaults: { protocol: "local" },
+        targets: [{ host: "localhost", dest: "/" }],
       },
     },
     staging: {
-      from: { type: "file" as const, src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
       to: {
-        targets: [{ host: "localhost", protocol: "local" as const, dest: "/" }],
+        defaults: { protocol: "local" },
+        targets: [{ host: "localhost", dest: "/" }],
       },
     },
-  };
+  });
 
   it("存在するプロファイルはtrueを返す", () => {
     assertEquals(hasProfile(config, "development"), true);
@@ -619,7 +518,8 @@ describe("getProfile", () => {
     development: {
       from: { type: "git" as const, base: "main" },
       to: {
-        targets: [{ host: "localhost", protocol: "local" as const, dest: "/" }],
+        defaults: { protocol: "local" as const },
+        targets: [{ host: "localhost", dest: "/" }],
       },
     },
   };
@@ -647,16 +547,18 @@ describe("getProfileNames", () => {
       development: {
         from: { type: "git" as const, base: "main" },
         to: {
+          defaults: { protocol: "local" as const },
           targets: [
-            { host: "localhost", protocol: "local" as const, dest: "/" },
+            { host: "localhost", dest: "/" },
           ],
         },
       },
       staging: {
-        from: { type: "file" as const, src: ["dist/"] },
+        from: { type: "file" as const, src: "dist/" },
         to: {
+          defaults: { protocol: "local" as const },
           targets: [
-            { host: "localhost", protocol: "local" as const, dest: "/" },
+            { host: "localhost", dest: "/" },
           ],
         },
       },
@@ -682,9 +584,9 @@ describe("エラーパス検証", () => {
             test: {
               from: "not-object",
               to: {
+                defaults: { protocol: "local" },
                 targets: [{
                   host: "example.com",
-                  protocol: "local",
                   dest: "/",
                 }],
               },
@@ -702,9 +604,9 @@ describe("エラーパス検証", () => {
             test: {
               from: {},
               to: {
+                defaults: { protocol: "local" },
                 targets: [{
                   host: "example.com",
-                  protocol: "local",
                   dest: "/",
                 }],
               },
@@ -722,7 +624,7 @@ describe("エラーパス検証", () => {
         () =>
           validateConfig({
             test: {
-              from: { type: "file", src: ["dist/"] },
+              from: { type: "file", src: "dist/" },
               to: "not-object",
             },
           }),
@@ -736,7 +638,7 @@ describe("エラーパス検証", () => {
         () =>
           validateConfig({
             test: {
-              from: { type: "file", src: ["dist/"] },
+              from: { type: "file", src: "dist/" },
               to: { targets: "not-array" },
             },
           }),
@@ -748,7 +650,7 @@ describe("エラーパス検証", () => {
 
   describe("ターゲットの検証", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
     };
 
     it("ターゲットがオブジェクトでない場合は無効", () => {
@@ -770,7 +672,7 @@ describe("エラーパス検証", () => {
 
   describe("defaultsの検証", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
     };
 
     it("defaultsがオブジェクトでない場合は無効", () => {
@@ -1084,7 +986,10 @@ describe("ignore_groups バリデーション", () => {
 
   describe("ターゲットの ignore 設定", () => {
     const baseProfile = {
-      from: { type: "file", src: ["dist/"] },
+      from: { type: "file", src: "dist/" },
+    };
+    const baseDefaults = {
+      protocol: "local" as const,
     };
 
     it("有効なignore設定（use）は通過する", () => {
@@ -1098,10 +1003,10 @@ describe("ignore_groups バリデーション", () => {
         test: {
           ...baseProfile,
           to: {
+            defaults: baseDefaults,
             targets: [
               {
                 host: "localhost",
-                protocol: "local",
                 dest: "/tmp/",
                 ignore: {
                   use: ["common"],
@@ -1125,10 +1030,11 @@ describe("ignore_groups バリデーション", () => {
         test: {
           ...baseProfile,
           to: {
+            defaults: baseDefaults,
             targets: [
               {
                 host: "localhost",
-                protocol: "local",
+
                 dest: "/tmp/",
                 ignore: {
                   use: ["common"],
@@ -1156,10 +1062,11 @@ describe("ignore_groups バリデーション", () => {
         test: {
           ...baseProfile,
           to: {
+            defaults: baseDefaults,
             targets: [
               {
                 host: "localhost",
-                protocol: "local",
+
                 dest: "/tmp/",
                 ignore: {
                   use: [],
@@ -1185,10 +1092,10 @@ describe("ignore_groups バリデーション", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: baseDefaults,
                 targets: [
                   {
                     host: "localhost",
-                    protocol: "local",
                     dest: "/tmp/",
                     ignore: {
                       use: "common",
@@ -1215,10 +1122,11 @@ describe("ignore_groups バリデーション", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: baseDefaults,
                 targets: [
                   {
                     host: "localhost",
-                    protocol: "local",
+
                     dest: "/tmp/",
                     ignore: {
                       use: ["nonexistent"],
@@ -1245,10 +1153,11 @@ describe("ignore_groups バリデーション", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: baseDefaults,
                 targets: [
                   {
                     host: "localhost",
-                    protocol: "local",
+
                     dest: "/tmp/",
                     ignore: {
                       add: "extra/",
@@ -1298,10 +1207,11 @@ describe("ignore_groups バリデーション", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: baseDefaults,
                 targets: [
                   {
                     host: "localhost",
-                    protocol: "local",
+
                     dest: "/tmp/",
                     ignore: "not-object",
                   },
@@ -1326,10 +1236,11 @@ describe("ignore_groups バリデーション", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: baseDefaults,
                 targets: [
                   {
                     host: "localhost",
-                    protocol: "local",
+
                     dest: "/tmp/",
                     ignore: {
                       use: [123],
@@ -1351,10 +1262,11 @@ describe("ignore_groups バリデーション", () => {
             test: {
               ...baseProfile,
               to: {
+                defaults: baseDefaults,
                 targets: [
                   {
                     host: "localhost",
-                    protocol: "local",
+
                     dest: "/tmp/",
                     ignore: {
                       add: [123],
@@ -1374,23 +1286,25 @@ describe("ignore_groups バリデーション", () => {
         test: {
           ...baseProfile,
           to: {
+            defaults: {
+              protocol: "rsync",
+              sync_mode: "mirror",
+              preserve_permissions: true,
+              preserve_timestamps: true,
+              rsync_path: "/usr/bin/rsync",
+              rsync_options: ["--compress"],
+            },
             targets: [
               {
                 host: "example.com",
-                protocol: "rsync",
                 port: 2222,
                 user: "deploy",
                 auth_type: "password",
                 key_file: "~/.ssh/id_rsa",
                 password: "secret",
                 dest: "/var/www/",
-                sync_mode: "mirror",
-                preserve_permissions: true,
-                preserve_timestamps: true,
                 timeout: 60,
                 retry: 5,
-                rsync_path: "/usr/bin/rsync",
-                rsync_options: ["--compress"],
                 legacy_mode: true,
               },
             ],
@@ -1399,23 +1313,154 @@ describe("ignore_groups バリデーション", () => {
       });
       const profile = getProfile(result, "test");
       const target = profile?.to.targets[0];
+      const defaults = profile?.to.defaults;
 
+      // targetsの設定
       assertEquals(target?.host, "example.com");
-      assertEquals(target?.protocol, "rsync");
       assertEquals(target?.port, 2222);
       assertEquals(target?.user, "deploy");
       assertEquals(target?.auth_type, "password");
       assertEquals(target?.key_file, "~/.ssh/id_rsa");
       assertEquals(target?.password, "secret");
       assertEquals(target?.dest, "/var/www/");
-      assertEquals(target?.sync_mode, "mirror");
-      assertEquals(target?.preserve_permissions, true);
-      assertEquals(target?.preserve_timestamps, true);
       assertEquals(target?.timeout, 60);
       assertEquals(target?.retry, 5);
-      assertEquals(target?.rsync_path, "/usr/bin/rsync");
-      assertEquals(target?.rsync_options, ["--compress"]);
       assertEquals(target?.legacy_mode, true);
+
+      // defaultsの設定
+      assertEquals(defaults?.protocol, "rsync");
+      assertEquals(defaults?.sync_mode, "mirror");
+      assertEquals(defaults?.preserve_permissions, true);
+      assertEquals(defaults?.preserve_timestamps, true);
+      assertEquals(defaults?.rsync_path, "/usr/bin/rsync");
+      assertEquals(defaults?.rsync_options, ["--compress"]);
+    });
+  });
+
+  describe("個別ターゲットへの禁止プロパティ設定", () => {
+    const forbiddenProps = [
+      { name: "protocol", value: "rsync" },
+      { name: "rsync_path", value: "/usr/bin/rsync" },
+      { name: "rsync_options", value: ["--compress"] },
+      { name: "sync_mode", value: "mirror" },
+      { name: "preserve_permissions", value: true },
+      { name: "preserve_timestamps", value: false },
+    ];
+
+    forbiddenProps.forEach(({ name, value }) => {
+      it(`個別ターゲットに ${name} を設定するとエラー`, () => {
+        const config = {
+          _global: {
+            ignore_groups: {},
+          },
+          production: {
+            from: {
+              type: "git",
+              base: "main",
+              target: "develop",
+            },
+            to: {
+              defaults: {
+                protocol: "rsync",
+                host: "example.com",
+                user: "deploy",
+              },
+              targets: [
+                {
+                  dest: "/var/www/",
+                  [name]: value, // 禁止プロパティを設定
+                },
+              ],
+            },
+          },
+        };
+
+        assertThrows(
+          () => {
+            validateConfig(config);
+          },
+          ConfigValidationError,
+          `${name} はターゲット個別に設定できません。defaults で設定してください`,
+        );
+      });
+    });
+
+    it("禁止プロパティがdefaultsに設定されている場合は正常", () => {
+      const config = {
+        _global: {
+          ignore_groups: {},
+        },
+        production: {
+          from: {
+            type: "git",
+            base: "main",
+            target: "develop",
+          },
+          to: {
+            defaults: {
+              protocol: "rsync",
+              host: "example.com",
+              user: "deploy",
+              rsync_path: "/usr/bin/rsync",
+              rsync_options: ["--compress"],
+              sync_mode: "mirror",
+              preserve_permissions: true,
+              preserve_timestamps: false,
+            },
+            targets: [
+              {
+                dest: "/var/www/app1",
+              },
+              {
+                dest: "/var/www/app2",
+              },
+            ],
+          },
+        },
+      };
+
+      const result = validateConfig(config);
+      const profile = getProfile(result, "production");
+      assertEquals(profile?.to.defaults?.protocol, "rsync");
+      assertEquals(profile?.to.defaults?.rsync_path, "/usr/bin/rsync");
+      assertEquals(profile?.to.defaults?.sync_mode, "mirror");
+    });
+
+    it("個別ターゲットに許可されているプロパティは設定可能", () => {
+      const config = {
+        _global: {
+          ignore_groups: {},
+        },
+        production: {
+          from: {
+            type: "git",
+            base: "main",
+            target: "develop",
+          },
+          to: {
+            defaults: {
+              protocol: "rsync",
+              host: "example.com",
+              user: "deploy",
+            },
+            targets: [
+              {
+                dest: "/var/www/",
+                host: "special.example.com", // 許可されている
+                user: "special-user", // 許可されている
+                port: 2222, // 許可されている
+              },
+            ],
+          },
+        },
+      };
+
+      const result = validateConfig(config);
+      const profile = getProfile(result, "production");
+      const target = profile?.to.targets[0];
+      assertEquals(target?.host, "special.example.com");
+      assertEquals(target?.user, "special-user");
+      assertEquals(target?.port, 2222);
     });
   });
 });

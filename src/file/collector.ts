@@ -276,7 +276,7 @@ async function collectDirectory(
  * ```
  */
 export async function collectFiles(
-  sources: string[],
+  source: string,
   options: FileCollectOptions = {},
 ): Promise<FileCollectResult> {
   const {
@@ -287,30 +287,14 @@ export async function collectFiles(
   } = options;
 
   const ignoreMatcher = new IgnoreMatcher(ignorePatterns);
-  const allFiles: CollectedFile[] = [];
 
-  for (const source of sources) {
-    const files = await collectFromSource(
-      source,
-      baseDir,
-      ignoreMatcher,
-      followSymlinks,
-      fs,
-    );
-    allFiles.push(...files);
-  }
-
-  // 重複を除去（同じrelativePathを持つファイル）
-  const uniqueFiles = new Map<string, CollectedFile>();
-  for (const file of allFiles) {
-    // 既存のエントリがある場合、ファイルを優先（ディレクトリより）
-    const existing = uniqueFiles.get(file.relativePath);
-    if (!existing || (!file.isDirectory && existing.isDirectory)) {
-      uniqueFiles.set(file.relativePath, file);
-    }
-  }
-
-  const files = Array.from(uniqueFiles.values());
+  const files = await collectFromSource(
+    source,
+    baseDir,
+    ignoreMatcher,
+    followSymlinks,
+    fs,
+  );
 
   // 統計を計算
   const fileCount = files.filter((f) => !f.isDirectory).length;
@@ -325,7 +309,7 @@ export async function collectFiles(
     fileCount,
     directoryCount,
     totalSize,
-    sources,
+    sources: [source],
   };
 }
 

@@ -27,6 +27,34 @@ and this project adheres to
 
 ### Changed
 
+- **⚠️ BREAKING CHANGE: 複数src指定の廃止** (Phase2)
+  - `FileSource.src`の型を`string[]`から`string`に変更
+  - 複数のソースパスを同時に指定する機能を廃止
+  - **理由**:
+    複数srcとmirrorモードの組み合わせで、`detectBaseDirectory()`が空文字列を返し、意図しないファイル削除が発生する危険性があった
+  - **移行方法**:
+    複数のディレクトリをアップロードする場合は、プロファイルを分けて定義してください
+    ```yaml
+    # Before (Phase1まで)
+    staging:
+      from:
+        type: "file"
+        src:
+          - "dist/"
+          - "public/assets/"
+
+    # After (Phase2以降)
+    staging_dist:
+      from:
+        type: "file"
+        src: "dist/"
+
+    staging_assets:
+      from:
+        type: "file"
+        src: "public/assets/"
+    ```
+
 - **処理フローの統一** (Phase C1-C5)
   - ignoreフィルタリングを一箇所に集約（`applyIgnoreFilter()`）
   - mirrorモード処理を統一（`prepareMirrorSync()`）
@@ -94,7 +122,67 @@ and this project adheres to
 
 ### Breaking Changes
 
-なし。後方互換性を維持。
+**Phase2: 複数src指定の廃止**
+
+**影響範囲**: `uploader.yaml`で`src`を配列で指定していた設定
+
+**修正方法**:
+
+1. **単一srcの場合** (最も一般的):
+   ```yaml
+   # Before
+   from:
+     type: "file"
+     src:
+       - "dist/"
+
+   # After
+   from:
+     type: "file"
+     src: "dist/"
+   ```
+
+2. **複数srcの場合**:
+   ```yaml
+   # Before
+   staging:
+     from:
+       type: "file"
+       src:
+         - "dist/"
+         - "public/assets/"
+     to:
+       targets:
+         - host: "example.com"
+           dest: "/var/www/"
+
+   # After: プロファイルを分ける
+   staging_dist:
+     from:
+       type: "file"
+       src: "dist/"
+     to:
+       targets:
+         - host: "example.com"
+           dest: "/var/www/"
+
+   staging_assets:
+     from:
+       type: "file"
+       src: "public/assets/"
+     to:
+       targets:
+         - host: "example.com"
+           dest: "/var/www/"
+
+   # 実行: uploader staging_dist && uploader staging_assets
+   ```
+
+**理由**:
+
+- Phase1で発見されたバグ:
+  複数srcとmirrorモードの組み合わせで、異なるディレクトリ名を持つsrcパスがあると、`detectBaseDirectory()`が空文字列を返し、リモートの全ファイルが削除対象になる危険性
+- 1:1のsrc-destマッピングにすることで、意図が明確になり、予期しない動作を防止
 
 ### Deprecations
 

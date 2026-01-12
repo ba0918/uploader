@@ -77,6 +77,41 @@ export function getStyles(): string {
       border-radius: 3px;
     }
 
+    .transfer-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 8px 12px;
+      background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .transfer-direction {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .transfer-protocol {
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+
+    .transfer-protocol span {
+      display: inline-block;
+      padding: 2px 8px;
+      background: var(--accent-green);
+      color: white;
+      border-radius: 3px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-left: 4px;
+      font-size: 10px;
+      letter-spacing: 0.5px;
+    }
+
     .header-actions {
       display: flex;
       gap: 10px;

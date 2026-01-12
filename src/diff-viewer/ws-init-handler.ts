@@ -59,6 +59,9 @@ export async function sendInitMessage(
     dest: t.dest,
   }));
 
+  // プロトコル情報（全ターゲット共通）
+  const protocol = options.targets?.[0]?.protocol;
+
   // remoteモードかつターゲットがある場合は全ターゲット事前チェック
   if (options.targets && options.targets.length > 0 && options.localDir) {
     // 全ターゲットチェックがまだの場合は実行
@@ -143,6 +146,7 @@ export async function sendInitMessage(
           files,
           summary,
           remoteTargets,
+          protocol,
           lazyLoading: false,
           uploadButtonState,
         },
@@ -228,6 +232,7 @@ export async function sendInitMessage(
           total: diffResult.files.length,
         },
         remoteTargets,
+        protocol,
         tree,
         lazyLoading: true,
         uploadButtonState,
@@ -360,6 +365,7 @@ export async function sendInitMessage(
       files,
       summary,
       remoteTargets,
+      protocol,
       lazyLoading: false,
       uploadButtonState,
     },

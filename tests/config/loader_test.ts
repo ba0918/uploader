@@ -53,7 +53,7 @@ function createValidConfig(
     production: {
       from: {
         type: "file",
-        src: ["dist/"],
+        src: "dist/",
       },
       to: {
         targets: [
@@ -254,7 +254,7 @@ describe("resolveProfile", () => {
 
       assertEquals(resolved.from.type, "file");
       if (resolved.from.type === "file") {
-        assertEquals(resolved.from.src, ["dist/"]);
+        assertEquals(resolved.from.src, "dist/");
       }
     });
   });
@@ -454,8 +454,7 @@ describe("resolveProfile", () => {
 test:
   from:
     type: "file"
-    src:
-      - "/tmp/test"
+    src: "/tmp/test"
   to:
     defaults:
       host: "localhost"
@@ -520,7 +519,7 @@ test:
 test:
   from:
     type: "file"
-    src: ["/tmp"]
+    src: "/tmp"
   to:
     defaults:
       host: "localhost"
@@ -562,8 +561,7 @@ _global:
 production:
   from:
     type: "file"
-    src:
-      - "dist/"
+    src: "dist/"
   to:
     defaults:
       host: "prod.example.com"

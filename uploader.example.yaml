@@ -110,13 +110,12 @@ staging:
     # glob パターン使用例:
     # - "dist/"           # distディレクトリの中身のみ
     # - "public/**/*.jpg" # publicディレクトリ配下の全JPGファイル
-    # - "src/**/*.{ts,js}" # src配下のTS/JSファイル
-    # - "!**/*.test.ts"   # テストファイルは除外（! は機能しない場合あり、ignore使用推奨）
-    src:
-      - "dist/" # 末尾スラッシュ: ディレクトリの中身のみアップロード
-      - "public/assets/" # 例: dist/内のファイルが直接destにアップロードされる
-      - "config/*.json" # configディレクトリのJSONファイルのみ
-  # - "dist"  # スラッシュなし: ディレクトリ自体をアップロード（dest/distになる）
+    # 末尾スラッシュあり: ディレクトリの中身のみアップロード（例: "dist/" → destに直接展開）
+    # 末尾スラッシュなし: ディレクトリ自体をアップロード（例: "dist" → dest/distになる）
+    src: "dist/"
+    # 複数のディレクトリをアップロードしたい場合は、プロファイルを分けてください：
+    #   staging_dist: { from: { type: file, src: "dist/" }, to: { ... } }
+    #   staging_public: { from: { type: file, src: "public/" }, to: { ... } }
 
   to:
     targets:
@@ -214,8 +213,7 @@ production:
 legacy:
   from:
     type: "file"
-    src:
-      - "dist/"
+    src: "dist/"
 
   to:
     targets:
@@ -249,8 +247,7 @@ legacy:
 local:
   from:
     type: "file"
-    src:
-      - "dist/"
+    src: "dist/"
 
   to:
     targets:
