@@ -79,6 +79,7 @@ import {
   showBanner,
 } from "./src/ui/mod.ts";
 import { startDiffViewer } from "./src/diff-viewer/mod.ts";
+import { getTargetId, type TargetId } from "./src/utils/mod.ts";
 
 /** 終了コード */
 const EXIT_CODES = {
@@ -258,7 +259,7 @@ async function main(): Promise<number> {
     // アップロード用ファイルリストを作成
     let uploadFiles: UploadFile[] = [];
     // ターゲット別のファイルリスト（remote diffモード時に設定）
-    let filesByTarget: Map<number, UploadFile[]> | undefined;
+    let filesByTarget: Map<TargetId, UploadFile[]> | undefined;
 
     if (diffResult) {
       // Gitモード: 差分ファイルをアップロードファイルに変換
@@ -429,18 +430,20 @@ async function main(): Promise<number> {
         // remote diffモードの場合、ターゲット別に変更ファイルをフィルタリング
         if (viewerResult.changedFilesByTarget) {
           // ターゲット別のファイルリストを作成
-          filesByTarget = new Map<number, UploadFile[]>();
+          filesByTarget = new Map<TargetId, UploadFile[]>();
           for (
             const [targetIndex, changedFiles] of viewerResult
               .changedFilesByTarget
           ) {
+            const target = profile.to.targets[targetIndex];
+            const targetId = getTargetId(target);
             const changedSet = new Set(changedFiles);
             const filteredFiles = uploadFiles.filter(
               (f) => changedSet.has(f.relativePath),
             );
-            filesByTarget.set(targetIndex, filteredFiles);
+            filesByTarget.set(targetId, filteredFiles);
             logVerbose(
-              `Target ${targetIndex}: ${filteredFiles.length} changed files`,
+              `Target ${target.host}: ${filteredFiles.length} changed files`,
             );
           }
           // 全ターゲットのうち最大のファイル数をログに出力

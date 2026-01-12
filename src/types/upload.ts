@@ -3,6 +3,7 @@
  */
 
 import type { ResolvedTargetConfig } from "./config.ts";
+import type { TargetId } from "../utils/target-id.ts";
 
 /** アップロードするファイル情報 */
 export interface UploadFile {
@@ -89,8 +90,8 @@ export interface UploadOptions {
   strict?: boolean;
   /** 複数ターゲットへの並列アップロード */
   parallel?: boolean;
-  /** ターゲットインデックスごとのファイルリスト（remote diffモード用） */
-  filesByTarget?: Map<number, UploadFile[]>;
+  /** ターゲットIDごとのファイルリスト（remote diffモード用） */
+  filesByTarget?: Map<TargetId, UploadFile[]>;
 }
 
 /** 転送進捗イベント */
