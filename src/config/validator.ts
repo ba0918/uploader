@@ -478,7 +478,26 @@ function validateTarget(
     );
   }
 
-  // 個別に protocol が指定されている場合の検証
+  // ターゲット個別設定で禁止されている項目のチェック
+  const forbiddenTargetProps = [
+    "protocol",
+    "rsync_path",
+    "rsync_options",
+    "sync_mode",
+    "preserve_permissions",
+    "preserve_timestamps",
+  ];
+
+  for (const prop of forbiddenTargetProps) {
+    if (target[prop] !== undefined) {
+      throw new ConfigValidationError(
+        `${prop} はターゲット個別に設定できません。defaults で設定してください`,
+        `${path}.${prop}`,
+      );
+    }
+  }
+
+  // 個別に protocol が指定されている場合の検証（上のチェックで既にエラーになるので、この分岐には到達しない）
   if (
     target.protocol &&
     !VALID_PROTOCOLS.includes(target.protocol as typeof VALID_PROTOCOLS[number])
