@@ -8,7 +8,19 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-01-13
+
 ### Added
+
+- **diff-viewerに転送プロトコル表示を追加**
+  - ヘッダーに転送プロトコル（rsync/scp/sftp/local）を表示
+  - "Local → Remote" と "Protocol: <protocol>" を装飾的に表示
+  - グラデーション背景とバッジスタイルで視認性向上
+
+- **ターゲット個別設定で禁止プロパティをバリデーション**
+  - 個別ターゲットに設定できないプロパティ（protocol、sync_mode等6項目）をチェック
+  - これらのプロパティはdefaultsセクションでのみ設定可能に
+  - 設定の一貫性を保証し、意図しない設定ミスを防止
 
 - **fileモード + mirrorモード時のリモート専用ファイル削除対応** (Phase C1-C5)
   - uploadFiles配列ベースの統一処理により、全プロトコル・全インターフェースで一貫した差分表示・削除対応を実現
