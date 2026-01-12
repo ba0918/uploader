@@ -216,6 +216,131 @@ describe("validateConfig", () => {
         "src の各要素は文字列である必要があります",
       );
     });
+
+    it("複数srcでsync_mode=mirrorは無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            staging: {
+              from: {
+                type: "file",
+                src: ["/path/to/bbs", "/path/to/scripts"],
+              },
+              to: {
+                targets: [
+                  {
+                    host: "localhost",
+                    protocol: "local",
+                    dest: "/tmp/deploy/",
+                    sync_mode: "mirror",
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        '複数のsrcでsync_mode="mirror"は使用できません',
+      );
+    });
+
+    it("複数srcでsync_mode=updateは有効", () => {
+      const result = validateConfig({
+        staging: {
+          from: {
+            type: "file",
+            src: ["/path/to/bbs", "/path/to/scripts"],
+          },
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/deploy/",
+                sync_mode: "update",
+              },
+            ],
+          },
+        },
+      });
+      const profile = getProfile(result, "staging");
+      assertEquals(profile?.from.type, "file");
+    });
+
+    it("単一srcでsync_mode=mirrorは有効", () => {
+      const result = validateConfig({
+        staging: {
+          from: {
+            type: "file",
+            src: ["/path/to/bbs"],
+          },
+          to: {
+            targets: [
+              {
+                host: "localhost",
+                protocol: "local",
+                dest: "/tmp/deploy/",
+                sync_mode: "mirror",
+              },
+            ],
+          },
+        },
+      });
+      const profile = getProfile(result, "staging");
+      assertEquals(profile?.from.type, "file");
+    });
+
+    it("複数srcでdefaults.sync_mode=mirrorは無効", () => {
+      assertThrows(
+        () =>
+          validateConfig({
+            staging: {
+              from: {
+                type: "file",
+                src: ["/path/to/bbs", "/path/to/scripts"],
+              },
+              to: {
+                defaults: {
+                  host: "localhost",
+                  protocol: "local",
+                  sync_mode: "mirror",
+                },
+                targets: [
+                  {
+                    dest: "/tmp/deploy/",
+                  },
+                ],
+              },
+            },
+          }),
+        ConfigValidationError,
+        '複数のsrcでsync_mode="mirror"は使用できません',
+      );
+    });
+
+    it("複数srcでdefaults.sync_mode=updateは有効", () => {
+      const result = validateConfig({
+        staging: {
+          from: {
+            type: "file",
+            src: ["/path/to/bbs", "/path/to/scripts"],
+          },
+          to: {
+            defaults: {
+              host: "localhost",
+              protocol: "local",
+              sync_mode: "update",
+            },
+            targets: [
+              {
+                dest: "/tmp/deploy/",
+              },
+            ],
+          },
+        },
+      });
+      const profile = getProfile(result, "staging");
+      assertEquals(profile?.from.type, "file");
+    });
   });
 
   describe("プロファイル検証 - 無効なtype", () => {
