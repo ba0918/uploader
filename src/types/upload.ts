@@ -234,7 +234,11 @@ export interface DiffCapable {
   getDiff(
     localDir: string,
     files?: string[],
-    options?: { checksum?: boolean; ignorePatterns?: string[]; remoteDir?: string },
+    options?: {
+      checksum?: boolean;
+      ignorePatterns?: string[];
+      remoteDir?: string;
+    },
   ): Promise<RsyncDiffResult>;
 }
 

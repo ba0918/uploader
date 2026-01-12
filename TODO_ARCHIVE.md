@@ -9,9 +9,11 @@
 
 **実装期間**: 2026-01-10 〜 2026-01-11
 
-**目的**: fileモード + mirrorモード時に、リモートにのみ存在するファイル（削除対象）をdiff-viewerに表示し、CUI/GUI完全一致、全プロトコル完全一致を実現
+**目的**: fileモード +
+mirrorモード時に、リモートにのみ存在するファイル（削除対象）をdiff-viewerに表示し、CUI/GUI完全一致、全プロトコル完全一致を実現
 
 **採用アプローチ**: 提案C (getDiff不使用アプローチ)
+
 - uploadFiles配列ベースの統一処理
 - rsync getDiff()に依存しない設計
 - CUI/GUIで完全に同じロジック
@@ -28,6 +30,7 @@
 - ✅ **Phase C7**: ドキュメント更新 (CHANGELOG.md, CLAUDE.md)
 
 **成果**:
+
 - 61ファイル変更: +4916行, -164行
 - 全テスト通過: 241 passed
 - 全プロトコル（rsync/scp/sftp/local）対応
@@ -38,22 +41,26 @@
 ## 完了済み: セキュリティ修正とリファクタリング (2026-01-09 〜 2026-01-10)
 
 ### セキュリティ修正
+
 - ✅ コマンドインジェクション脆弱性の修正 (`utils/shell.ts`)
   - `escapeShellArg()` 関数を追加
   - ssh-base.ts の `mkdir()`, `delete()`, `readFile()` で使用
 
 ### リファクタリング: 原則違反の修正
+
 - ✅ 認証エラー検出パターンの共通化 (`utils/error.ts`)
 - ✅ upload() 処理フローの共通化 (`ssh-base.ts`)
 - ✅ Uploader インターフェースの分割 (ISP)
 - ✅ マジックナンバーの定数化 (`utils/constants.ts`)
 
 ### リファクタリング: DRY原則違反の修正
+
 - ✅ SSH接続設定の共通化 (`utils/ssh-config.ts`)
 - ✅ リトライロジックの共通化 (`utils/retry.ts`)
 - ✅ ディレクトリ操作の共通化 (`utils/directory.ts`)
 
 ### コードレビュー指摘事項
+
 - ✅ `ws-handler.ts` を分割 (1,088行 → 242行)
 - ✅ `upload/mod.ts` を分割 (458行 → 24行)
 

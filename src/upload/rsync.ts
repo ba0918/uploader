@@ -252,7 +252,11 @@ export class RsyncUploader extends SshBaseUploader {
             try {
               const stat = await Deno.stat(file.sourcePath);
               if (stat.mtime) {
-                await Deno.utime(destPath, stat.atime || stat.mtime, stat.mtime);
+                await Deno.utime(
+                  destPath,
+                  stat.atime || stat.mtime,
+                  stat.mtime,
+                );
               }
             } catch (err) {
               logVerbose(
@@ -282,7 +286,11 @@ export class RsyncUploader extends SshBaseUploader {
       );
 
       // rsyncで一括転送
-      const result = await this.runBulkRsync(stagingDir, totalSize, adjustedDest);
+      const result = await this.runBulkRsync(
+        stagingDir,
+        totalSize,
+        adjustedDest,
+      );
 
       return {
         successCount: result.success ? filesToUpload.length : 0,
@@ -369,7 +377,9 @@ export class RsyncUploader extends SshBaseUploader {
     logVerbose(
       `[RsyncUploader.bulkUpload] Exit code: ${code}, stdout lines: ${
         stdoutMsg.split("\n").length
-      }, stderr: ${errorMsg.length > 0 ? errorMsg.substring(0, 200) : "(empty)"}`,
+      }, stderr: ${
+        errorMsg.length > 0 ? errorMsg.substring(0, 200) : "(empty)"
+      }`,
     );
 
     // rsync終了コード:
@@ -412,7 +422,11 @@ export class RsyncUploader extends SshBaseUploader {
   async getDiff(
     localDir: string,
     files?: string[],
-    options?: { checksum?: boolean; ignorePatterns?: string[]; remoteDir?: string },
+    options?: {
+      checksum?: boolean;
+      ignorePatterns?: string[];
+      remoteDir?: string;
+    },
   ): Promise<RsyncDiffResult> {
     if (!this.isConnected()) {
       throw new UploadError("Not connected", "CONNECTION_ERROR");

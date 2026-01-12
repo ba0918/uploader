@@ -9,8 +9,8 @@ import type {
   ResolvedTargetConfig,
   RsyncDiffEntry,
   RsyncDiffResult,
-  UploadFile,
   Uploader,
+  UploadFile,
 } from "../types/mod.ts";
 import { hasDiff, hasListRemoteFiles } from "../types/mod.ts";
 import { createUploader } from "../upload/mod.ts";
@@ -73,12 +73,33 @@ export function rsyncDiffToSummary(rsyncDiff: RsyncDiffResult): {
 
 /**
  * 単一ターゲットに対してrsync diffを取得
+ *
+ * rsyncプロトコルの場合: ディレクトリ単位での差分取得（`--delete`オプション使用）
+ * - mirrorモード時にbaseDirectoryを検出し、localDir/remoteDirを調整
+ * - rsyncコマンドがディレクトリ単位で動作するため、パス調整が必須
+ * - 例: uploadFiles = ["src/foo.ts", "src/bar.ts"] の場合
+ *   - baseDir = "src/" を検出
+ *   - localDir: "/project/" → "/project/src/"
+ *   - remoteDir: "/upload/" → "/upload/src/"
+ *   - rsyncは /project/src/ と /upload/src/ を比較
+ *   - 結果のパスに "src/" を追加して正規化（uploadFilesと一致させる）
+ *
+ * その他のプロトコル（scp/sftp/local）: ファイル単位での1対1比較
+ * - getManualDiffForTarget()にフォールバック
+ * - baseDirectory調整は不要（uploadFilesのrelativePathを直接使用）
+ *
+ * 詳細: docs/implementation/mirror-mode-protocols.md
  */
 export async function getRsyncDiffForTarget(
   target: ResolvedTargetConfig,
   localDir: string,
   filePaths: string[],
-  options?: { checksum?: boolean; ignorePatterns?: string[]; uploadFiles?: UploadFile[]; concurrency?: number },
+  options?: {
+    checksum?: boolean;
+    ignorePatterns?: string[];
+    uploadFiles?: UploadFile[];
+    concurrency?: number;
+  },
 ): Promise<TargetDiffInfo> {
   // rsync以外のプロトコルはマニュアル差分取得を試みる
   if (target.protocol !== "rsync") {
@@ -121,6 +142,22 @@ export async function getRsyncDiffForTarget(
       }
 
       // mirrorモードの場合、ベースディレクトリを考慮してlocalDirとremoteDirを調整
+      //
+      // rsyncはディレクトリ単位で動作するため、uploadFilesから共通のbaseDirectoryを検出し、
+      // そのディレクトリに対して差分取得を実行する必要がある。
+      //
+      // 例: uploadFiles = ["src/foo.ts", "src/bar.ts"] の場合
+      //   1. detectBaseDirectory() → "src/" を検出
+      //   2. localDir/remoteDirを調整: "/project/" → "/project/src/"
+      //   3. rsyncは "/project/src/" と "/remote/dest/src/" を比較
+      //   4. filePathsを空にして --delete を有効化（ディレクトリ全体を同期）
+      //   5. 結果のパスに "src/" を追加（後述の処理で実行）
+      //
+      // この調整により、rsyncがuploadFilesの範囲内でのみ削除を実行するようになる。
+      // baseDirectory調整なしの場合、localDir配下の全ファイルが対象になってしまう。
+      //
+      // Note: manual diff（scp/sftp/local）はファイル単位で比較するため、
+      // この調整は不要。詳細は docs/implementation/mirror-mode-protocols.md を参照。
       let adjustedLocalDir = localDir;
       let adjustedRemoteDir: string | undefined = undefined;
       let adjustedFilePaths = filePaths;
@@ -130,9 +167,7 @@ export async function getRsyncDiffForTarget(
         const baseDir = detectBaseDirectory(options.uploadFiles);
         if (baseDir) {
           // パス結合: 末尾のスラッシュを考慮
-          const localBase = localDir.endsWith("/")
-            ? localDir
-            : `${localDir}/`;
+          const localBase = localDir.endsWith("/") ? localDir : `${localDir}/`;
           adjustedLocalDir = `${localBase}${baseDir}`;
 
           // リモートパス: destの末尾スラッシュを考慮
@@ -157,6 +192,15 @@ export async function getRsyncDiffForTarget(
       });
 
       // mirrorモードでベースディレクトリを調整した場合、diffのパスにbaseDirを追加
+      //
+      // rsyncは調整済みのlocalDir/remoteDirで比較を実行したため、
+      // 結果のパスはbaseDir除外（"foo.ts", "bar.ts"）になっている。
+      // これを元のパス形式（"src/foo.ts", "src/bar.ts"）に復元することで、
+      // uploadFilesと一致する形式で返却する。
+      //
+      // 例: uploadFiles = ["src/foo.ts", "src/bar.ts"] の場合
+      //   - rsyncの結果: ["foo.ts", "bar.ts"] (baseDir除外)
+      //   - baseDirを追加: ["src/foo.ts", "src/bar.ts"] (uploadFilesと一致)
       if (isMirrorMode && options?.uploadFiles) {
         const baseDir = detectBaseDirectory(options.uploadFiles);
         if (baseDir) {
@@ -192,7 +236,11 @@ export async function getRemoteDiffs(
   targets: ResolvedTargetConfig[],
   uploadFiles: UploadFile[],
   localDir: string,
-  options?: { checksum?: boolean; ignorePatterns?: string[]; concurrency?: number },
+  options?: {
+    checksum?: boolean;
+    ignorePatterns?: string[];
+    concurrency?: number;
+  },
 ): Promise<TargetDiffInfo[]> {
   const filePaths = extractFilePaths(uploadFiles);
 
@@ -281,9 +329,27 @@ function areBuffersEqual(a: Uint8Array, b: Uint8Array): boolean {
  * 各ファイルを個別にリモートと比較して差分を検出する。
  * scp/sftp/localなど、rsync getDiff()をサポートしないプロトコルで使用する。
  *
+ * rsyncとの主な違い:
+ * - ファイル単位での1対1比較（ディレクトリ単位ではない）
+ * - uploadFilesのrelativePathを直接使用してリモートファイルにアクセス
+ * - baseDirectory調整は不要（パスが既に完全な形式）
+ *
+ * 動作:
+ * 1. mirrorモード時: listRemoteFiles()でリモートファイル一覧を取得
+ * 2. リモートにのみ存在するファイルを削除対象として検出
+ * 3. 各uploadFilesを個別に読み込んでバイト比較
+ * 4. 追加/変更されたファイルを検出
+ *
+ * 例: uploadFiles = ["src/foo.ts", "src/bar.ts"] の場合
+ *   - uploader.readFile("src/foo.ts") → リモートの /remote/dest/src/foo.ts を読み込み
+ *   - uploader.readFile("src/bar.ts") → リモートの /remote/dest/src/bar.ts を読み込み
+ *   - パス変換やディレクトリ調整は一切不要
+ *
+ * 詳細: docs/implementation/mirror-mode-protocols.md
+ *
  * @param target 対象ターゲット設定
  * @param uploadFiles アップロードファイル一覧
- * @param localDir ローカルディレクトリパス
+ * @param _localDir ローカルディレクトリパス（未使用、アンダースコア付き）
  * @param options オプション（並列実行数、アップローダーインスタンスなど）
  * @returns rsync差分結果と互換性のある形式
  */
@@ -291,7 +357,11 @@ export async function getManualDiffForTarget(
   target: ResolvedTargetConfig,
   uploadFiles: UploadFile[],
   _localDir: string,
-  options?: { concurrency?: number; ignorePatterns?: string[]; uploader?: Uploader },
+  options?: {
+    concurrency?: number;
+    ignorePatterns?: string[];
+    uploader?: Uploader;
+  },
 ): Promise<RsyncDiffResult> {
   const uploader = options?.uploader ?? createUploader(target);
   const shouldDisconnect = !options?.uploader;
@@ -358,7 +428,11 @@ export async function getManualDiffForTarget(
         logWarning(
           `Failed to list remote files (${errorType}): mirror mode deletion detection skipped`,
         );
-        logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
+        logVerbose(
+          `  Error detail: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     }
 
@@ -421,21 +495,33 @@ export async function getManualDiffForTarget(
               logWarning(
                 `Permission denied when reading file: ${file.relativePath} (will be treated as modified)`,
               );
-              logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
+              logVerbose(
+                `  Error detail: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
               return { file, changeType: "M" as const };
 
             case "NetworkError":
               logWarning(
                 `Network error when reading file: ${file.relativePath} (will be treated as modified)`,
               );
-              logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
+              logVerbose(
+                `  Error detail: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
               return { file, changeType: "M" as const };
 
             case "UnknownError":
               logWarning(
                 `Error checking file: ${file.relativePath} (will be treated as modified)`,
               );
-              logVerbose(`  Error detail: ${error instanceof Error ? error.message : String(error)}`);
+              logVerbose(
+                `  Error detail: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
               return { file, changeType: "M" as const };
           }
         }

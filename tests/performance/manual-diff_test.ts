@@ -5,14 +5,12 @@
  */
 
 import { describe, it } from "@std/testing/bdd";
-import {
-  getManualDiffForTarget,
-} from "../../src/diff-viewer/remote-diff.ts";
+import { getManualDiffForTarget } from "../../src/diff-viewer/remote-diff.ts";
 import type {
   RemoteFileContent,
   ResolvedTargetConfig,
-  UploadFile,
   Uploader,
+  UploadFile,
 } from "../../src/types/mod.ts";
 
 /** モックUploader（readFile/listRemoteFiles対応） */
@@ -95,7 +93,9 @@ async function runPerformanceTest(
 
   try {
     // テストファイルを生成
-    console.log(`ファイル生成中... (${fileCount} files × ${fileSizeBytes} bytes)`);
+    console.log(
+      `ファイル生成中... (${fileCount} files × ${fileSizeBytes} bytes)`,
+    );
     const fileGenStart = performance.now();
 
     for (let i = 0; i < fileCount; i++) {
@@ -133,7 +133,9 @@ async function runPerformanceTest(
     }
 
     const fileGenEnd = performance.now();
-    console.log(`ファイル生成完了: ${(fileGenEnd - fileGenStart).toFixed(2)} ms`);
+    console.log(
+      `ファイル生成完了: ${(fileGenEnd - fileGenStart).toFixed(2)} ms`,
+    );
 
     // メモリ使用量（テスト前）
     const memBefore = Deno.memoryUsage();
@@ -157,7 +159,8 @@ async function runPerformanceTest(
     // 結果表示
     const totalSizeMB = (fileCount * fileSizeBytes) / (1024 * 1024);
     const executionTimeMs = testEnd - testStart;
-    const memoryUsedMB = (memAfter.heapUsed - memBefore.heapUsed) / (1024 * 1024);
+    const memoryUsedMB = (memAfter.heapUsed - memBefore.heapUsed) /
+      (1024 * 1024);
     const throughput = fileCount / (executionTimeMs / 1000);
 
     console.log(`\n${"=".repeat(60)}`);
@@ -190,12 +193,15 @@ async function runPerformanceTest(
 
 describe("getManualDiffForTarget - パフォーマンステスト", () => {
   // 環境変数でテストを制御
-  const skipPerformanceTests = Deno.env.get("SKIP_PERFORMANCE_TESTS") === "true";
+  const skipPerformanceTests =
+    Deno.env.get("SKIP_PERFORMANCE_TESTS") === "true";
   const skipLargeTests = Deno.env.get("SKIP_LARGE_TESTS") === "true";
 
   it("小規模: 100ファイル × 1KB", async () => {
     if (skipPerformanceTests) {
-      console.log("パフォーマンステストをスキップ (SKIP_PERFORMANCE_TESTS=true)");
+      console.log(
+        "パフォーマンステストをスキップ (SKIP_PERFORMANCE_TESTS=true)",
+      );
       return;
     }
 
@@ -209,7 +215,9 @@ describe("getManualDiffForTarget - パフォーマンステスト", () => {
 
   it("中規模: 1,000ファイル × 10KB", async () => {
     if (skipPerformanceTests) {
-      console.log("パフォーマンステストをスキップ (SKIP_PERFORMANCE_TESTS=true)");
+      console.log(
+        "パフォーマンステストをスキップ (SKIP_PERFORMANCE_TESTS=true)",
+      );
       return;
     }
 
@@ -223,7 +231,9 @@ describe("getManualDiffForTarget - パフォーマンステスト", () => {
 
   it("大規模: 8,000ファイル × 10KB", async () => {
     if (skipPerformanceTests || skipLargeTests) {
-      console.log("大規模テストをスキップ (SKIP_PERFORMANCE_TESTS=true or SKIP_LARGE_TESTS=true)");
+      console.log(
+        "大規模テストをスキップ (SKIP_PERFORMANCE_TESTS=true or SKIP_LARGE_TESTS=true)",
+      );
       return;
     }
 
@@ -237,7 +247,9 @@ describe("getManualDiffForTarget - パフォーマンステスト", () => {
 
   it("大容量: 10ファイル × 100MB", async () => {
     if (skipPerformanceTests || skipLargeTests) {
-      console.log("大容量テストをスキップ (SKIP_PERFORMANCE_TESTS=true or SKIP_LARGE_TESTS=true)");
+      console.log(
+        "大容量テストをスキップ (SKIP_PERFORMANCE_TESTS=true or SKIP_LARGE_TESTS=true)",
+      );
       return;
     }
 

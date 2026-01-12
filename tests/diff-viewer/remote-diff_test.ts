@@ -14,8 +14,8 @@ import type {
   RemoteFileContent,
   ResolvedTargetConfig,
   RsyncDiffResult,
-  UploadFile,
   Uploader,
+  UploadFile,
 } from "../../src/types/mod.ts";
 
 /** モックUploader（readFile/listRemoteFiles対応） */
@@ -920,7 +920,9 @@ describe("getManualDiffForTarget - エッジケース", () => {
 
     // readFileでエラーを投げるモックアップローダー
     class ErrorUploader extends MockUploader {
-      override async readFile(_path: string): Promise<RemoteFileContent | null> {
+      override async readFile(
+        _path: string,
+      ): Promise<RemoteFileContent | null> {
         throw await Promise.reject(new Error("Permission denied"));
       }
     }

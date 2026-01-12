@@ -73,6 +73,27 @@ deno test --allow-read --allow-write --allow-net --allow-env --allow-run path/to
 - CUI/GUI完全一致、全プロトコル完全一致
 - ignoreフィルタリングを一箇所に集約
 
+### Protocol-Specific Implementation (mirrorモード)
+
+**rsync**: ディレクトリ単位の差分同期
+
+- baseDirectory調整あり（`detectBaseDirectory()` 使用）
+- `getRsyncDiffForTarget()` でパス調整とrsync実行
+- rsyncは `/project/src/` と `/remote/dest/src/` をディレクトリ単位で比較
+- 詳細:
+  [docs/implementation/mirror-mode-protocols.md](docs/implementation/mirror-mode-protocols.md)
+
+**manual diff (scp/sftp/local)**: ファイル単位の1対1比較
+
+- baseDirectory調整なし（直接ファイル比較）
+- `getManualDiffForTarget()` で各ファイルを個別チェック
+- uploadFilesのrelativePathを直接使用してリモートアクセス
+- 詳細:
+  [docs/implementation/mirror-mode-protocols.md](docs/implementation/mirror-mode-protocols.md)
+
+**設計原則**:
+プロトコルの特性に応じた実装差異は意図的なもの。最終的な結果（uploadFiles配列）は一致。
+
 ### Key Configuration
 
 設定ファイル: `uploader.yaml` (YAML形式)

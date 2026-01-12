@@ -150,12 +150,20 @@ function displaySourceFiles(uploadFiles: UploadFile[]): void {
 
   // ファイル数が多い場合は一部のみ表示
   if (files.length > CUI_FILE_LIST_LIMIT) {
-    console.log(`   ${dim("Files")} ${dim(`(showing ${CUI_FILE_LIST_LIMIT} of ${files.length})`)}`);
+    console.log(
+      `   ${dim("Files")} ${
+        dim(`(showing ${CUI_FILE_LIST_LIMIT} of ${files.length})`)
+      }`,
+    );
     for (let i = 0; i < CUI_FILE_LIST_LIMIT; i++) {
       const file = files[i];
       const isLast = i === CUI_FILE_LIST_LIMIT - 1;
       const prefix = isLast ? "└─" : "├─";
-      console.log(`   ${dim(prefix)} ${file.relativePath} ${dim(`(${formatFileSize(file.size)})`)}`);
+      console.log(
+        `   ${dim(prefix)} ${file.relativePath} ${
+          dim(`(${formatFileSize(file.size)})`)
+        }`,
+      );
     }
   } else if (files.length > 0) {
     console.log(`   ${dim("Files")}`);
@@ -163,7 +171,11 @@ function displaySourceFiles(uploadFiles: UploadFile[]): void {
       const file = files[i];
       const isLast = i === files.length - 1;
       const prefix = isLast ? "└─" : "├─";
-      console.log(`   ${dim(prefix)} ${file.relativePath} ${dim(`(${formatFileSize(file.size)})`)}`);
+      console.log(
+        `   ${dim(prefix)} ${file.relativePath} ${
+          dim(`(${formatFileSize(file.size)})`)
+        }`,
+      );
     }
   }
 
@@ -331,9 +343,21 @@ export async function cuiConfirm(
 
         // 件数が多い場合の警告
         if (total > CUI_FILE_LIST_LIMIT) {
-          console.log(`   ${yellow("⚠")}  ${yellow(`Large number of changes detected (${total} files)`)}`);
-          console.log(`   ${dim(`Showing first ${CUI_FILE_LIST_LIMIT} files per category.`)}`);
-          console.log(`   ${dim(`For detailed review, use browser mode: remove --cui flag`)}`);
+          console.log(
+            `   ${yellow("⚠")}  ${
+              yellow(`Large number of changes detected (${total} files)`)
+            }`,
+          );
+          console.log(
+            `   ${
+              dim(`Showing first ${CUI_FILE_LIST_LIMIT} files per category.`)
+            }`,
+          );
+          console.log(
+            `   ${
+              dim(`For detailed review, use browser mode: remove --cui flag`)
+            }`,
+          );
           console.log();
         }
 
@@ -356,7 +380,9 @@ export async function cuiConfirm(
           displayFiles(deleted, CUI_FILE_LIST_LIMIT);
         }
       } else if (info.unsupported) {
-        console.log(`   ${dim(`(${info.target.protocol} - diff not supported)`)}`);
+        console.log(
+          `   ${dim(`(${info.target.protocol} - diff not supported)`)}`,
+        );
       }
 
       console.log();
@@ -396,26 +422,43 @@ export async function cuiConfirm(
 
     // 件数が多い場合の警告
     if (summary.total > CUI_FILE_LIST_LIMIT) {
-      console.log(`   ${yellow("⚠")}  ${yellow(`Large number of changes detected (${summary.total} files)`)}`);
-      console.log(`   ${dim(`Showing first ${CUI_FILE_LIST_LIMIT} files per category.`)}`);
-      console.log(`   ${dim(`For detailed review, use browser mode: remove --cui flag`)}`);
+      console.log(
+        `   ${yellow("⚠")}  ${
+          yellow(`Large number of changes detected (${summary.total} files)`)
+        }`,
+      );
+      console.log(
+        `   ${dim(`Showing first ${CUI_FILE_LIST_LIMIT} files per category.`)}`,
+      );
+      console.log(
+        `   ${dim(`For detailed review, use browser mode: remove --cui flag`)}`,
+      );
       console.log();
     }
 
     // ファイル一覧を表示
     if (summary.added > 0) {
       console.log(`   ${green("Added:")}`);
-      displayFiles(filesToDisplay.filter((f) => f.status === "A"), CUI_FILE_LIST_LIMIT);
+      displayFiles(
+        filesToDisplay.filter((f) => f.status === "A"),
+        CUI_FILE_LIST_LIMIT,
+      );
     }
 
     if (summary.modified > 0) {
       console.log(`   ${yellow("Modified:")}`);
-      displayFiles(filesToDisplay.filter((f) => f.status === "M"), CUI_FILE_LIST_LIMIT);
+      displayFiles(
+        filesToDisplay.filter((f) => f.status === "M"),
+        CUI_FILE_LIST_LIMIT,
+      );
     }
 
     if (summary.deleted > 0) {
       console.log(`   ${red("Deleted:")}`);
-      displayFiles(filesToDisplay.filter((f) => f.status === "D"), CUI_FILE_LIST_LIMIT);
+      displayFiles(
+        filesToDisplay.filter((f) => f.status === "D"),
+        CUI_FILE_LIST_LIMIT,
+      );
     }
 
     const renamed = filesToDisplay.filter((f) => f.status === "R");
